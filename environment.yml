@@ -1,0 +1,10 @@
+name: helicopter
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - cmake
+  - eigen
+  - pybind11
+  - scikit-build-core
+  - pip

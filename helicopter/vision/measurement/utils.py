@@ -1,0 +1,37 @@
+import numpy as np
+
+
+class PointQueue:
+    def __init__(self, maxlen: int, init_value: np.ndarray):
+        self.data: np.ndarray = np.tile(init_value, (maxlen, 1))
+        self.max_length: int = maxlen
+        self.queue_tail: int = maxlen - 1
+
+    def to_array(self) -> np.ndarray:
+        head = (self.queue_tail + 1) % self.max_length
+        return np.roll(self.data, -head, axis=0)  # this will force a copy
+
+    def enqueue(self, new_data: np.ndarray) -> None:
+        self.queue_tail = (self.queue_tail + 1) % self.max_length
+        self.data[self.queue_tail] = new_data
+
+    def peek(self):
+        queue_head = (self.queue_tail + 1) % self.max_length
+        return self.data[queue_head]
+
+    def item_at(self, index: int):
+        loc = (self.queue_tail + 1 + index) % self.max_length
+        return self.data[loc]
+
+    def replace_item_at(self, index: int, newItem: int):
+        loc = (self.queue_tail + 1 + index) % self.max_length
+        self.data[loc] = newItem
+
+    def mean(self) -> np.ndarray:
+        return np.mean(self.data, axis=0)
+
+    def __repr__(self):
+        return "tail: " + str(self.queue_tail) + "\narray: " + str(self.data)
+
+    def __str__(self):
+        return "tail: " + str(self.queue_tail) + "\narray:\n" + str(self.data)

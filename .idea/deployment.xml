@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="wsl" confirmBeforeUploading="false" confirmBeforeDeletion="false">
+    <option name="confirmBeforeDeletion" value="false" />
+    <option name="confirmBeforeUploading" value="false" />
+    <serverData>
+      <paths name="Remote Host (947ed698-9bcc-4ada-9b35-2e1b2afe6c02)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/tmp/tmp.Ecs353m2IS/helicopter" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="wsl">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/ray/projects/helicopter" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>
