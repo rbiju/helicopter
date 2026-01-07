@@ -71,10 +71,10 @@ if __name__ == '__main__':
                                 residual_z=hx_residual_fn,
                                 points=points)
 
-    ukf.Q = build_Q_matrix(dt=1 / 60)
+    ukf.Q = build_Q_matrix(dt=1 / 250)
     initial_sigmas = {
         'd_theta': 0.1,
-        'dp': 1.0,
+        'dp': 0.5,
         'dv': 0.1,
         'dba': 1.0e-2,
         'dbg': 1.0e-3
@@ -87,7 +87,7 @@ if __name__ == '__main__':
     }
     ukf.R = initialize_R_matrix(visual_sigmas)
 
-    tool = MeasurementTool(device=D435i(enable_motion=True, enable_rgb=False, projector_power=30.),
+    tool = MeasurementTool(device=D435i(enable_motion=True, enable_rgb=False, projector_power=130.),
                            point_handler=PointHandler(),
                            camera_state_handler=CameraStateHandler(),
                            ukf=ukf)

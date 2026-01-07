@@ -62,7 +62,7 @@ def propagate(s: np.ndarray,
     new_state[IDX_Q] = quaternion.as_float_array(q_new.normalized())
 
     acc_quat = quaternion.quaternion(0, *accel_corrected)
-    acc_rotated = (q_new * acc_quat * q_new.conjugate()).imag
+    acc_rotated = (q_new.conjugate() * acc_quat * q_new).imag
 
     a_world = acc_rotated - g_world
 

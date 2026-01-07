@@ -72,7 +72,7 @@ class MeasurementTool:
         )
 
         self.camera_state_handler.quaternion = quat
-        self.camera_state_handler.g = v_B_norm * (quat * quaternion.quaternion(0, *v_W_unit) * quat.inverse()).imag
+        self.camera_state_handler.g = v_B_norm * v_W_unit
 
         print("Orientation initialized")
 
@@ -126,7 +126,7 @@ class MeasurementTool:
                             nominal_state = compose_fn(self.camera_state_handler.nominal_state, self.ukf.x.copy())
                             self.camera_state_handler.set_state_from_nominal(nominal_state)
                             self.ukf.x = np.zeros(15)
-                if time.time() - self.timer > 5.0:
+                if time.time() - self.timer > 2.0:
                     self.is_running = False
 
         finally:
