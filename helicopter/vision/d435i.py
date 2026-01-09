@@ -186,12 +186,12 @@ class D435i:
             self.accel_queue.append(accel_data)
             self.accel_time_queue.append(ts_accel)
             if len(self.accel_queue) > 50:
-                accel_x = np.interp(self.gyro_time, np.array(list(self.accel_time_queue))[:2],
-                                    np.array(list(self.accel_queue))[:2, 0])
-                accel_y = np.interp(self.gyro_time, np.array(list(self.accel_time_queue))[:2],
-                                    np.array(list(self.accel_queue))[:2, 1])
-                accel_z = np.interp(self.gyro_time, np.array(list(self.accel_time_queue))[:2],
-                                    np.array(list(self.accel_queue))[:2, 2])
+                accel_x = np.interp(self.gyro_time, np.array(list(self.accel_time_queue))[-2:],
+                                    np.array(list(self.accel_queue))[-2:, 0])
+                accel_y = np.interp(self.gyro_time, np.array(list(self.accel_time_queue))[-2:],
+                                    np.array(list(self.accel_queue))[-2:, 1])
+                accel_z = np.interp(self.gyro_time, np.array(list(self.accel_time_queue))[-2:],
+                                    np.array(list(self.accel_queue))[-2:, 2])
                 accel_data = np.array([accel_x, accel_y, accel_z])
 
                 return accel_data, self.gyro_value, self.gyro_time
