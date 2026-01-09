@@ -21,21 +21,28 @@ class PointHandler:
 
         params = cv2.SimpleBlobDetector.Params()
 
+        params.filterByArea = True
+        params.minArea = 7
+        params.maxArea = 200
+
         params.filterByColor = True
         params.blobColor = 255
 
         params.filterByInertia = True
-        params.minInertiaRatio = 0.5
+        params.minInertiaRatio = 0.6
 
         params.filterByCircularity = True
-        params.minCircularity = 0.6
+        params.minCircularity = 0.5
 
         params.filterByConvexity = True
-        params.minConvexity = 0.8
+        params.minConvexity = 0.9
 
-        params.thresholdStep = 10
+        params.thresholdStep = 5
+        params.minThreshold = 20
+        params.maxThreshold = 255
 
         self.detector = cv2.SimpleBlobDetector.create(params)
+        self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(20, 20))
 
     @property
     def points_coords(self):
@@ -55,17 +62,27 @@ class PointHandler:
         else:
             return None
 
-    def get_marker_coords(self, depth_frame, circle, intrinsics: rs.intrinsics, depth_scale: float, distance_threshold: float = 1.0,
-                          sigma_factor=0.3) -> np.ndarray | None:
-        (cx, cy), radius = circle
+    @staticmethod
+    def draw_subpixel_circle(center, radius, shift):
+        factor = 1 << shift
 
-        depth_frame = depth_frame * depth_scale
-        valid_mask = depth_frame > 0
+        cx, cy = center
+
+        cx_rounded = round(cx * factor)
+        cy_rounded = round(cy * factor)
+        radius_rounded = round(radius * factor)
+
+        return (cx_rounded, cy_rounded), radius_rounded
+
+    def get_marker_coords(self, depth_frame, valid_mask, circle, intrinsics: rs.intrinsics, distance_threshold: float = 1.0,
+                          sigma_factor=0.3) -> np.ndarray | None:
+        center, radius, shift = circle
 
         mask = np.zeros(depth_frame.shape[:2], dtype=np.uint8)
-        cv2.circle(mask, (cx, cy), radius, 255, -1)
+        cv2.circle(mask, center, radius, 1, -1, shift=shift)
 
-        gaussian_mask = cv2.GaussianBlur(mask.astype(float), (radius, radius), radius * sigma_factor) * valid_mask
+        ksize = int(radius / (1 << shift)) | 1
+        gaussian_mask = cv2.GaussianBlur(mask.astype(float), (ksize, ksize), radius * sigma_factor) * valid_mask
 
         if gaussian_mask.sum() <= 0:
             return None
@@ -76,7 +93,7 @@ class PointHandler:
         if depth > distance_threshold:
             return None
 
-        point = rs.rs2_deproject_pixel_to_point(intrinsics, pixel=[cx, cy], depth=depth)
+        point = rs.rs2_deproject_pixel_to_point(intrinsics, pixel=[center[0], center[1]], depth=depth)
         return np.array([point[2], -point[0], -point[1]])
 
     def correct_point(self, point: np.ndarray, camera_position: np.ndarray,
@@ -86,13 +103,27 @@ class PointHandler:
         return point
 
     def get_measured_points(self, ir_frame: np.ndarray, depth_frame: np.ndarray, intrinsics: pyrealsense2.intrinsics,
-                            depth_scale: float, camera_position: np.ndarray, camera_quat: quaternion.quaternion):
-        keypoints = self.detector.detect(ir_frame)
+                            camera_position: np.ndarray, camera_quat: quaternion.quaternion, shift=3):
+        valid_mask = 0 < depth_frame
+
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+        tophat = cv2.morphologyEx(ir_frame, cv2.MORPH_TOPHAT, kernel)
+        clahe = self.clahe.apply(tophat)
+
+        for _ in range(2):
+            clahe = self.clahe.apply(clahe)
+
+        keypoints = self.detector.detect(clahe)
 
         points = []
         registered_idxs = []
         for kp in keypoints:
-            marker_point = self.get_marker_coords(depth_frame, (kp.pt, kp.size), intrinsics, depth_scale)
+            center, radius = self.draw_subpixel_circle(kp.pt, kp.size / 2, shift)
+            marker_point = self.get_marker_coords(depth_frame, valid_mask, (center, radius, shift), intrinsics)
+
+            if marker_point is None:
+                continue
+
             marker_point = self.correct_point(marker_point, camera_position, camera_quat)
 
             registered_idx = self.get_registered_idx(marker_point)

@@ -4,13 +4,6 @@
     <option name="confirmBeforeDeletion" value="false" />
     <option name="confirmBeforeUploading" value="false" />
     <serverData>
-      <paths name="Remote Host (947ed698-9bcc-4ada-9b35-2e1b2afe6c02)">
-        <serverdata>
-          <mappings>
-            <mapping deploy="/tmp/tmp.Ecs353m2IS/helicopter" local="$PROJECT_DIR$" />
-          </mappings>
-        </serverdata>
-      </paths>
       <paths name="wsl">
         <serverdata>
           <mappings>

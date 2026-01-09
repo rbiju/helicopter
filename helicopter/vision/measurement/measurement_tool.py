@@ -106,7 +106,6 @@ class MeasurementTool:
                         measured_out = self.point_handler.get_measured_points(ir_frame=ir_image,
                                                                               depth_frame=depth_image,
                                                                               intrinsics=self.device.intrinsics,
-                                                                              depth_scale=self.device.depth_scale,
                                                                               camera_position=nominal_state[4:7],
                                                                               camera_quat=quaternion.quaternion(
                                                                                   *nominal_state[0:4]))

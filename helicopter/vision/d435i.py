@@ -10,10 +10,12 @@ class D435i:
                  gyro_rate: int = 200,
                  video_rate: int = 60,
                  video_resolution: tuple[int, int] = (640, 480),
-                 enable_ir: bool = True,
-                 enable_rgb: bool = True,
+                 enable_ir: bool = False,
+                 enable_rgb: bool = False,
                  enable_motion: bool = False,
-                 projector_power: float = 150.):
+                 projector_power: float = 150.,
+                 autoexpose: bool = True,
+                 exposure_time: int = 800):
         self.ACCEL_RATE = accel_rate
         self.GYRO_RATE = gyro_rate
 
@@ -27,10 +29,15 @@ class D435i:
 
         serial = self.get_device_serial()
 
+        self.enable_motion = enable_motion
         if enable_motion:
             self.imu_pipeline, self.imu_profile = self.setup_imu(serial)
 
-        self.pipeline, self.profile, self.intrinsics = self.setup_camera(serial, projector_power, enable_ir, enable_rgb)
+        self.pipeline, self.profile, self.intrinsics = self.get_camera_pipeline(serial, enable_ir, enable_rgb)
+        self.set_exposure(autoexpose, exposure_time)
+        self.set_projector_power(projector_power)
+        self.warmup_camera()
+
         self.depth_scale = self.profile.get_device().first_depth_sensor().get_depth_scale()
         self.hole_filler = rs.hole_filling_filter(1)
 
@@ -50,7 +57,32 @@ class D435i:
             raise RuntimeError("No RealSense device detected.")
         return ctx.devices[0].get_info(rs.camera_info.serial_number)
 
-    def setup_camera(self, serial, projector_power: float, enable_ir: bool, enable_rgb: bool):
+    def set_projector_power(self, power: float):
+        if 0. <= power <= 360:
+            print(f"Setting projector power to {power}")
+            depth_device = self.profile.get_device()
+            depth_sensor = depth_device.first_depth_sensor()
+            depth_sensor.set_option(rs.option.laser_power, power)
+            depth_sensor.set_option(rs.option.emitter_always_on, 1)
+        else:
+            warnings.warn(f"Specified projector power {power} is invalid. Must be between 0 and 360."
+                          f"Projector power setting skipped.")
+
+    def set_exposure(self, auto_exposure: bool, exposure: int):
+        device = self.profile.get_device()
+        depth_sensor = device.first_depth_sensor()
+
+        if not auto_exposure:
+            depth_sensor.set_option(rs.option.enable_auto_exposure, 0)
+            depth_sensor.set_option(rs.option.exposure, exposure)
+
+            print(f"Auto-exposure disabled and exposure set to {exposure}")
+        else:
+            depth_sensor.set_option(rs.option.enable_auto_exposure, 1)
+
+            print("Auto-exposure enabled")
+
+    def get_camera_pipeline(self, serial, enable_ir: bool, enable_rgb: bool):
         ctx = rs.context()
 
         if len(ctx.devices) == 0:
@@ -71,35 +103,21 @@ class D435i:
         pipeline = rs.pipeline(ctx)
         profile = pipeline.start(config)
 
-        print("Warming up camera... waiting 500 frames.")
-        for _ in range(500):
-            pipeline.wait_for_frames()
+        depth_stream = profile.get_stream(rs.stream.depth)
+        depth_video_profile = depth_stream.as_video_stream_profile()
+        depth_intrinsics = depth_video_profile.get_intrinsics()
 
-        try:
-            depth_stream = profile.get_stream(rs.stream.depth)
-            depth_video_profile = depth_stream.as_video_stream_profile()
-            depth_intrinsics = depth_video_profile.get_intrinsics()
-
-            print("Successfully retrieved Depth Intrinsics:")
-            print(f"  Resolution: {depth_intrinsics.width}x{depth_intrinsics.height}")
-            print(f"  Focal Length (fx, fy): ({depth_intrinsics.fx:.2f}, {depth_intrinsics.fy:.2f})")
-            print(f"  Principal Point (cx, cy): ({depth_intrinsics.ppx:.2f}, {depth_intrinsics.ppy:.2f})")
-
-        except Exception as e:
-            print(f"Error fetching depth intrinsics: {e}")
-            depth_intrinsics = None
-
-        if 0. <= projector_power <= 360:
-            print(f"Setting projector power to {projector_power}")
-            depth_device = profile.get_device()
-            depth_sensor = depth_device.first_depth_sensor()
-            depth_sensor.set_option(rs.option.laser_power, projector_power)
-            depth_sensor.set_option(rs.option.emitter_always_on, 1)
-        else:
-            warnings.warn(f"Specified projector power {projector_power} is invalid. Must be between 0 and 360."
-                          f"Projector power setting skipped.")
+        print("Successfully retrieved Depth Intrinsics:")
+        print(f"  Resolution: {depth_intrinsics.width}x{depth_intrinsics.height}")
+        print(f"  Focal Length (fx, fy): ({depth_intrinsics.fx:.2f}, {depth_intrinsics.fy:.2f})")
+        print(f"  Principal Point (cx, cy): ({depth_intrinsics.ppx:.2f}, {depth_intrinsics.ppy:.2f})")
 
         return pipeline, profile, depth_intrinsics
+
+    def warmup_camera(self):
+        print("Warming up camera... waiting 200 frames.")
+        for _ in range(200):
+            self.pipeline.wait_for_frames()
 
     def setup_imu(self, serial):
         config = rs.config()
@@ -129,6 +147,7 @@ class D435i:
 
         if depth_frame:
             depth_image = np.asanyarray(depth_frame.get_data())
+            depth_image = depth_image * self.depth_scale
             ts_depth = depth_frame.get_timestamp()
         else:
             depth_image = None
@@ -185,5 +204,7 @@ class D435i:
         return None
 
     def stop(self):
-        self.imu_pipeline.stop()
+        print("Closing D435i pipelines")
+        if self.enable_motion:
+            self.imu_pipeline.stop()
         self.pipeline.stop()
