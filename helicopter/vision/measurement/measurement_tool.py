@@ -81,9 +81,15 @@ class MeasurementTool:
             print("Starting measurement")
             self.is_running = True
             self.timer = time.time()
+
+            debug_flag = False
             while self.is_running:
                 imu_frames = self.device.imu_pipeline.poll_for_frames()
                 if imu_frames is not None:
+
+                    if debug_flag:
+                        print('whoa imu')
+
                     synced_imu = self.device.get_synced_imu(imu_frames)
                     if synced_imu is None:
                         continue
@@ -123,10 +129,17 @@ class MeasurementTool:
                                             nominal_state=self.camera_state_handler.nominal_state, )
 
                             nominal_state = compose_fn(self.camera_state_handler.nominal_state, self.ukf.x.copy())
+
+                            if debug_flag:
+                                print('whoa video')
                             self.camera_state_handler.set_state_from_nominal(nominal_state)
                             self.ukf.x = np.zeros(15)
-                if time.time() - self.timer > 2.0:
+                if time.time() - self.timer > 1.0:
+                    debug_flag = True
+                if time.time() - self.timer > 3.0:
                     self.is_running = False
+
+                time.sleep(0.00001)
 
         finally:
             print("Cleaning up sensor")

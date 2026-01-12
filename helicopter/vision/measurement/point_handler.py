@@ -10,8 +10,8 @@ from .utils import PointQueue
 
 class PointHandler:
     def __init__(self, ir_threshold: int = 215,
-                 marker_radius: float = 0.005,
-                 maxlen: int = 100) -> None:
+                 marker_radius: float = 0.01,
+                 maxlen: int = 5) -> None:
         self.ir_threshold = ir_threshold
         self.marker_radius = marker_radius
 
@@ -29,13 +29,13 @@ class PointHandler:
         params.blobColor = 255
 
         params.filterByInertia = True
-        params.minInertiaRatio = 0.6
+        params.minInertiaRatio = 0.4
 
         params.filterByCircularity = True
-        params.minCircularity = 0.5
+        params.minCircularity = 0.7
 
         params.filterByConvexity = True
-        params.minConvexity = 0.9
+        params.minConvexity = 0.95
 
         params.thresholdStep = 5
         params.minThreshold = 20
@@ -74,14 +74,16 @@ class PointHandler:
 
         return (cx_rounded, cy_rounded), radius_rounded
 
-    def get_marker_coords(self, depth_frame, valid_mask, circle, intrinsics: rs.intrinsics, distance_threshold: float = 1.0,
+    def get_marker_coords(self, depth_frame, valid_mask, circle, intrinsics: rs.intrinsics, distance_threshold: float = 0.5,
                           sigma_factor=0.3) -> np.ndarray | None:
         center, radius, shift = circle
 
-        mask = np.zeros(depth_frame.shape[:2], dtype=np.uint8)
-        cv2.circle(mask, center, radius, 1, -1, shift=shift)
+        center_shift, radius_shift = self.draw_subpixel_circle(center, radius, shift)
 
-        ksize = int(radius / (1 << shift)) | 1
+        mask = np.zeros(depth_frame.shape[:2], dtype=np.uint8)
+        cv2.circle(mask, center_shift, radius_shift, 255, -1, lineType=cv2.LINE_AA, shift=shift)
+
+        ksize = int(radius) | 1
         gaussian_mask = cv2.GaussianBlur(mask.astype(float), (ksize, ksize), radius * sigma_factor) * valid_mask
 
         if gaussian_mask.sum() <= 0:
@@ -118,8 +120,7 @@ class PointHandler:
         points = []
         registered_idxs = []
         for kp in keypoints:
-            center, radius = self.draw_subpixel_circle(kp.pt, kp.size / 2, shift)
-            marker_point = self.get_marker_coords(depth_frame, valid_mask, (center, radius, shift), intrinsics)
+            marker_point = self.get_marker_coords(depth_frame, valid_mask, (kp.pt, kp.size / 2, shift), intrinsics)
 
             if marker_point is None:
                 continue
@@ -131,6 +132,8 @@ class PointHandler:
             if registered_idx is None:
                 registered_idx = len(self.points)
                 self.points[registered_idx] = PointQueue(maxlen=self.maxlen, init_value=marker_point)
+            else:
+                self.points[registered_idx].enqueue(marker_point)
 
             points.append(marker_point)
             registered_idxs.append(registered_idx)

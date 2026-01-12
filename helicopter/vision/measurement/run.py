@@ -87,7 +87,7 @@ if __name__ == '__main__':
     }
     ukf.R = initialize_R_matrix(visual_sigmas)
 
-    tool = MeasurementTool(device=D435i(enable_motion=True, enable_rgb=False, projector_power=360., autoexpose=False, exposure_time=500),
+    tool = MeasurementTool(device=D435i(enable_motion=True, enable_depth=True, projector_power=360., autoexpose=False, exposure_time=700),
                            point_handler=PointHandler(),
                            camera_state_handler=CameraStateHandler(),
                            ukf=ukf)
