@@ -9,7 +9,7 @@ from .camera_state_handler import CameraStateHandler
 from .point_handler import PointHandler
 from .utils import PointQueue
 
-from .filter_functions import compose_fn
+from .filter_functions import compose_fn, propagate
 
 
 class MeasurementTool:
@@ -50,19 +50,12 @@ class MeasurementTool:
         v_W_unit = np.array([0.0, 0.0, 1.0])
 
         rotation_axis = np.cross(v_B_unit, v_W_unit)
-
         axis_norm = np.linalg.norm(rotation_axis)
-        if axis_norm < 1e-6:
-            dot_product = np.dot(v_W_unit, v_B_unit)
-            if dot_product > 0.9999:
-                rotation_axis = np.array([1.0, 0.0, 0.0])
-                rotation_angle = 0.0
-            else:
-                rotation_axis = np.array([1.0, 0.0, 0.0])
-                rotation_angle = np.pi
+        if axis_norm > 1e-6:
+            rotation_axis /= axis_norm
+            rotation_angle = np.arccos(np.dot(v_B_unit, v_W_unit))
         else:
-            rotation_axis = rotation_axis / axis_norm
-            rotation_angle = np.arcsin(axis_norm)
+            rotation_angle = 0.0
 
         theta_half = rotation_angle / 2.0
 
@@ -96,15 +89,19 @@ class MeasurementTool:
                     else:
                         accel, gyro, timestamp = synced_imu
                         dt = timestamp - self.device.last_imu_time
+
+                        propagated_nominal = propagate(self.camera_state_handler.nominal_state.copy(), dt, accel, gyro, self.camera_state_handler.g)
+
                         self.ukf.predict(dt=dt,
                                          nominal_state=self.camera_state_handler.nominal_state.copy(),
+                                         propagated_nominal=propagated_nominal,
                                          accelerometer=accel,
                                          gyro=gyro,
                                          g_world=self.camera_state_handler.g)
 
-                        new_nominal = compose_fn(self.camera_state_handler.nominal_state.copy(), self.ukf.x.copy())
-                        self.camera_state_handler.set_state_from_nominal(new_nominal.copy())
-                        # self.ukf.x = np.zeros(15)
+                        self.camera_state_handler.set_state_from_nominal(propagated_nominal)
+
+                        self.ukf.x.fill(0)
 
                 frames = self.device.pipeline.poll_for_frames()
                 depth_frame = frames.get_depth_frame()
@@ -145,6 +142,8 @@ class MeasurementTool:
                     debug_flag = True
                 if time.time() - self.timer > 3.0:
                     self.is_running = False
+
+                time.sleep(1e-5)
 
         finally:
             print("Cleaning up sensor")

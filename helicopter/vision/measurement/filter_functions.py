@@ -48,7 +48,7 @@ def propagate(s: np.ndarray,
     acc_corrected = accelerometer - s[IDX_BA]
 
     dq = quaternion.from_rotation_vector(gyro_corrected * dt)
-    q_new = (q_prev * dq).normalized()
+    q_new = q_prev * dq
 
     acc_quat = quaternion.quaternion(0, *acc_corrected)
     a_world = (q_new * acc_quat * q_new.conjugate()).imag - g_world
@@ -57,6 +57,7 @@ def propagate(s: np.ndarray,
     p_new = p_prev + v_prev * dt + 0.5 * a_world * dt ** 2
 
     new_state = s.copy()
+    new_state[IDX_Q] = quaternion.as_float_array(q_new)
     new_state[IDX_P] = p_new
     new_state[IDX_V] = v_new
 
@@ -69,12 +70,12 @@ def propagate(s: np.ndarray,
 def transition_fn(error_state: np.ndarray,
                   dt: float,
                   nominal_state: np.ndarray,
+                  propagated_nominal: np.ndarray,
                   accelerometer: np.ndarray,
                   gyro: np.ndarray,
                   g_world: np.ndarray) -> np.ndarray:
     full_state = compose_fn(nominal_state, error_state)
     propagated_full = propagate(full_state, dt, accelerometer, gyro, g_world)
-    propagated_nominal = propagate(nominal_state, dt, accelerometer, gyro, g_world)
     return decompose_fn(propagated_nominal, propagated_full)
 
 
@@ -103,10 +104,10 @@ def hx_residual_fn(z_actual, z_predicted):
     q_act = quaternion.quaternion(*z_actual[:4])
     q_pre = quaternion.quaternion(*z_predicted[:4])
 
-    dq = q_act * q_pre.inverse()
-
+    dq = q_pre.inverse() * q_act
     if dq.w < 0:
         dq = -dq
 
     res_q = quaternion.as_rotation_vector(dq)
-    return np.concatenate([res_q, [0.0], res_pos])
+
+    return np.concatenate([[0.0], res_q, res_pos])

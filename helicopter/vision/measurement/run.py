@@ -71,7 +71,7 @@ if __name__ == '__main__':
                                 residual_z=hx_residual_fn,
                                 points=points)
 
-    ukf.Q = build_Q_matrix(dt=1 / 250)
+    ukf.Q = build_Q_matrix(dt=1 / 200)
     initial_sigmas = {
         'd_theta': 0.1,
         'dp': 0.5,

@@ -182,6 +182,11 @@ class D435i:
         # rs returns gyro and most recent accelerometer data in the same packet
         accel_data, ts_accel, gyro_data, ts_gyro = self.process_imu_frames(imu_frames)
         if accel_data is not None and gyro_data is not None:
+            if len(self.accel_time_queue) > 0:
+                if ts_accel == self.accel_time_queue[-1]:
+                    return None
+                if np.all(gyro_data == self.gyro_queue[-1]):
+                    return None
             self.gyro_queue.append(gyro_data)
             self.accel_time_queue.append(ts_accel)
             if len(self.gyro_queue) > 20:
