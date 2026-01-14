@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 
+import time
+
 
 def get_points(img_path: str):
     ir_frame = cv2.imread(img_path)[:, :, 0]
@@ -98,30 +100,33 @@ def detect_points_daytime(ir_frame, depth_frame):
     params.blobColor = 255
 
     params.filterByInertia = True
-    params.minInertiaRatio = 0.6
+    params.minInertiaRatio = 0.4
 
     params.filterByCircularity = True
-    params.minCircularity = 0.5
+    params.minCircularity = 0.4
 
     params.filterByConvexity = True
     params.minConvexity = 0.9
 
-    params.thresholdStep = 5
+    params.thresholdStep = 10
     params.minThreshold = 20
-    params.maxThreshold = 255
+    params.maxThreshold = 180
 
     detector = cv2.SimpleBlobDetector.create(params)
 
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-    tophat = cv2.morphologyEx(ir_frame, cv2.MORPH_TOPHAT, kernel)
+    clahe_operator = cv2.createCLAHE(clipLimit=6.0, tileGridSize=(15, 15))
 
-    clahe_operator = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(20, 20))
+    start = time.perf_counter()
+    tophat = cv2.morphologyEx(ir_frame, cv2.MORPH_TOPHAT, kernel)
     clahe = clahe_operator.apply(tophat)
 
-    for _ in range(2):
-        clahe = clahe_operator.apply(clahe)
+    # for _ in range(2):
+    #     clahe = clahe_operator.apply(clahe)
 
+    start_detect = time.perf_counter()
     keypoints = detector.detect(clahe)
+    end_detect = time.perf_counter()
 
     detections = cv2.drawKeypoints(tophat, keypoints, np.array([]), (0, 255, 0),
                                    cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
@@ -129,33 +134,61 @@ def detect_points_daytime(ir_frame, depth_frame):
     filtered_keypoints = []
     points = []
     shift = 4
+    h, w = depth_frame.shape
     for kp in keypoints:
-        mask = np.zeros(ir_frame.shape, dtype=np.uint8)
-        center, radius = draw_subpixel_circle(kp.pt, kp.size / 2, shift)
-        cv2.circle(mask, center, radius, 1, -1, shift=shift)
+        r_pixel = kp.size / 2
+        ix, iy = int(kp.pt[0]), int(kp.pt[1])
+        margin = int(r_pixel + 2)
 
-        ksize = int(radius / (1 << shift)) | 1
-        gaussian_mask = cv2.GaussianBlur(mask.astype(float), (ksize, ksize),
-                                         radius * 0.9) * valid_mask
+        # 2. Calculate crop boundaries with guardrails for image edges
+        x0, x1 = max(0, ix - margin), min(w, ix + margin + 1)
+        y0, y1 = max(0, iy - margin), min(h, iy + margin + 1)
 
-        if gaussian_mask.sum() <= 0:
+        # 3. Slice the frames (These are 'views', no memory copy yet)
+        depth_roi = depth_frame[y0:y1, x0:x1]
+        valid_roi = valid_mask[y0:y1, x0:x1]
+
+        # 4. Create a small mask just for the ROI
+        roi_h, roi_w = depth_roi.shape
+        local_mask = np.zeros((roi_h, roi_w), dtype=np.uint8)
+
+        # Adjust center to local ROI coordinates
+        local_center = (kp.pt[0] - x0, kp.pt[1] - y0)
+
+        # Use the same subpixel drawing on the tiny mask
+        c_sub, r_sub = draw_subpixel_circle(local_center, r_pixel, shift)
+        cv2.circle(local_mask, c_sub, r_sub, 1, -1, shift=shift)
+
+        # 5. Gaussian Blur on the small mask
+        ksize = int(r_pixel) | 1
+        gaussian_roi = cv2.GaussianBlur(local_mask.astype(float), (ksize, ksize),
+                                        r_pixel * 0.9) * valid_roi
+
+        # 6. Weighted Sum (Depth calculation)
+        g_sum = gaussian_roi.sum()
+        if g_sum <= 0:
             continue
 
-        gaussian_mask = gaussian_mask / gaussian_mask.sum()
-        depth = np.sum(depth_frame * gaussian_mask)
+        depth = np.sum(depth_roi * (gaussian_roi / g_sum))
 
-        if depth > 1.0:
+        if depth > 0.5:
             continue
 
         filtered_keypoints.append(kp)
 
         points.append([kp.pt[0], kp.pt[1], depth])
 
+    end = time.perf_counter()
+
+    print(f"Detect time: {end_detect - start_detect}")
+
     final_detections = cv2.cvtColor(ir_frame, cv2.COLOR_GRAY2BGR)
     for kp in filtered_keypoints:
         cv2.circle(final_detections, (int(kp.pt[0]), int(kp.pt[1])), int(kp.size), (0, 255, 0), 1)
 
-    return detections, final_detections
+    # ([-2.50298834  6.67697525  6.34047461], [ 0.71053517  0.14166541 -0.52307457], 1889.971335)
+
+    return detections, final_detections, start, end
 
 
 if __name__ == "__main__":

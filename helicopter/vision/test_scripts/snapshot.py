@@ -25,5 +25,10 @@ def snapshot(_camera: D435i):
 
 
 if __name__ == '__main__':
-    camera = D435i(enable_ir=True, projector_power=360., autoexpose=False, exposure_time=500)
+    camera = D435i(enable_depth=True,
+                   # video_rate=30,
+                   # video_resolution=(1280, 720),
+                   projector_power=360.,
+                   autoexpose=False,
+                   exposure_time=850)
     snapshot(camera)

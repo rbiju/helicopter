@@ -13,8 +13,8 @@ def compose_fn(state: np.ndarray, error: np.ndarray):
 
     new_state[4:] = state[4:] + error[3:]
 
-    # small angle approx.
-    dq = quaternion.quaternion(1.0, *(error[:3] / 2))
+    dq = quaternion.from_rotation_vector(error[:3])
+
     quat = quaternion.quaternion(*state[:4]) * dq
     new_state[:4] = quaternion.as_float_array(quat.normalized())
 
@@ -25,9 +25,11 @@ def decompose_fn(old_state: np.ndarray, new_state: np.ndarray):
     error = np.empty(old_state.shape[0] - 1)
     error[3:] = new_state[4:] - old_state[4:]
 
-    error_quat = quaternion.quaternion(*new_state[:4]) * quaternion.quaternion(*old_state[:4]).inverse()
-    error_vec = quaternion.as_rotation_vector(error_quat)
-    error[:3] = error_vec
+    q_old = quaternion.quaternion(*old_state[:4])
+    q_new = quaternion.quaternion(*new_state[:4])
+
+    error_quat = q_old.inverse() * q_new
+    error[:3] = quaternion.as_rotation_vector(error_quat)
     return error
 
 
@@ -42,34 +44,19 @@ def propagate(s: np.ndarray,
     bg_prev = s[IDX_BG]
     ba_prev = s[IDX_BA]
 
+    gyro_corrected = gyro - s[IDX_BG]
+    acc_corrected = accelerometer - s[IDX_BA]
+
+    dq = quaternion.from_rotation_vector(gyro_corrected * dt)
+    q_new = (q_prev * dq).normalized()
+
+    acc_quat = quaternion.quaternion(0, *acc_corrected)
+    a_world = (q_new * acc_quat * q_new.conjugate()).imag - g_world
+
+    v_new = v_prev + a_world * dt
+    p_new = p_prev + v_prev * dt + 0.5 * a_world * dt ** 2
+
     new_state = s.copy()
-
-    gyro_corrected = gyro - bg_prev
-    accel_corrected = accelerometer - ba_prev
-
-    gyro_norm = np.linalg.norm(gyro_corrected)
-    theta_half = gyro_norm * dt / 2.
-
-    if gyro_norm > 1e-6:
-        axis = gyro_corrected / gyro_norm
-        vec = axis * np.sin(theta_half)
-        dq = quaternion.quaternion(np.cos(theta_half), *vec)
-    else:
-        dq = quaternion.quaternion(1.0, 0.0, 0.0, 0.0)
-
-    q_new = dq * q_prev
-
-    new_state[IDX_Q] = quaternion.as_float_array(q_new.normalized())
-
-    acc_quat = quaternion.quaternion(0, *accel_corrected)
-    acc_rotated = (q_new.conjugate() * acc_quat * q_new).imag
-
-    a_world = acc_rotated - g_world
-
-    v_new = v_prev + (a_world * dt)
-    p_new = p_prev + (v_prev * dt) + (0.5 * a_world * dt ** 2)
-
-    # Store results
     new_state[IDX_P] = p_new
     new_state[IDX_V] = v_new
 
@@ -113,67 +100,13 @@ def hx_mean_fn(sigmas, Wm):
 def hx_residual_fn(z_actual, z_predicted):
     res_pos = z_actual[4:] - z_predicted[4:]
 
-    q_act = z_actual[:4]
-    q_pre = z_predicted[:4]
+    q_act = quaternion.quaternion(*z_actual[:4])
+    q_pre = quaternion.quaternion(*z_predicted[:4])
 
-    if np.dot(q_act, q_pre) < 0:
-        q_act = -q_act
+    dq = q_act * q_pre.inverse()
 
-    res_q = q_act - q_pre
-    return np.concatenate([res_q, res_pos])
+    if dq.w < 0:
+        dq = -dq
 
-# from filterpy.kalman import UnscentedKalmanFilter, MerweScaledSigmaPoints
-#
-# # UKF tracks 15D error state
-# points = MerweScaledSigmaPoints(n=15, alpha=0.1, beta=2., kappa=0.)
-# ukf = UnscentedKalmanFilter(
-#     dim_x=15,  # Error state dimension
-#     dim_z=measurement_dim,
-#     dt=dt,
-#     hx=hx_error,
-#     fx=fx_error,
-#     points=points,
-#     x_mean_fn=lambda sigmas, Wm: np.dot(Wm, sigmas),  # Simple mean in error space
-#     residual_x=lambda a, b: a - b  # Simple subtraction in error space
-# )
-#
-# # Initialize with zero error
-# ukf.x = np.zeros(15)
-# ukf.P = initial_error_covariance  # 15x15
-#
-# # Store nominal state separately
-# nominal_state = np.array([1, 0, 0, 0,  # quaternion
-#                           0, 0, 0,  # position
-#                           0, 0, 0,  # velocity
-#                           0, 0, 0,  # accel bias
-#                           0, 0, 0])  # gyro bias
-#
-#
-# def fx_error(error_state, dt):
-#     """Propagate error state through dynamics"""
-#     # Compose error with nominal to get full state
-#     full_state = compose_fn(nominal_state, error_state)
-#
-#     # Propagate full state
-#     propagated_full = propagate_dynamics(full_state, dt)
-#
-#     # Decompose back to error state relative to propagated nominal
-#     # (You'd also propagate the nominal separately)
-#     propagated_nominal = propagate_dynamics(nominal_state, dt)
-#     return decompose_fn(propagated_nominal, propagated_full)
-#
-#
-# def hx_error(error_state):
-#     """Measurement function in error space"""
-#     full_state = compose_fn(nominal_state, error_state)
-#     return measurement_function(full_state)
-#
-#
-# # After each update, reset:
-# def reset_error_state():
-#     # Apply correction to nominal state
-#     global nominal_state
-#     nominal_state = compose_fn(nominal_state, ukf.x)
-#
-#     # Reset error state to zero
-#     ukf.x = np.zeros(15)
+    res_q = quaternion.as_rotation_vector(dq)
+    return np.concatenate([res_q, [0.0], res_pos])

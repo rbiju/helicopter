@@ -126,9 +126,9 @@ class D435i:
         pipeline = rs.pipeline()
         profile = pipeline.start(config)
 
-        device = profile.get_device()
-        motion_sensor = device.first_motion_sensor()
-        motion_sensor.set_option(rs.option.global_time_enabled, 0)
+        # device = profile.get_device()
+        # motion_sensor = device.first_motion_sensor()
+        # motion_sensor.set_option(rs.option.global_time_enabled, 0)
 
         print("Warming up imu... waiting 100 frames.")
         for _ in range(100):

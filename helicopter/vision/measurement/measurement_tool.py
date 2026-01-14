@@ -49,7 +49,7 @@ class MeasurementTool:
 
         v_W_unit = np.array([0.0, 0.0, 1.0])
 
-        rotation_axis = np.cross(v_W_unit, v_B_unit)
+        rotation_axis = np.cross(v_B_unit, v_W_unit)
 
         axis_norm = np.linalg.norm(rotation_axis)
         if axis_norm < 1e-6:
@@ -97,10 +97,14 @@ class MeasurementTool:
                         accel, gyro, timestamp = synced_imu
                         dt = timestamp - self.device.last_imu_time
                         self.ukf.predict(dt=dt,
-                                         nominal_state=self.camera_state_handler.nominal_state,
+                                         nominal_state=self.camera_state_handler.nominal_state.copy(),
                                          accelerometer=accel,
                                          gyro=gyro,
                                          g_world=self.camera_state_handler.g)
+
+                        new_nominal = compose_fn(self.camera_state_handler.nominal_state.copy(), self.ukf.x.copy())
+                        self.camera_state_handler.set_state_from_nominal(new_nominal.copy())
+                        # self.ukf.x = np.zeros(15)
 
                 frames = self.device.pipeline.poll_for_frames()
                 depth_frame = frames.get_depth_frame()
@@ -108,38 +112,39 @@ class MeasurementTool:
                 if depth_frame and ir_frame:
                     depth_image, ts_depth, ir_image, ts_ir = self.device.process_frames(frames)
                     if ir_image is not None:
+                        if debug_flag:
+                            print('whoa video')
                         nominal_state = compose_fn(self.camera_state_handler.nominal_state, self.ukf.x.copy())
-                        measured_out = self.point_handler.get_measured_points(ir_frame=ir_image,
-                                                                              depth_frame=depth_image,
-                                                                              intrinsics=self.device.intrinsics,
-                                                                              camera_position=nominal_state[4:7],
-                                                                              camera_quat=quaternion.quaternion(
-                                                                                  *nominal_state[0:4]))
-                        if measured_out is None:
+                        measured_points_cf = self.point_handler.get_measured_points(ir_frame=ir_image,
+                                                                                    depth_frame=depth_image,
+                                                                                    intrinsics=self.device.intrinsics)
+                        if measured_points_cf is None:
                             continue
                         else:
-                            measured_points, idxs = measured_out
+                            measured_points_wf, idxs = self.point_handler.match_points(measured_points_cf,
+                                                                                       camera_position=nominal_state[
+                                                                                           4:7],
+                                                                                       camera_quat=quaternion.quaternion(
+                                                                                           *nominal_state[0:4]))
+                            self.point_handler.append_points(measured_points_wf, idxs)
                             reference_points = self.point_handler.get_reference_points(registered_idxs=idxs)
 
                             visual_quat, visual_translation = self.camera_state_handler.get_visual_pose(
-                                measured_points=measured_points,
+                                measured_points=measured_points_cf,
                                 reference_points=reference_points)
 
-                            self.ukf.update(z=np.concatenate((quaternion.as_float_array(visual_quat), visual_translation)),
-                                            nominal_state=self.camera_state_handler.nominal_state, )
+                            self.ukf.update(
+                                z=np.concatenate((quaternion.as_float_array(visual_quat), visual_translation)),
+                                nominal_state=self.camera_state_handler.nominal_state.copy(), )
 
-                            nominal_state = compose_fn(self.camera_state_handler.nominal_state, self.ukf.x.copy())
+                            nominal_state = compose_fn(self.camera_state_handler.nominal_state.copy(), self.ukf.x.copy())
 
-                            if debug_flag:
-                                print('whoa video')
-                            self.camera_state_handler.set_state_from_nominal(nominal_state)
+                            self.camera_state_handler.set_state_from_nominal(nominal_state.copy())
                             self.ukf.x = np.zeros(15)
-                if time.time() - self.timer > 1.0:
+                if time.time() - self.timer > 2.0:
                     debug_flag = True
                 if time.time() - self.timer > 3.0:
                     self.is_running = False
-
-                time.sleep(0.00001)
 
         finally:
             print("Cleaning up sensor")

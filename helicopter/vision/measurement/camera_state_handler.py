@@ -40,6 +40,11 @@ class CameraStateHandler:
         U, s, Vh = np.linalg.svd(covar)
 
         rotation_matrix = U @ Vh
+
+        if np.linalg.det(rotation_matrix) < 0:
+            Vh[2, :] *= -1
+            rotation_matrix = U @ Vh
+
         translation = r_c - rotation_matrix @ m_c
 
         return quaternion.from_rotation_matrix(rotation_matrix), translation

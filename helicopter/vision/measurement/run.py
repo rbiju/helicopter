@@ -63,7 +63,7 @@ def initialize_R_matrix(std_devs: dict) -> np.ndarray:
 
 
 if __name__ == '__main__':
-    points = MerweScaledSigmaPoints(n=15, alpha=1e-3, beta=2., kappa=0.)
+    points = MerweScaledSigmaPoints(n=15, alpha=0.1, beta=2., kappa=0.)
     ukf = UnscentedKalmanFilter(dim_x=15, dim_z=7, dt=1 / 200,
                                 hx=measurement_fn,
                                 fx=transition_fn,
@@ -87,7 +87,7 @@ if __name__ == '__main__':
     }
     ukf.R = initialize_R_matrix(visual_sigmas)
 
-    tool = MeasurementTool(device=D435i(enable_motion=True, enable_depth=True, projector_power=360., autoexpose=False, exposure_time=700),
+    tool = MeasurementTool(device=D435i(enable_motion=True, enable_depth=True, projector_power=360., autoexpose=False, exposure_time=850),
                            point_handler=PointHandler(),
                            camera_state_handler=CameraStateHandler(),
                            ukf=ukf)
