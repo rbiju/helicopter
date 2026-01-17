@@ -113,8 +113,8 @@ class D435i:
         return pipeline, profile, ir_intrinsics
 
     def warmup_camera(self):
-        print("Warming up camera... waiting 200 frames.")
-        for _ in range(200):
+        print("Warming up camera... waiting 60 frames.")
+        for _ in range(60):
             self.pipeline.wait_for_frames()
 
     def setup_imu(self, serial):

@@ -9,7 +9,7 @@ from .camera_state_handler import CameraStateHandler
 from .point_handler import PointHandler
 from .utils import PointQueue
 
-from .filter_functions import compose_fn, propagate
+from .filter_functions import compose_fn, project_to_tangent_space, propagate
 
 
 class MeasurementTool:
@@ -71,12 +71,25 @@ class MeasurementTool:
 
     def loop(self):
         try:
-            print("Starting measurement")
+            print("Starting measurement in...")
+            time.sleep(0.5)
+            print('3')
+            time.sleep(0.5)
+            print('2')
+            time.sleep(0.5)
+            print('1')
+
             self.is_running = True
             self.timer = time.time()
 
             debug_flag = False
             while self.is_running:
+                current_time = time.time()
+                if current_time - self.timer > 3.0:
+                    debug_flag = False
+                if current_time - self.timer > 4.0:
+                    self.is_running = False
+
                 imu_frames = self.device.imu_pipeline.poll_for_frames()
                 if imu_frames is not None:
 
@@ -90,7 +103,8 @@ class MeasurementTool:
                         accel, gyro, timestamp = synced_imu
                         dt = timestamp - self.device.last_imu_time
 
-                        propagated_nominal = propagate(self.camera_state_handler.nominal_state.copy(), dt, accel, gyro, self.camera_state_handler.g)
+                        propagated_nominal = propagate(self.camera_state_handler.nominal_state.copy(), dt, accel, gyro,
+                                                       self.camera_state_handler.g)
 
                         self.ukf.predict(dt=dt,
                                          nominal_state=self.camera_state_handler.nominal_state.copy(),
@@ -100,7 +114,6 @@ class MeasurementTool:
                                          g_world=self.camera_state_handler.g)
 
                         self.camera_state_handler.set_state_from_nominal(propagated_nominal)
-
                         self.ukf.x.fill(0)
 
                 frames = self.device.pipeline.poll_for_frames()
@@ -111,37 +124,41 @@ class MeasurementTool:
                     if ir_image is not None:
                         if debug_flag:
                             print('whoa video')
-                        nominal_state = compose_fn(self.camera_state_handler.nominal_state, self.ukf.x.copy())
                         measured_points_cf = self.point_handler.get_measured_points(ir_frame=ir_image,
                                                                                     depth_frame=depth_image,
                                                                                     intrinsics=self.device.intrinsics)
                         if measured_points_cf is None:
                             continue
                         else:
-                            measured_points_wf, idxs = self.point_handler.match_points(measured_points_cf,
-                                                                                       camera_position=nominal_state[
-                                                                                           4:7],
-                                                                                       camera_quat=quaternion.quaternion(
-                                                                                           *nominal_state[0:4]))
+                            measured_points_wf, idxs = self.point_handler.match_points(
+                                measured_points_cf,
+                                camera_position=self.camera_state_handler.position,
+                                camera_quat=self.camera_state_handler.quaternion)
+
                             self.point_handler.append_points(measured_points_wf, idxs)
+
                             reference_points = self.point_handler.get_reference_points(registered_idxs=idxs)
 
-                            visual_quat, visual_translation = self.camera_state_handler.get_visual_pose(
+                            success, visual_quat, visual_translation = self.camera_state_handler.get_visual_pose(
                                 measured_points=measured_points_cf,
                                 reference_points=reference_points)
 
-                            self.ukf.update(
-                                z=np.concatenate((quaternion.as_float_array(visual_quat), visual_translation)),
-                                nominal_state=self.camera_state_handler.nominal_state.copy(), )
+                            # if np.linalg.norm(visual_translation) > 1e-2:
+                            #     print('whoa translation')
 
-                            nominal_state = compose_fn(self.camera_state_handler.nominal_state.copy(), self.ukf.x.copy())
+                            if not success:
+                                continue
+                            else:
+                                projected_z = project_to_tangent_space(visual_quat, visual_translation, self.camera_state_handler.quaternion)
+                                self.ukf.update(
+                                    z=projected_z,
+                                    nominal_state=self.camera_state_handler.nominal_state.copy(),
+                                    ref_quat=self.camera_state_handler.quaternion)
 
-                            self.camera_state_handler.set_state_from_nominal(nominal_state.copy())
-                            self.ukf.x = np.zeros(15)
-                if time.time() - self.timer > 2.0:
-                    debug_flag = True
-                if time.time() - self.timer > 3.0:
-                    self.is_running = False
+                                nominal_state = compose_fn(self.camera_state_handler.nominal_state.copy(), self.ukf.x.copy())
+
+                                self.camera_state_handler.set_state_from_nominal(nominal_state.copy())
+                                self.ukf.x.fill(0)
 
                 time.sleep(1e-5)
 

@@ -3,7 +3,7 @@ import scipy.linalg as linalg
 from filterpy.kalman import UnscentedKalmanFilter, MerweScaledSigmaPoints
 
 from helicopter.vision import D435i
-from helicopter.vision.measurement.filter_functions import transition_fn, measurement_fn, hx_mean_fn, hx_residual_fn
+from helicopter.vision.measurement.filter_functions import transition_fn, measurement_fn
 from helicopter.vision.measurement.measurement_tool import MeasurementTool, CameraStateHandler, PointHandler
 
 
@@ -13,8 +13,8 @@ def build_Q_matrix(dt: float) -> np.ndarray:
     g_m_s2 = 9.81
     sigma_vrw = 150e-6 * g_m_s2
 
-    sigma_bgrw = 1.0e-7
-    sigma_barw = 1.0e-4
+    sigma_bgrw = 2.0e-3
+    sigma_barw = 2.0e-3
     I = np.eye(3)
 
     Q_dtheta = (sigma_arw ** 2) * I * dt
@@ -57,18 +57,16 @@ def initialize_R_matrix(std_devs: dict) -> np.ndarray:
     var_q = std_q ** 2
     var_p = std_devs['dp_vis'] ** 2
 
-    diag = np.array([var_q, var_q, var_q, var_q, var_p, var_p, var_p])
+    diag = np.array([var_q, var_q, var_q, var_p, var_p, var_p])
 
     return np.diag(diag)
 
 
 if __name__ == '__main__':
     points = MerweScaledSigmaPoints(n=15, alpha=0.1, beta=2., kappa=0.)
-    ukf = UnscentedKalmanFilter(dim_x=15, dim_z=7, dt=1 / 200,
+    ukf = UnscentedKalmanFilter(dim_x=15, dim_z=6, dt=1 / 200,
                                 hx=measurement_fn,
                                 fx=transition_fn,
-                                z_mean_fn=hx_mean_fn,
-                                residual_z=hx_residual_fn,
                                 points=points)
 
     ukf.Q = build_Q_matrix(dt=1 / 200)
@@ -82,12 +80,12 @@ if __name__ == '__main__':
     ukf.P = initialize_P_matrix(initial_sigmas)
 
     visual_sigmas = {
-        'd_theta_vis': 0.005,
-        'dp_vis': 0.01
+        'd_theta_vis': 0.1,
+        'dp_vis': 0.02
     }
     ukf.R = initialize_R_matrix(visual_sigmas)
 
-    tool = MeasurementTool(device=D435i(enable_motion=True, enable_depth=True, projector_power=360., autoexpose=False, exposure_time=850),
+    tool = MeasurementTool(device=D435i(enable_motion=True, enable_depth=True, projector_power=360., autoexpose=False, exposure_time=1800),
                            point_handler=PointHandler(),
                            camera_state_handler=CameraStateHandler(),
                            ukf=ukf)

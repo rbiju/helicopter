@@ -30,5 +30,5 @@ if __name__ == '__main__':
                    # video_resolution=(1280, 720),
                    projector_power=360.,
                    autoexpose=False,
-                   exposure_time=850)
+                   exposure_time=1600)
     snapshot(camera)

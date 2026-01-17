@@ -2,6 +2,7 @@ import numpy as np
 import pyrealsense2
 import quaternion
 import cv2
+from scipy.optimize import linear_sum_assignment
 
 import pyrealsense2 as rs
 
@@ -9,10 +10,9 @@ from .utils import PointQueue
 
 
 class PointHandler:
-    def __init__(self, ir_threshold: int = 215,
+    def __init__(self,
                  marker_radius: float = 0.01,
-                 maxlen: int = 5) -> None:
-        self.ir_threshold = ir_threshold
+                 maxlen: int = 50) -> None:
         self.marker_radius = marker_radius
 
         self.maxlen = maxlen
@@ -22,28 +22,28 @@ class PointHandler:
         params = cv2.SimpleBlobDetector.Params()
 
         params.filterByArea = True
-        params.minArea = 7
-        params.maxArea = 200
+        params.minArea = 5
+        params.maxArea = 20
 
         params.filterByColor = True
         params.blobColor = 255
 
         params.filterByInertia = True
-        params.minInertiaRatio = 0.4
+        params.minInertiaRatio = 0.6
 
         params.filterByCircularity = True
-        params.minCircularity = 0.4
+        params.minCircularity = 0.7
 
         params.filterByConvexity = True
         params.minConvexity = 0.9
 
-        params.thresholdStep = 10
+        params.thresholdStep = 15
         params.minThreshold = 20
         params.maxThreshold = 180
 
         self.detector = cv2.SimpleBlobDetector.create(params)
-        self.tophat_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-        self.clahe = cv2.createCLAHE(clipLimit=6.0, tileGridSize=(15, 15))
+        self.tophat_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+        self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(20, 20))
 
         self._next_id = 0
 
@@ -85,7 +85,7 @@ class PointHandler:
 
     def get_marker_coords(self, depth_frame, valid_mask, circle, intrinsics: rs.intrinsics,
                           distance_threshold: float = 0.5,
-                          sigma_factor=0.9) -> np.ndarray | None:
+                          sigma_factor=0.5) -> np.ndarray | None:
         h, w = depth_frame.shape
         center, radius, shift = circle
 
@@ -125,29 +125,34 @@ class PointHandler:
     def correct_points(self, points: np.ndarray, camera_position: np.ndarray,
                        camera_quat: quaternion.quaternion) -> np.ndarray:
         rotated = quaternion.rotate_vectors(camera_quat, points)
-        translated = rotated - camera_position
+        translated = rotated + camera_position
 
         return translated
 
+    def register_points(self, points: np.ndarray):
+        for point in points:
+            if len(self.points) < 1:
+                self.points[self.next_id] = PointQueue(maxlen=self.maxlen, init_value=point)
+            else:
+                norm = np.linalg.norm(self.points_coords - point, axis=1)
+                comp = norm > self.marker_radius
+                if np.all(comp):
+                    self.points[self.next_id] = PointQueue(maxlen=self.maxlen, init_value=point)
+
     def match_points(self, points: np.ndarray, camera_position: np.ndarray, camera_quat: quaternion.quaternion):
         corrected_points = self.correct_points(points, camera_position, camera_quat)
+        self.register_points(corrected_points)
+        points_coords = self.points_coords
 
-        matched_points = []
-        matched_idxs = []
-        for point in corrected_points:
-            registered_idx = self.get_registered_idx(point)
-            if registered_idx is not None:
-                matched_points.append(point)
-                matched_idxs.append(registered_idx)
-            else:
-                next_id = self.next_id
-                self.points[next_id] = PointQueue(maxlen=self.maxlen, init_value=point)
-                matched_points.append(point)
-                matched_idxs.append(next_id)
+        diff = corrected_points[:, np.newaxis, :] - points_coords[np.newaxis, :, :]
+        dist_matrix = np.linalg.norm(diff, axis=2)
 
-        return matched_points, matched_idxs
+        row_idx, col_idx = linear_sum_assignment(dist_matrix)
 
-    def get_measured_points(self, ir_frame: np.ndarray, depth_frame: np.ndarray, intrinsics: pyrealsense2.intrinsics, shift=3):
+        return corrected_points, col_idx
+
+    def get_measured_points(self, ir_frame: np.ndarray, depth_frame: np.ndarray, intrinsics: pyrealsense2.intrinsics,
+                            shift=3):
         valid_mask = 0 < depth_frame
 
         tophat = cv2.morphologyEx(ir_frame, cv2.MORPH_TOPHAT, self.tophat_kernel)

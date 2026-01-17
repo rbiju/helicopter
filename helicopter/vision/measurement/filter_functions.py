@@ -79,35 +79,25 @@ def transition_fn(error_state: np.ndarray,
     return decompose_fn(propagated_nominal, propagated_full)
 
 
-def measurement_fn(error_state: np.ndarray, nominal_state: np.ndarray) -> np.ndarray:
-    composed_nominal = compose_fn(nominal_state, error_state)
-    return np.concat([composed_nominal[IDX_Q], composed_nominal[IDX_P]])
+def project_to_tangent_space(target_quat,
+                             target_pos: np.ndarray,
+                             ref_quat: quaternion.quaternion) -> np.ndarray:
+    q_diff = ref_quat.conjugate() * target_quat
+
+    if q_diff.w < 0:
+        q_diff = -q_diff
+
+    rot_vec = quaternion.as_rotation_vector(q_diff)
+
+    return np.concatenate([rot_vec, target_pos])
 
 
-def hx_mean_fn(sigmas, Wm):
-    mean_pos = np.dot(Wm, sigmas[:, 4:])
+def measurement_fn(error_state: np.ndarray,
+                   nominal_state: np.ndarray,
+                   ref_quat: quaternion.quaternion) -> np.ndarray:
+    full_state_hypothesis = compose_fn(nominal_state, error_state)
 
-    q_avg = np.dot(Wm, sigmas[:, :4])
+    q_sigma = quaternion.quaternion(*full_state_hypothesis[IDX_Q])
+    p_sigma = full_state_hypothesis[IDX_P]
 
-    norm = np.linalg.norm(q_avg)
-    if norm > 1e-9:
-        mean_q = q_avg / norm
-    else:
-        mean_q = sigmas[0, :4]
-
-    return np.concatenate([mean_q, mean_pos])
-
-
-def hx_residual_fn(z_actual, z_predicted):
-    res_pos = z_actual[4:] - z_predicted[4:]
-
-    q_act = quaternion.quaternion(*z_actual[:4])
-    q_pre = quaternion.quaternion(*z_predicted[:4])
-
-    dq = q_pre.inverse() * q_act
-    if dq.w < 0:
-        dq = -dq
-
-    res_q = quaternion.as_rotation_vector(dq)
-
-    return np.concatenate([[0.0], res_q, res_pos])
+    return project_to_tangent_space(q_sigma, p_sigma, ref_quat)

@@ -93,29 +93,29 @@ def detect_points_daytime(ir_frame, depth_frame):
     params = cv2.SimpleBlobDetector.Params()
 
     params.filterByArea = True
-    params.minArea = 7
-    params.maxArea = 200
+    params.minArea = 5
+    params.maxArea = 50
 
     params.filterByColor = True
     params.blobColor = 255
 
     params.filterByInertia = True
-    params.minInertiaRatio = 0.4
+    params.minInertiaRatio = 0.5
 
     params.filterByCircularity = True
-    params.minCircularity = 0.4
+    params.minCircularity = 0.6
 
     params.filterByConvexity = True
     params.minConvexity = 0.9
 
-    params.thresholdStep = 10
+    params.thresholdStep = 15
     params.minThreshold = 20
     params.maxThreshold = 180
 
     detector = cv2.SimpleBlobDetector.create(params)
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-    clahe_operator = cv2.createCLAHE(clipLimit=6.0, tileGridSize=(15, 15))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+    clahe_operator = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(20, 20))
 
     start = time.perf_counter()
     tophat = cv2.morphologyEx(ir_frame, cv2.MORPH_TOPHAT, kernel)
@@ -166,11 +166,12 @@ def detect_points_daytime(ir_frame, depth_frame):
 
         # 6. Weighted Sum (Depth calculation)
         g_sum = gaussian_roi.sum()
+        print(g_sum)
         if g_sum <= 0:
             continue
 
         depth = np.sum(depth_roi * (gaussian_roi / g_sum))
-
+        print(depth)
         if depth > 0.5:
             continue
 
@@ -185,8 +186,6 @@ def detect_points_daytime(ir_frame, depth_frame):
     final_detections = cv2.cvtColor(ir_frame, cv2.COLOR_GRAY2BGR)
     for kp in filtered_keypoints:
         cv2.circle(final_detections, (int(kp.pt[0]), int(kp.pt[1])), int(kp.size), (0, 255, 0), 1)
-
-    # ([-2.50298834  6.67697525  6.34047461], [ 0.71053517  0.14166541 -0.52307457], 1889.971335)
 
     return detections, final_detections, start, end
 
