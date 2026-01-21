@@ -72,8 +72,8 @@ if __name__ == '__main__':
     ukf.Q = build_Q_matrix(dt=1 / 200)
 
     initial_sigmas = {
-        'd_theta': 0.05,
-        'dp': 0.1,
+        'd_theta': 0.075,
+        'dp': 0.05,
         'dv': 0.01,
         'dba': 0.05,
         'dbg': 0.05

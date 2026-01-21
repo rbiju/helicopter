@@ -132,7 +132,7 @@ class MeasurementTool:
                 elapsed_time = time.time() - self.timer
                 if elapsed_time > 0.0:
                     debug_flag = False
-                if elapsed_time > 8.0:
+                if elapsed_time > 5.0:
                     self.is_running = False
 
                 frames = self.device.pipeline.wait_for_frames()
@@ -167,11 +167,11 @@ class MeasurementTool:
                         if not success:
                             continue
                         else:
-                            # position_delta = visual_translation - camera_pos
-                            # # if np.linalg.norm(position_delta) > 0.01:
-                            # #     print(
-                            # #         f'Jump from {camera_pos} to {visual_translation} detected')
-                            # #     continue
+                            position_delta = visual_translation - camera_pos
+                            if np.linalg.norm(position_delta) > 0.01:
+                                print(
+                                    f'Jump from {camera_pos} to {visual_translation} detected')
+                                continue
 
                             projected_z = project_to_tangent_space(visual_quat, visual_translation,
                                                                    camera_quat, camera_pos)

@@ -35,7 +35,7 @@ class D435i:
 
         self.pipeline, self.profile, self.intrinsics = self.get_camera_pipeline(serial, enable_depth, enable_rgb)
         depth_sensor = self.profile.get_device().first_depth_sensor()
-        depth_sensor.set_option(rs.option.visual_preset, 4)
+        depth_sensor.set_option(rs.option.visual_preset, 3)
         self.set_exposure(autoexpose, exposure_time)
         self.set_projector_power(projector_power)
         self.warmup_camera()

@@ -38,7 +38,7 @@ def propagate(s: np.ndarray,
               accelerometer: np.ndarray,
               gyro: np.ndarray,
               g_world: np.ndarray) -> np.ndarray:
-    q_prev = quaternion.quaternion(*s[IDX_Q])
+    q_current = quaternion.quaternion(*s[IDX_Q])
     p_prev = s[IDX_P]
     v_prev = s[IDX_V]
     ba_prev = s[IDX_BA]
@@ -48,10 +48,9 @@ def propagate(s: np.ndarray,
     acc_corrected = accelerometer - s[IDX_BA]
 
     dq = quaternion.from_rotation_vector(gyro_corrected * dt)
-    q_new = q_prev * dq
+    q_new = q_current * dq
 
-    acc_quat = quaternion.quaternion(0, *acc_corrected)
-    a_world = (q_new * acc_quat * q_new.conjugate()).imag - g_world
+    a_world = (q_current * quaternion.from_vector_part(acc_corrected) * q_current.conjugate()).imag - g_world
 
     v_new = v_prev + a_world * dt
     p_new = p_prev + v_prev * dt + 0.5 * a_world * dt ** 2

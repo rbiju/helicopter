@@ -51,7 +51,7 @@ def detect_points(ir_frame, depth_frame, intrinsics):
     params.blobColor = 255
 
     params.filterByInertia = True
-    params.minInertiaRatio = 0.5
+    params.minInertiaRatio = 0.7
 
     params.filterByCircularity = True
     params.minCircularity = 0.75
@@ -65,7 +65,7 @@ def detect_points(ir_frame, depth_frame, intrinsics):
 
     detector = cv2.SimpleBlobDetector.create(params)
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10, 5))
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (10, 5))
     clahe_operator = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(25, 25))
 
     start = time.perf_counter()
@@ -120,7 +120,7 @@ def detect_points(ir_frame, depth_frame, intrinsics):
 
     print(f"Detect time: {end - start}")
 
-    final_detection = cv2.cvtColor(ir_frame, cv2.COLOR_GRAY2BGR)
+    final_detection = cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR)
     for kp in filtered_keypoints:
         cv2.circle(final_detection, (int(kp.pt[0]), int(kp.pt[1])), int(kp.size), (0, 255, 0), 1)
 

@@ -30,7 +30,7 @@ class PointHandler:
         params.blobColor = 255
 
         params.filterByInertia = True
-        params.minInertiaRatio = 0.5
+        params.minInertiaRatio = 0.7
 
         params.filterByCircularity = True
         params.minCircularity = 0.75
@@ -43,7 +43,7 @@ class PointHandler:
         params.maxThreshold = 200
 
         self.detector = cv2.SimpleBlobDetector.create(params)
-        self.tophat_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10, 5))
+        self.tophat_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (10, 5))
         self.clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(25, 25))
 
         self._next_id = 0
