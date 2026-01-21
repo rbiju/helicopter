@@ -18,6 +18,8 @@ def snapshot(_camera: D435i):
             snapped = True
             print("Snapshot retrieved.")
 
+    print(depth_image.shape)
+    print(ir_image.shape)
     np.save('depth_frame.npy', depth_image)
     np.save('ir_frame.npy', ir_image)
 

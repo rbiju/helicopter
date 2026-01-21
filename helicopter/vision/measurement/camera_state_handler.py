@@ -5,6 +5,15 @@ import quaternion
 
 @jit(cache=True)
 def kabsch(measured_points: np.ndarray, reference_points: np.ndarray):
+    """
+    Computes the optimal rotation from measured to reference points, which should capture the camera frame to world frame transformation.
+    Args:
+        measured_points: points in the camera frame
+        reference_points: matching points in the world frame
+
+    Returns:
+
+    """
     n = measured_points.shape[0]
     m_c = np.sum(measured_points, axis=0) / n
     r_c = np.sum(reference_points, axis=0) / n
@@ -22,7 +31,7 @@ def kabsch(measured_points: np.ndarray, reference_points: np.ndarray):
         Vh_fixed[2, :] *= -1
         rotation_matrix = Vh_fixed.T @ U.T
 
-    translation = r_c - rotation_matrix @ m_c
+    translation = r_c - (rotation_matrix @ m_c)
 
     return rotation_matrix, translation
 
@@ -104,7 +113,7 @@ class CameraStateHandler:
         else:
             return False, dummy_R, dummy_t
 
-    def get_visual_pose(self, measured_points: np.ndarray, reference_points: np.ndarray):
+    def get_visual_pose(self, measured_points: np.ndarray, reference_points: np.ndarray, quat: quaternion.quaternion):
         success, R, t = self.ransac_visual_pose(measured_points, reference_points)
 
         if not success:
@@ -112,12 +121,13 @@ class CameraStateHandler:
 
         visual_quat = quaternion.from_rotation_matrix(R)
 
-        dot = (visual_quat.w * self.quaternion.w +
-               visual_quat.x * self.quaternion.x +
-               visual_quat.y * self.quaternion.y +
-               visual_quat.z * self.quaternion.z)
+        dot = (visual_quat.w * quat.w +
+               visual_quat.x * quat.x +
+               visual_quat.y * quat.y +
+               visual_quat.z * quat.z)
 
         if dot < 0:
+            # noinspection PyUnresolvedReferences
             visual_quat = -visual_quat
 
         return True, visual_quat, t

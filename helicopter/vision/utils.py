@@ -3,9 +3,11 @@ import numpy as np
 
 class PointQueue:
     def __init__(self, maxlen: int, init_value: np.ndarray):
-        self.rec_queue: np.ndarray = np.tile(init_value, (maxlen, 1))
+        self.rec_queue: np.ndarray = np.full((maxlen, 3), np.nan)
         self.max_length: int = maxlen
         self.queue_tail: int = maxlen - 1
+
+        self.enqueue(init_value)
 
     def to_array(self) -> np.ndarray:
         head = (self.queue_tail + 1) % self.max_length
@@ -29,7 +31,7 @@ class PointQueue:
 
     @property
     def mean(self) -> np.ndarray:
-        return np.mean(self.rec_queue, axis=0)
+        return np.nanmean(self.rec_queue, axis=0)
 
     def __repr__(self):
         return "tail: " + str(self.queue_tail) + "\narray: " + str(self.rec_queue)

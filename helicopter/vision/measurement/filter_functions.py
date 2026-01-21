@@ -41,8 +41,8 @@ def propagate(s: np.ndarray,
     q_prev = quaternion.quaternion(*s[IDX_Q])
     p_prev = s[IDX_P]
     v_prev = s[IDX_V]
-    bg_prev = s[IDX_BG]
     ba_prev = s[IDX_BA]
+    bg_prev = s[IDX_BG]
 
     gyro_corrected = gyro - s[IDX_BG]
     acc_corrected = accelerometer - s[IDX_BA]
@@ -61,8 +61,8 @@ def propagate(s: np.ndarray,
     new_state[IDX_P] = p_new
     new_state[IDX_V] = v_new
 
-    new_state[IDX_BG] = bg_prev
     new_state[IDX_BA] = ba_prev
+    new_state[IDX_BG] = bg_prev
 
     return new_state
 
@@ -79,25 +79,26 @@ def transition_fn(error_state: np.ndarray,
     return decompose_fn(propagated_nominal, propagated_full)
 
 
-def project_to_tangent_space(target_quat,
-                             target_pos: np.ndarray,
-                             ref_quat: quaternion.quaternion) -> np.ndarray:
-    q_diff = ref_quat.conjugate() * target_quat
+def project_to_tangent_space(measured_quat,
+                             measured_pos: np.ndarray,
+                             ref_quat: quaternion.quaternion,
+                             ref_position: np.ndarray) -> np.ndarray:
+    q_diff = ref_quat.conjugate() * measured_quat
 
     if q_diff.w < 0:
         q_diff = -q_diff
 
     rot_vec = quaternion.as_rotation_vector(q_diff)
+    pos_error = measured_pos - ref_position
 
-    return np.concatenate([rot_vec, target_pos])
+    return np.concatenate([rot_vec, pos_error])
 
 
 def measurement_fn(error_state: np.ndarray,
-                   nominal_state: np.ndarray,
-                   ref_quat: quaternion.quaternion) -> np.ndarray:
+                   nominal_state: np.ndarray) -> np.ndarray:
     full_state_hypothesis = compose_fn(nominal_state, error_state)
 
     q_sigma = quaternion.quaternion(*full_state_hypothesis[IDX_Q])
     p_sigma = full_state_hypothesis[IDX_P]
 
-    return project_to_tangent_space(q_sigma, p_sigma, ref_quat)
+    return project_to_tangent_space(q_sigma, p_sigma, quaternion.from_float_array(nominal_state[IDX_Q]), nominal_state[IDX_P] )

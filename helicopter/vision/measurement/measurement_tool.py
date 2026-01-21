@@ -1,4 +1,5 @@
 import time
+import threading
 
 import numpy as np
 import quaternion
@@ -23,24 +24,29 @@ class MeasurementTool:
         self.camera_state_handler = camera_state_handler
         self.ukf = ukf
 
+        self.ukf_Q = ukf.Q.copy()
+
         self.is_running = False
 
         self.timer = 0.0
 
-    async def on_press(self, key):
-        if key == "q":
-            self.is_running = False
+        self.state_lock = threading.Lock()
+        self.imu_thread = threading.Thread(target=self.imu_loop, daemon=True)
+
+        self.max_dt = 0.0
 
     def initialize_orientation(self):
-        accel_queue = PointQueue(500, np.array([0, 0, 1.0]))
+        accel_queue = PointQueue(500, np.array([0, 0, 0.0]))
+        gyro_queue = PointQueue(500, np.array([0, 0, 0.0]))
 
         print("Initializing sensor orientation. Do not move camera")
         counter = 0
-        while counter < 1000:
-            accel_frames = self.device.imu_pipeline.wait_for_frames()
-            accel_data, ts_accel, gyro_data, ts_gyro = self.device.process_imu_frames(accel_frames)
+        while counter < 600:
+            imu_frames = self.device.imu_pipeline.wait_for_frames()
+            accel_data, ts_accel, gyro_data, ts_gyro = self.device.process_imu_frames(imu_frames)
             if accel_data is not None:
                 accel_queue.enqueue(accel_data)
+                gyro_queue.enqueue(gyro_data)
                 counter += 1
 
         v_B = accel_queue.mean()
@@ -64,10 +70,48 @@ class MeasurementTool:
             *(np.sin(theta_half) * rotation_axis)
         )
 
+        self.camera_state_handler.accelerometer_bias = (quat * quaternion.quaternion(0,
+                                                                                     *v_B) * quat.inverse()).imag - self.camera_state_handler.g
+        self.camera_state_handler.gyro_bias = gyro_queue.mean()
         self.camera_state_handler.quaternion = quat
-        self.camera_state_handler.g = v_B_norm * v_W_unit
 
         print("Orientation initialized")
+
+    def imu_loop(self):
+        while self.is_running:
+            imu_frames = self.device.imu_pipeline.wait_for_frames()
+
+            synced_imu = self.device.get_synced_imu(imu_frames)
+            if synced_imu is None:
+                continue
+
+            accel, gyro, timestamp = synced_imu
+
+            if self.device.last_imu_time == 0:
+                continue
+
+            dt = timestamp - self.device.last_imu_time
+            if dt <= 0:
+                continue
+            if dt > self.max_dt:
+                self.max_dt = dt
+
+            scale_factor = dt / (1 / 200)
+
+            with self.state_lock:
+                nominal_state = self.camera_state_handler.nominal_state.copy()
+                propagated_nominal = propagate(nominal_state, dt, accel, gyro,
+                                               self.camera_state_handler.g)
+                self.ukf.Q = self.ukf_Q * scale_factor
+                self.ukf.predict(dt=dt,
+                                 nominal_state=self.camera_state_handler.nominal_state.copy(),
+                                 propagated_nominal=propagated_nominal,
+                                 accelerometer=accel,
+                                 gyro=gyro,
+                                 g_world=self.camera_state_handler.g)
+
+                self.camera_state_handler.set_state_from_nominal(propagated_nominal)
+                self.ukf.x.fill(0)
 
     def loop(self):
         try:
@@ -80,87 +124,68 @@ class MeasurementTool:
             print('1')
 
             self.is_running = True
-            self.timer = time.time()
-
             debug_flag = False
+
+            self.imu_thread.start()
+            self.timer = time.time()
             while self.is_running:
-                current_time = time.time()
-                if current_time - self.timer > 3.0:
+                elapsed_time = time.time() - self.timer
+                if elapsed_time > 0.0:
                     debug_flag = False
-                if current_time - self.timer > 4.0:
+                if elapsed_time > 8.0:
                     self.is_running = False
 
-                imu_frames = self.device.imu_pipeline.poll_for_frames()
-                if imu_frames is not None:
+                frames = self.device.pipeline.wait_for_frames()
+                with self.state_lock:
+                    camera_pos = self.camera_state_handler.position.copy()
+                    camera_quat = self.camera_state_handler.quaternion.copy()
 
+                depth_image, ts_depth, ir_image, ts_ir = self.device.process_frames(frames)
+                if ir_image is not None:
                     if debug_flag:
-                        print('whoa imu')
-
-                    synced_imu = self.device.get_synced_imu(imu_frames)
-                    if synced_imu is None:
+                        print('whoa video')
+                    measured_points_cf = self.point_handler.get_measured_points(ir_frame=ir_image,
+                                                                                depth_frame=depth_image,
+                                                                                intrinsics=self.device.intrinsics)
+                    if measured_points_cf is None:
                         continue
                     else:
-                        accel, gyro, timestamp = synced_imu
-                        dt = timestamp - self.device.last_imu_time
+                        measured_points_wf, idxs = self.point_handler.match_points(
+                            measured_points_cf,
+                            camera_position=camera_pos,
+                            camera_quat=camera_quat)
 
-                        propagated_nominal = propagate(self.camera_state_handler.nominal_state.copy(), dt, accel, gyro,
-                                                       self.camera_state_handler.g)
+                        self.point_handler.append_points(measured_points_wf, idxs)
 
-                        self.ukf.predict(dt=dt,
-                                         nominal_state=self.camera_state_handler.nominal_state.copy(),
-                                         propagated_nominal=propagated_nominal,
-                                         accelerometer=accel,
-                                         gyro=gyro,
-                                         g_world=self.camera_state_handler.g)
+                        reference_points = self.point_handler.get_reference_points(registered_idxs=idxs)
 
-                        self.camera_state_handler.set_state_from_nominal(propagated_nominal)
-                        self.ukf.x.fill(0)
+                        success, visual_quat, visual_translation = self.camera_state_handler.get_visual_pose(
+                            measured_points=measured_points_cf,
+                            reference_points=reference_points,
+                            quat=camera_quat)
 
-                frames = self.device.pipeline.poll_for_frames()
-                depth_frame = frames.get_depth_frame()
-                ir_frame = frames.get_infrared_frame()
-                if depth_frame and ir_frame:
-                    depth_image, ts_depth, ir_image, ts_ir = self.device.process_frames(frames)
-                    if ir_image is not None:
-                        if debug_flag:
-                            print('whoa video')
-                        measured_points_cf = self.point_handler.get_measured_points(ir_frame=ir_image,
-                                                                                    depth_frame=depth_image,
-                                                                                    intrinsics=self.device.intrinsics)
-                        if measured_points_cf is None:
+                        if not success:
                             continue
                         else:
-                            measured_points_wf, idxs = self.point_handler.match_points(
-                                measured_points_cf,
-                                camera_position=self.camera_state_handler.position,
-                                camera_quat=self.camera_state_handler.quaternion)
+                            # position_delta = visual_translation - camera_pos
+                            # # if np.linalg.norm(position_delta) > 0.01:
+                            # #     print(
+                            # #         f'Jump from {camera_pos} to {visual_translation} detected')
+                            # #     continue
 
-                            self.point_handler.append_points(measured_points_wf, idxs)
+                            projected_z = project_to_tangent_space(visual_quat, visual_translation,
+                                                                   camera_quat, camera_pos)
 
-                            reference_points = self.point_handler.get_reference_points(registered_idxs=idxs)
-
-                            success, visual_quat, visual_translation = self.camera_state_handler.get_visual_pose(
-                                measured_points=measured_points_cf,
-                                reference_points=reference_points)
-
-                            # if np.linalg.norm(visual_translation) > 1e-2:
-                            #     print('whoa translation')
-
-                            if not success:
-                                continue
-                            else:
-                                projected_z = project_to_tangent_space(visual_quat, visual_translation, self.camera_state_handler.quaternion)
+                            with self.state_lock:
                                 self.ukf.update(
                                     z=projected_z,
-                                    nominal_state=self.camera_state_handler.nominal_state.copy(),
-                                    ref_quat=self.camera_state_handler.quaternion)
+                                    nominal_state=self.camera_state_handler.nominal_state.copy())
 
-                                nominal_state = compose_fn(self.camera_state_handler.nominal_state.copy(), self.ukf.x.copy())
+                                nominal_state = compose_fn(self.camera_state_handler.nominal_state.copy(),
+                                                           self.ukf.x.copy())
 
                                 self.camera_state_handler.set_state_from_nominal(nominal_state.copy())
                                 self.ukf.x.fill(0)
-
-                time.sleep(1e-5)
 
         finally:
             print("Cleaning up sensor")

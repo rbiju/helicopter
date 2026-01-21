@@ -8,13 +8,13 @@ from helicopter.vision.measurement.measurement_tool import MeasurementTool, Came
 
 
 def build_Q_matrix(dt: float) -> np.ndarray:
-    sigma_arw = 0.014 * (np.pi / 180.0)
+    sigma_arw = 0.007 * (np.pi / 180.0)
 
     g_m_s2 = 9.81
     sigma_vrw = 150e-6 * g_m_s2
 
-    sigma_bgrw = 2.0e-3
-    sigma_barw = 2.0e-3
+    sigma_bgrw = 1.0e-4
+    sigma_barw = 1.0e-4
     I = np.eye(3)
 
     Q_dtheta = (sigma_arw ** 2) * I * dt
@@ -70,22 +70,23 @@ if __name__ == '__main__':
                                 points=points)
 
     ukf.Q = build_Q_matrix(dt=1 / 200)
+
     initial_sigmas = {
-        'd_theta': 0.1,
-        'dp': 0.5,
-        'dv': 0.1,
-        'dba': 1.0e-2,
-        'dbg': 1.0e-3
+        'd_theta': 0.05,
+        'dp': 0.1,
+        'dv': 0.01,
+        'dba': 0.05,
+        'dbg': 0.05
     }
     ukf.P = initialize_P_matrix(initial_sigmas)
 
     visual_sigmas = {
-        'd_theta_vis': 0.1,
-        'dp_vis': 0.02
+        'd_theta_vis': 0.01,
+        'dp_vis': 0.01
     }
     ukf.R = initialize_R_matrix(visual_sigmas)
 
-    tool = MeasurementTool(device=D435i(enable_motion=True, enable_depth=True, projector_power=360., autoexpose=False, exposure_time=1800),
+    tool = MeasurementTool(device=D435i(enable_motion=True, enable_depth=True, projector_power=360., autoexpose=False, exposure_time=1600),
                            point_handler=PointHandler(),
                            camera_state_handler=CameraStateHandler(),
                            ukf=ukf)
@@ -93,4 +94,9 @@ if __name__ == '__main__':
     tool.initialize_orientation()
     tool.measure()
 
-    print(tool.point_handler.points_coords)
+    np.save('../../../notebooks/measured_points.npy', tool.point_handler.points_coords)
+    string_out = np.array2string(tool.point_handler.points_coords, precision=4, separator=', ')
+
+    print(string_out)
+
+    print('done')

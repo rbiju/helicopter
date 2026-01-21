@@ -34,17 +34,21 @@ class D435i:
             self.imu_pipeline, self.imu_profile = self.setup_imu(serial)
 
         self.pipeline, self.profile, self.intrinsics = self.get_camera_pipeline(serial, enable_depth, enable_rgb)
+        depth_sensor = self.profile.get_device().first_depth_sensor()
+        depth_sensor.set_option(rs.option.visual_preset, 4)
         self.set_exposure(autoexpose, exposure_time)
         self.set_projector_power(projector_power)
         self.warmup_camera()
 
         self.depth_scale = self.profile.get_device().first_depth_sensor().get_depth_scale()
-        self.hole_filler = rs.hole_filling_filter(2)
+        self.hdr_merge = rs.hdr_merge()
+        self.temporal_filter = rs.temporal_filter(smooth_alpha=0.40, smooth_delta=20.0, persistence_control=3)
 
         self.align = rs.align(rs.stream.infrared)
 
         self.gyro_queue = deque(maxlen=50)
         self.accel_time_queue = deque(maxlen=50)
+        self.gyro_time_queue = deque(maxlen=50)
 
     @property
     def last_imu_time(self):
@@ -140,7 +144,8 @@ class D435i:
         frames = self.align.process(frames)
 
         depth_frame = frames.get_depth_frame()
-        depth_frame = self.hole_filler.process(depth_frame)
+        depth_frame = self.hdr_merge.process(depth_frame)
+        depth_frame = self.temporal_filter.process(depth_frame)
         ir_frame = frames.get_infrared_frame(1)
 
         if depth_frame:
@@ -185,10 +190,11 @@ class D435i:
             if len(self.accel_time_queue) > 0:
                 if ts_accel == self.accel_time_queue[-1]:
                     return None
-                if np.all(gyro_data == self.gyro_queue[-1]):
+                if ts_gyro == self.gyro_time_queue[-1]:
                     return None
             self.gyro_queue.append(gyro_data)
             self.accel_time_queue.append(ts_accel)
+            self.gyro_time_queue.append(ts_gyro)
             if len(self.gyro_queue) > 20:
                 gyro_x = np.interp(ts_accel, np.array(list(self.accel_time_queue))[-2:],
                                    np.array(list(self.gyro_queue))[-2:, 0])
