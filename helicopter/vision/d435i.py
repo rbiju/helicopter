@@ -9,11 +9,11 @@ class D435i:
     def __init__(self, accel_rate: int = 250,
                  gyro_rate: int = 200,
                  video_rate: int = 60,
-                 video_resolution: tuple[int, int] = (640, 480),
-                 enable_depth: bool = False,
+                 video_resolution: tuple[int, int] = (480, 640),
                  enable_rgb: bool = False,
                  enable_motion: bool = False,
                  projector_power: float = 150.,
+                 toggle_projector: bool = False,
                  autoexpose: bool = True,
                  exposure_time: int = 800):
         self.ACCEL_RATE = accel_rate
@@ -27,22 +27,33 @@ class D435i:
         self.COLOR_RESOLUTION = video_resolution
         self.COLOR_RATE = video_rate
 
+        # Sensor setup
         serial = self.get_device_serial()
+        ctx = rs.context()
+        device = self.get_device_from_serial(ctx, serial)
+        depth_sensor = device.first_depth_sensor()
+        depth_sensor.set_option(rs.option.visual_preset, 4)
+        self.set_exposure(depth_sensor, autoexposure=autoexpose, exposure_time=exposure_time)
+        self.set_projector_power(depth_sensor, projector_power)
 
+        if toggle_projector:
+            print("Laser projector toggle enabled")
+            depth_sensor.set_option(rs.option.emitter_always_on, 0)
+            depth_sensor.set_option(rs.option.emitter_on_off, 1)
+        else:
+            print('Emitter always on enabled')
+            depth_sensor.set_option(rs.option.emitter_always_on, 1)
+
+        # Starting up sensors
         self.enable_motion = enable_motion
         if enable_motion:
             self.imu_pipeline, self.imu_profile = self.setup_imu(serial)
 
-        self.pipeline, self.profile, self.intrinsics = self.get_camera_pipeline(serial, enable_depth, enable_rgb)
-        depth_sensor = self.profile.get_device().first_depth_sensor()
-        depth_sensor.set_option(rs.option.visual_preset, 3)
-        self.set_exposure(autoexpose, exposure_time)
-        self.set_projector_power(projector_power)
+        self.pipeline, self.profile, self.intrinsics = self.get_camera_pipeline(serial, enable_rgb)
         self.warmup_camera()
 
         self.depth_scale = self.profile.get_device().first_depth_sensor().get_depth_scale()
         self.hdr_merge = rs.hdr_merge()
-        self.temporal_filter = rs.temporal_filter(smooth_alpha=0.40, smooth_delta=20.0, persistence_control=3)
 
         self.align = rs.align(rs.stream.infrared)
 
@@ -54,38 +65,39 @@ class D435i:
     def last_imu_time(self):
         return self.accel_time_queue[-2]
 
+    def get_device_from_serial(self, ctx, serial):
+        for dev in ctx.devices:
+            if dev.get_info(rs.camera_info.serial_number) == serial:
+                return dev
+        raise RuntimeError(f"Device {serial} not found")
+
     def get_device_serial(self):
         ctx = rs.context()
         if not ctx.devices:
             raise RuntimeError("No RealSense device detected.")
         return ctx.devices[0].get_info(rs.camera_info.serial_number)
 
-    def set_projector_power(self, power: float):
+    def set_projector_power(self, depth_sensor: rs.depth_sensor, power: float):
         if 0. <= power <= 360:
             print(f"Setting projector power to {power}")
-            depth_device = self.profile.get_device()
-            depth_sensor = depth_device.first_depth_sensor()
             depth_sensor.set_option(rs.option.laser_power, power)
-            depth_sensor.set_option(rs.option.emitter_always_on, 1)
+            depth_sensor.set_option(rs.option.emitter_enabled, 1)
         else:
             warnings.warn(f"Specified projector power {power} is invalid. Must be between 0 and 360."
                           f"Projector power setting skipped.")
 
-    def set_exposure(self, auto_exposure: bool, exposure: int):
-        device = self.profile.get_device()
-        depth_sensor = device.first_depth_sensor()
-
-        if not auto_exposure:
+    def set_exposure(self, depth_sensor: rs.depth_sensor, autoexposure: bool, exposure_time: int):
+        if not autoexposure:
             depth_sensor.set_option(rs.option.enable_auto_exposure, 0)
-            depth_sensor.set_option(rs.option.exposure, exposure)
+            depth_sensor.set_option(rs.option.exposure, exposure_time)
 
-            print(f"Auto-exposure disabled and exposure set to {exposure}")
+            print(f"Auto-exposure disabled and exposure set to {exposure_time}")
         else:
             depth_sensor.set_option(rs.option.enable_auto_exposure, 1)
 
             print("Auto-exposure enabled")
 
-    def get_camera_pipeline(self, serial, enable_depth: bool, enable_rgb: bool):
+    def get_camera_pipeline(self, serial, enable_rgb: bool):
         ctx = rs.context()
 
         if len(ctx.devices) == 0:
@@ -93,13 +105,12 @@ class D435i:
 
         config = rs.config()
         config.enable_device(serial)
-        config.enable_stream(rs.stream.infrared, 1, self.IR_RESOLUTION[0], self.IR_RESOLUTION[1], rs.format.y8,
+        config.enable_stream(rs.stream.infrared, 1, self.IR_RESOLUTION[1], self.IR_RESOLUTION[0], rs.format.y8,
                              self.IR_RATE)
-        if enable_depth:
-            config.enable_stream(rs.stream.depth, self.DEPTH_RESOLUTION[0], self.DEPTH_RESOLUTION[1], rs.format.z16,
-                                 self.DEPTH_RATE)
+        config.enable_stream(rs.stream.depth, self.DEPTH_RESOLUTION[1], self.DEPTH_RESOLUTION[0], rs.format.z16,
+                             self.DEPTH_RATE)
         if enable_rgb:
-            config.enable_stream(rs.stream.color, self.COLOR_RESOLUTION[0], self.COLOR_RESOLUTION[1], rs.format.rgb8,
+            config.enable_stream(rs.stream.color, self.COLOR_RESOLUTION[1], self.COLOR_RESOLUTION[0], rs.format.rgb8,
                                  self.COLOR_RATE)
 
         pipeline = rs.pipeline(ctx)
@@ -132,7 +143,7 @@ class D435i:
 
         # device = profile.get_device()
         # motion_sensor = device.first_motion_sensor()
-        # motion_sensor.set_option(rs.option.global_time_enabled, 0)
+        # motion_sensor.set_option(rs.option.global_time_enabled, 1)
 
         print("Warming up imu... waiting 100 frames.")
         for _ in range(100):
@@ -144,25 +155,25 @@ class D435i:
         frames = self.align.process(frames)
 
         depth_frame = frames.get_depth_frame()
+        laser_state = (depth_frame.get_frame_metadata(rs.frame_metadata_value.frame_laser_power_mode) == 1)
         depth_frame = self.hdr_merge.process(depth_frame)
-        depth_frame = self.temporal_filter.process(depth_frame)
         ir_frame = frames.get_infrared_frame(1)
 
         if depth_frame:
             depth_image = np.asanyarray(depth_frame.get_data())
             depth_image = depth_image * self.depth_scale
-            ts_depth = depth_frame.get_timestamp()
+            ts_depth = depth_frame.get_timestamp() / 1000.
         else:
             depth_image = None
             ts_depth = None
         if ir_frame:
             ir_image = np.asanyarray(ir_frame.get_data())
-            ts_ir = ir_frame.get_timestamp()
+            ts_ir = ir_frame.get_timestamp() / 1000.
         else:
             ir_image = None
             ts_ir = None
 
-        return depth_image, ts_depth, ir_image, ts_ir
+        return depth_image, ts_depth, ir_image, ts_ir, laser_state
 
     def process_imu_frames(self, frames):
         accel_data = None

@@ -2,19 +2,23 @@ import numpy as np
 import scipy.linalg as linalg
 from filterpy.kalman import UnscentedKalmanFilter, MerweScaledSigmaPoints
 
+from ultralytics import YOLO
+
 from helicopter.vision import D435i
+from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor
+from helicopter.vision.point_detection.measurement import YOLOPointDetector
 from helicopter.vision.measurement.filter_functions import transition_fn, measurement_fn
 from helicopter.vision.measurement.measurement_tool import MeasurementTool, CameraStateHandler, PointHandler
 
 
 def build_Q_matrix(dt: float) -> np.ndarray:
-    sigma_arw = 0.007 * (np.pi / 180.0)
+    sigma_arw = 0.028 * (np.pi / 180.0)
 
     g_m_s2 = 9.81
-    sigma_vrw = 150e-6 * g_m_s2
+    sigma_vrw = 150e-4 * g_m_s2
 
-    sigma_bgrw = 1.0e-4
-    sigma_barw = 1.0e-4
+    sigma_bgrw = 1.0e-5
+    sigma_barw = 1.0e-5
     I = np.eye(3)
 
     Q_dtheta = (sigma_arw ** 2) * I * dt
@@ -86,8 +90,23 @@ if __name__ == '__main__':
     }
     ukf.R = initialize_R_matrix(visual_sigmas)
 
-    tool = MeasurementTool(device=D435i(enable_motion=True, enable_depth=True, projector_power=360., autoexpose=False, exposure_time=1600),
-                           point_handler=PointHandler(),
+    device = D435i(enable_motion=True, projector_power=360., autoexpose=False, exposure_time=2400)
+
+    point_handler = PointHandler(
+        detector=YOLOPointDetector(
+            model=HelicopterYOLO(preprocessor=GPUImagePreprocessor(imgsz=device.IR_RESOLUTION),
+                                 model=YOLO('/home/ray/yolo_models/helicopter/measure/weights/best.engine',
+                                            task='detect'),
+                                 conf=0.5),
+            marker_tolerance=0.01,
+            marker_size=0.003,
+            marker_size_tolerance=0.3,
+            distance_threshold=0.5
+        ),
+        queue_len=75)
+
+    tool = MeasurementTool(device=D435i(enable_motion=True, projector_power=360., autoexpose=False, exposure_time=1600),
+                           point_handler=point_handler,
                            camera_state_handler=CameraStateHandler(),
                            ukf=ukf)
 

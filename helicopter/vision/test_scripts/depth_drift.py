@@ -18,7 +18,7 @@ def snapshot(_camera: D435i):
         depth_frame = frames.get_depth_frame()
         ir_frame = frames.get_infrared_frame()
         if depth_frame and ir_frame:
-            depth_image, _, ir_image, _ = _camera.process_frames(frames)
+            depth_image, _, ir_image, _, _ = _camera.process_frames(frames)
 
             snapped = True
             print("Snapshot retrieved.")
@@ -44,7 +44,7 @@ def detect_points(ir_frame, depth_frame, intrinsics):
     params = cv2.SimpleBlobDetector.Params()
 
     params.filterByArea = True
-    params.minArea = 5
+    params.minArea = 1
     params.maxArea = 30
 
     params.filterByColor = True
@@ -59,9 +59,9 @@ def detect_points(ir_frame, depth_frame, intrinsics):
     params.filterByConvexity = True
     params.minConvexity = 0.9
 
-    params.thresholdStep = 15
-    params.minThreshold = 40
-    params.maxThreshold = 200
+    params.thresholdStep = 20
+    params.minThreshold = 20
+    params.maxThreshold = 180
 
     detector = cv2.SimpleBlobDetector.create(params)
 
@@ -69,7 +69,8 @@ def detect_points(ir_frame, depth_frame, intrinsics):
     clahe_operator = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(25, 25))
 
     start = time.perf_counter()
-    tophat = cv2.morphologyEx(ir_frame, cv2.MORPH_TOPHAT, kernel)
+    ir_cleaned = cv2.medianBlur(ir_frame, 3)
+    tophat = cv2.morphologyEx(ir_cleaned, cv2.MORPH_TOPHAT, kernel)
     clahe = clahe_operator.apply(tophat)
 
     keypoints = detector.detect(clahe)
@@ -111,6 +112,10 @@ def detect_points(ir_frame, depth_frame, intrinsics):
         if depth > 0.5:
             continue
 
+        physical_diameter = (r_pixel * 2 * depth) / intrinsics.fx
+        if physical_diameter > 0.003 * (1 + 0.5) or physical_diameter < 0.003 * 0.5:
+            continue
+
         filtered_keypoints.append(kp)
 
         point = rs.rs2_deproject_pixel_to_point(intrinsics, pixel=[kp.pt[0], kp.pt[1]], depth=depth)
@@ -124,7 +129,10 @@ def detect_points(ir_frame, depth_frame, intrinsics):
     for kp in filtered_keypoints:
         cv2.circle(final_detection, (int(kp.pt[0]), int(kp.pt[1])), int(kp.size), (0, 255, 0), 1)
 
-    return np.vstack(points), final_detection
+    if len(points) > 3:
+        return np.vstack(points), final_detection
+    else:
+        return None
 
 
 def register_points(_point_collection: list[np.ndarray]):
@@ -158,22 +166,23 @@ def register_points(_point_collection: list[np.ndarray]):
 
 
 if __name__ == '__main__':
-    camera = D435i(enable_depth=True,
-                   # video_rate=30,
-                   # video_resolution=(1280, 720),
-                   projector_power=360.,
+    camera = D435i(projector_power=360.,
                    autoexpose=False,
-                   exposure_time=1600)
+                   exposure_time=2000)
 
     final_detections = []
     point_collection = []
     for i in range(100):
         _depth_image, _ir_image = snapshot(camera)
-        _points, _detection = detect_points(_ir_image, _depth_image, camera.intrinsics)
-        print(i)
-        print(_points)
-        point_collection.append(_points)
-        final_detections.append(_detection)
+        detect_out = detect_points(_ir_image, _depth_image, camera.intrinsics)
+        if detect_out is None:
+            continue
+        else:
+            _points, _detection = detect_out
+            print(i)
+            print(_points)
+            point_collection.append(_points)
+            final_detections.append(_detection)
 
     camera.stop()
 

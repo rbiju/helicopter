@@ -97,16 +97,16 @@ def test_visual_pose_estimate():
 
     sample_clean, _noise, sample, quat, t, corr = get_sample_points(rng, ref, noise_scale=0.0, num_sample_points=8)
 
-    quat = quaternion.from_rotation_vector(np.array([np.pi / 2, 0, 0]))
-    t = np.array([0., 0, 0])
+    quat = quaternion.from_rotation_vector(np.array([0., 0, np.pi / 2]))
+    t = np.array([1., 0, 0])
 
     sample = quaternion.rotate_vectors(quat, sample_clean) + t
 
-    R, t_pred = kabsch(ref[corr], sample)
+    R, t_pred = kabsch(sample, ref[corr])
 
     q_pred = quaternion.from_rotation_matrix(R)
 
-    pred_reference = quaternion.rotate_vectors(q_pred.inverse(), sample + t)
+    pred_reference = quaternion.rotate_vectors(q_pred.inverse(), sample - t_pred)
 
     print('recovered reference')
     print(pred_reference)

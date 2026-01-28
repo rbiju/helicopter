@@ -53,7 +53,7 @@ def propagate(s: np.ndarray,
     a_world = (q_current * quaternion.from_vector_part(acc_corrected) * q_current.conjugate()).imag - g_world
 
     v_new = v_prev + a_world * dt
-    p_new = p_prev + v_prev * dt + 0.5 * a_world * dt ** 2
+    p_new = p_prev + v_prev * dt + 0.5 * a_world * dt**2
 
     new_state = s.copy()
     new_state[IDX_Q] = quaternion.as_float_array(q_new)
@@ -100,4 +100,4 @@ def measurement_fn(error_state: np.ndarray,
     q_sigma = quaternion.quaternion(*full_state_hypothesis[IDX_Q])
     p_sigma = full_state_hypothesis[IDX_P]
 
-    return project_to_tangent_space(q_sigma, p_sigma, quaternion.from_float_array(nominal_state[IDX_Q]), nominal_state[IDX_P] )
+    return project_to_tangent_space(q_sigma, p_sigma, quaternion.from_float_array(nominal_state[IDX_Q]), nominal_state[IDX_P])

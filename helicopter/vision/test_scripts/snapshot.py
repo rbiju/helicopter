@@ -13,7 +13,7 @@ def snapshot(_camera: D435i):
         depth_frame = frames.get_depth_frame()
         ir_frame = frames.get_infrared_frame()
         if depth_frame and ir_frame:
-            depth_image, _, ir_image, _ = _camera.process_frames(frames)
+            depth_image, _, ir_image, _, _= _camera.process_frames(frames)
 
             snapped = True
             print("Snapshot retrieved.")
@@ -27,7 +27,7 @@ def snapshot(_camera: D435i):
 
 
 if __name__ == '__main__':
-    camera = D435i(enable_depth=True,
+    camera = D435i(
                    # video_rate=30,
                    # video_resolution=(1280, 720),
                    projector_power=360.,

@@ -4,22 +4,22 @@ import quaternion
 
 
 @jit(cache=True)
-def kabsch(measured_points: np.ndarray, reference_points: np.ndarray):
+def kabsch(p: np.ndarray, q: np.ndarray):
     """
     Computes the optimal rotation from measured to reference points, which should capture the camera frame to world frame transformation.
     Args:
-        measured_points: points in the camera frame
-        reference_points: matching points in the world frame
+        p: reference points
+        q: measured points
 
     Returns:
 
     """
-    n = measured_points.shape[0]
-    m_c = np.sum(measured_points, axis=0) / n
-    r_c = np.sum(reference_points, axis=0) / n
+    n = p.shape[0]
+    m_c = np.sum(p, axis=0) / n
+    r_c = np.sum(q, axis=0) / n
 
-    measured_points_centered = measured_points - m_c
-    reference_points_centered = reference_points - r_c
+    measured_points_centered = p - m_c
+    reference_points_centered = q - r_c
 
     covar = measured_points_centered.transpose() @ reference_points_centered
     U, s, Vh = np.linalg.svd(covar)
@@ -72,14 +72,14 @@ class CameraStateHandler:
 
         dummy_R = np.eye(3, dtype=np.float64)
         dummy_t = np.zeros(3, dtype=np.float64)
-        if n < 4:
+        if n < 3:
             return False, dummy_R, dummy_t
 
         inlier_count = -1
         inlier_mask = np.zeros(n, dtype=np.bool_)
 
         idx_pool = np.arange(n)
-        for _ in range(100):
+        for _ in range(250):
             np.random.shuffle(idx_pool)
             idxs = idx_pool[:3]
 
