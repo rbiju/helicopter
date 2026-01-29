@@ -3,9 +3,13 @@ import time
 import numpy as np
 import quaternion
 
+from ultralytics import YOLO
+
 from helicopter.vision.d435i import D435i
+from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor
+from helicopter.vision.point_detection.measurement import YOLOPointDetector
 from helicopter.vision.measurement.logger import StateLogger
-from helicopter.vision.measurement.measurement_tool import CameraStateHandler, PointHandler, PointQueue
+from helicopter.vision.measurement.scanner import CameraStateHandler, PointHandler, PointQueue
 
 
 class VisionOnlyMeasurementTool:
@@ -100,19 +104,17 @@ class VisionOnlyMeasurementTool:
 
                     start_detect = time.perf_counter()
                     measured_points_out = self.point_handler.get_measured_points(ir_frame=ir_image,
-                                                                                           depth_frame=depth_image,
-                                                                                           intrinsics=self.device.intrinsics)
+                                                                                 depth_frame=depth_image,
+                                                                                 intrinsics=self.device.intrinsics)
                     if measured_points_out is None:
                         print("Not enough points")
                         continue
                     else:
-                        measured_points_cf, keypoints = measured_points_out
+                        measured_points_cf = measured_points_out
                         measured_points_wf, idxs = self.point_handler.match_points(
                             measured_points_cf,
                             camera_position=camera_pos,
                             camera_quat=camera_quat)
-
-                        self.point_handler.append_points(measured_points_wf, idxs)
 
                         reference_points = self.point_handler.get_reference_points(registered_idxs=idxs)
 
@@ -133,6 +135,8 @@ class VisionOnlyMeasurementTool:
                                 print(
                                     f'Jump from {camera_pos} to {visual_translation} detected')
                                 continue
+
+                            self.point_handler.append_points(measured_points_wf, idxs)
 
                             self.camera_state_handler.quaternion = visual_quat
                             self.camera_state_handler.position = visual_translation
@@ -156,10 +160,24 @@ class VisionOnlyMeasurementTool:
 
 
 if __name__ == '__main__':
+    _device = D435i(enable_motion=True, projector_power=360., autoexpose=False,
+                    exposure_time=1600)
+    _point_handler = PointHandler(
+        detector=YOLOPointDetector(
+            model=HelicopterYOLO(preprocessor=GPUImagePreprocessor(imgsz=_device.IR_RESOLUTION),
+                                 model=YOLO('/home/ray/yolo_models/helicopter/measure/weights/best.engine',
+                                            task='detect'),
+                                 conf=0.75),
+            marker_tolerance=0.01,
+            marker_size=0.003,
+            marker_size_tolerance=0.3,
+            distance_threshold=0.5
+        ),
+        queue_len=75)
+
     tool = VisionOnlyMeasurementTool(
-        device=D435i(enable_motion=True,  projector_power=360., autoexpose=False,
-                     exposure_time=1600),
-        point_handler=PointHandler(),
+        device=_device,
+        point_handler=_point_handler,
         camera_state_handler=CameraStateHandler(),
-        logger=StateLogger(filepath="../../../notebooks/vision_only.csv"), )
+        logger=StateLogger(save_dir="../../../notebooks/vision_only.csv"), )
     tool.measure()

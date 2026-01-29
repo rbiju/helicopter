@@ -8,21 +8,21 @@ from helicopter.vision import D435i
 from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor
 from helicopter.vision.point_detection.measurement import YOLOPointDetector
 from helicopter.vision.measurement.filter_functions import transition_fn, measurement_fn
-from helicopter.vision.measurement.measurement_tool import MeasurementTool, CameraStateHandler, PointHandler
+from helicopter.vision.measurement.scanner import Scanner, CameraStateHandler, PointHandler
 
 
 def build_Q_matrix(dt: float) -> np.ndarray:
     sigma_arw = 0.028 * (np.pi / 180.0)
 
     g_m_s2 = 9.81
-    sigma_vrw = 150e-4 * g_m_s2
+    sigma_vrw = 150e-6 * g_m_s2
 
     sigma_bgrw = 1.0e-5
     sigma_barw = 1.0e-5
     I = np.eye(3)
 
     Q_dtheta = (sigma_arw ** 2) * I * dt
-    Q_dp = 1.0e-12 * I * dt
+    Q_dp = 1.0e-5 * I * dt
 
     Q_dv = (sigma_vrw ** 2) * I * dt
 
@@ -77,27 +77,28 @@ if __name__ == '__main__':
 
     initial_sigmas = {
         'd_theta': 0.075,
-        'dp': 0.05,
-        'dv': 0.01,
-        'dba': 0.05,
-        'dbg': 0.05
+        'dp': 0.005,
+        'dv': 0.001,
+        'dba': 0.15,
+        'dbg': 0.15
     }
     ukf.P = initialize_P_matrix(initial_sigmas)
 
     visual_sigmas = {
-        'd_theta_vis': 0.01,
-        'dp_vis': 0.01
+        'd_theta_vis': 0.04,
+        'dp_vis': 0.0075
     }
     ukf.R = initialize_R_matrix(visual_sigmas)
 
-    device = D435i(enable_motion=True, projector_power=360., autoexpose=False, exposure_time=2400)
+    device = D435i(enable_motion=True, projector_power=360., autoexpose=False, exposure_time=1600,
+                   ema_factor=0.1)
 
     point_handler = PointHandler(
         detector=YOLOPointDetector(
             model=HelicopterYOLO(preprocessor=GPUImagePreprocessor(imgsz=device.IR_RESOLUTION),
                                  model=YOLO('/home/ray/yolo_models/helicopter/measure/weights/best.engine',
                                             task='detect'),
-                                 conf=0.5),
+                                 conf=0.75),
             marker_tolerance=0.01,
             marker_size=0.003,
             marker_size_tolerance=0.3,
@@ -105,16 +106,15 @@ if __name__ == '__main__':
         ),
         queue_len=75)
 
-    tool = MeasurementTool(device=D435i(enable_motion=True, projector_power=360., autoexpose=False, exposure_time=1600),
-                           point_handler=point_handler,
-                           camera_state_handler=CameraStateHandler(),
-                           ukf=ukf)
+    scanner = Scanner(device=device,
+                      point_handler=point_handler,
+                      camera_state_handler=CameraStateHandler(),
+                      ukf=ukf)
 
-    tool.initialize_orientation()
-    tool.measure()
+    scanner.scan()
 
-    np.save('../../../notebooks/measured_points.npy', tool.point_handler.points_coords)
-    string_out = np.array2string(tool.point_handler.points_coords, precision=4, separator=', ')
+    np.save('../../../notebooks/measured_points.npy', scanner.point_handler.points_coords)
+    string_out = np.array2string(scanner.point_handler.points_coords, precision=4, separator=', ')
 
     print(string_out)
 

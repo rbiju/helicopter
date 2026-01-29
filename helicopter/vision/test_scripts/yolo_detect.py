@@ -23,7 +23,7 @@ def draw_subpixel_circle(center, _radius, shift=4):
 if __name__ == '__main__':
     camera = D435i(projector_power=360.,
                    autoexpose=False,
-                   exposure_time=2400)
+                   exposure_time=2000)
     ir_image = None
     frame_count = 0
     while frame_count < 1:
@@ -35,7 +35,7 @@ if __name__ == '__main__':
 
     model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure/weights/best.engine',
                                       task='detect'),
-                           conf=0.5)
+                           conf=0.75)
 
     if ir_image is not None:
         start_detect = time.perf_counter()
@@ -83,7 +83,7 @@ if __name__ == '__main__':
         display_image = cv2.cvtColor(display_image, cv2.COLOR_GRAY2BGR)
         for circle in circles:
             (cx, cy), radius = circle
-            c_sub, r_sub = draw_subpixel_circle((cx, cy), radius, 2)
-            cv2.circle(display_image, c_sub, r_sub, (0, 255, 0), 1, shift=2)
+            c_sub, r_sub = draw_subpixel_circle((cx, cy), radius, 0)
+            cv2.circle(display_image, c_sub, r_sub, (0, 255, 0), 1, shift=0)
 
     print('done')

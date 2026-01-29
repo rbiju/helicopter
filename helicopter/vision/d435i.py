@@ -15,7 +15,8 @@ class D435i:
                  projector_power: float = 150.,
                  toggle_projector: bool = False,
                  autoexpose: bool = True,
-                 exposure_time: int = 800):
+                 exposure_time: int = 800,
+                 ema_factor: float = 1.0):
         self.ACCEL_RATE = accel_rate
         self.GYRO_RATE = gyro_rate
 
@@ -44,6 +45,8 @@ class D435i:
             print('Emitter always on enabled')
             depth_sensor.set_option(rs.option.emitter_always_on, 1)
 
+        depth_sensor.set_option(rs.option.global_time_enabled, 1)
+
         # Starting up sensors
         self.enable_motion = enable_motion
         if enable_motion:
@@ -57,13 +60,15 @@ class D435i:
 
         self.align = rs.align(rs.stream.infrared)
 
-        self.gyro_queue = deque(maxlen=50)
-        self.accel_time_queue = deque(maxlen=50)
-        self.gyro_time_queue = deque(maxlen=50)
+        self.ema_factor = ema_factor
+        self.last_accel = None
+        self.last_gyro = None
+
+        self.time_queue = deque(maxlen=10)
 
     @property
     def last_imu_time(self):
-        return self.accel_time_queue[-2]
+        return self.time_queue[-2]
 
     def get_device_from_serial(self, ctx, serial):
         for dev in ctx.devices:
@@ -141,9 +146,9 @@ class D435i:
         pipeline = rs.pipeline()
         profile = pipeline.start(config)
 
-        # device = profile.get_device()
-        # motion_sensor = device.first_motion_sensor()
-        # motion_sensor.set_option(rs.option.global_time_enabled, 1)
+        device = profile.get_device()
+        motion_sensor = device.first_motion_sensor()
+        motion_sensor.set_option(rs.option.global_time_enabled, 1)
 
         print("Warming up imu... waiting 100 frames.")
         for _ in range(100):
@@ -185,6 +190,7 @@ class D435i:
             if frame.get_profile().stream_type() == rs.stream.accel:
                 accel_data = frame.as_motion_frame().get_motion_data()
                 # coordinate transform so +Z is pointing up and +X is pointing out of the camera
+                # to match helicopter dynamics simulation
                 accel_data = np.array([accel_data.z, -accel_data.x, -accel_data.y])
                 ts_accel = frame.get_timestamp() / 1000.
             elif frame.get_profile().stream_type() == rs.stream.gyro:
@@ -192,35 +198,44 @@ class D435i:
                 gyro_data = np.array([gyro_data.z, -gyro_data.x, -gyro_data.y])
                 ts_gyro = frame.get_timestamp() / 1000.
 
-        return accel_data, ts_accel, gyro_data, ts_gyro
+        self.time_queue.append(ts_gyro)
 
-    def get_synced_imu(self, imu_frames):
-        # rs returns gyro and most recent accelerometer data in the same packet
-        accel_data, ts_accel, gyro_data, ts_gyro = self.process_imu_frames(imu_frames)
-        if accel_data is not None and gyro_data is not None:
-            if len(self.accel_time_queue) > 0:
-                if ts_accel == self.accel_time_queue[-1]:
-                    return None
-                if ts_gyro == self.gyro_time_queue[-1]:
-                    return None
-            self.gyro_queue.append(gyro_data)
-            self.accel_time_queue.append(ts_accel)
-            self.gyro_time_queue.append(ts_gyro)
-            if len(self.gyro_queue) > 20:
-                gyro_x = np.interp(ts_accel, np.array(list(self.accel_time_queue))[-2:],
-                                   np.array(list(self.gyro_queue))[-2:, 0])
-                gyro_y = np.interp(ts_accel, np.array(list(self.accel_time_queue))[-2:],
-                                   np.array(list(self.gyro_queue))[-2:, 1])
-                gyro_z = np.interp(ts_accel, np.array(list(self.accel_time_queue))[-2:],
-                                   np.array(list(self.gyro_queue))[-2:, 2])
-                gyro_interpolated = np.array([gyro_x, gyro_y, gyro_z])
+        if len(self.time_queue) < 2:
+            self.last_accel = accel_data
+            self.last_gyro = gyro_data
+            return None
+        else:
+            accel_data = self.ema_factor * accel_data + (1 - self.ema_factor) * self.last_accel
+            gyro_data = self.ema_factor * gyro_data + (1 - self.ema_factor) * self.last_gyro
+            return accel_data, ts_accel, gyro_data, ts_gyro
 
-                return accel_data, gyro_interpolated, ts_accel
-
-            else:
-                return None
-
-        return None
+    # def get_synced_imu(self, imu_frames):
+    #     # rs returns gyro and most recent accelerometer data in the same packet
+    #     accel_data, ts_accel, gyro_data, ts_gyro = self.process_imu_frames(imu_frames)
+    #     if accel_data is not None and gyro_data is not None:
+    #         if len(self.accel_time_queue) > 0:
+    #             if ts_accel == self.accel_time_queue[-1]:
+    #                 return None
+    #             if ts_gyro == self.gyro_time_queue[-1]:
+    #                 return None
+    #         self.gyro_queue.append(gyro_data)
+    #         self.accel_time_queue.append(ts_accel)
+    #         self.gyro_time_queue.append(ts_gyro)
+    #         if len(self.gyro_queue) > 20:
+    #             gyro_x = np.interp(ts_accel, np.array(list(self.accel_time_queue))[-2:],
+    #                                np.array(list(self.gyro_queue))[-2:, 0])
+    #             gyro_y = np.interp(ts_accel, np.array(list(self.accel_time_queue))[-2:],
+    #                                np.array(list(self.gyro_queue))[-2:, 1])
+    #             gyro_z = np.interp(ts_accel, np.array(list(self.accel_time_queue))[-2:],
+    #                                np.array(list(self.gyro_queue))[-2:, 2])
+    #             gyro_interpolated = np.array([gyro_x, gyro_y, gyro_z])
+    #
+    #             return accel_data, gyro_interpolated, ts_accel
+    #
+    #         else:
+    #             return None
+    #
+    #     return None
 
     def stop(self):
         print("Closing D435i pipelines")

@@ -3,7 +3,7 @@ import numpy as np
 
 from ultralytics import YOLO
 
-from .preprocess import ImagePreprocessor, GPUImagePreprocessor
+from .preprocessor import ImagePreprocessor, GPUImagePreprocessor
 
 
 class HelicopterYOLO(torch.nn.Module):
