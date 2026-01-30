@@ -143,6 +143,10 @@ class Scanner:
         time.sleep(0.5)
         print('1')
 
+        # flushing camera buffer
+        for _ in range(10):
+            self.device.pipeline.poll_for_frames()
+
         self.started_running = True
         self.is_running = True
         debug_flag = False

@@ -46,6 +46,7 @@ class D435i:
             depth_sensor.set_option(rs.option.emitter_always_on, 1)
 
         depth_sensor.set_option(rs.option.global_time_enabled, 1)
+        depth_sensor.set_option(rs.option.frames_queue_size, 1)
 
         # Starting up sensors
         self.enable_motion = enable_motion
