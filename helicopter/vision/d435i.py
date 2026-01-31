@@ -149,6 +149,8 @@ class D435i:
 
         device = profile.get_device()
         motion_sensor = device.first_motion_sensor()
+
+        motion_sensor.set_option(rs.option.frames_queue_size, 1)
         motion_sensor.set_option(rs.option.global_time_enabled, 1)
 
         print("Warming up imu... waiting 100 frames.")
@@ -209,34 +211,6 @@ class D435i:
             accel_data = self.ema_factor * accel_data + (1 - self.ema_factor) * self.last_accel
             gyro_data = self.ema_factor * gyro_data + (1 - self.ema_factor) * self.last_gyro
             return accel_data, ts_accel, gyro_data, ts_gyro
-
-    # def get_synced_imu(self, imu_frames):
-    #     # rs returns gyro and most recent accelerometer data in the same packet
-    #     accel_data, ts_accel, gyro_data, ts_gyro = self.process_imu_frames(imu_frames)
-    #     if accel_data is not None and gyro_data is not None:
-    #         if len(self.accel_time_queue) > 0:
-    #             if ts_accel == self.accel_time_queue[-1]:
-    #                 return None
-    #             if ts_gyro == self.gyro_time_queue[-1]:
-    #                 return None
-    #         self.gyro_queue.append(gyro_data)
-    #         self.accel_time_queue.append(ts_accel)
-    #         self.gyro_time_queue.append(ts_gyro)
-    #         if len(self.gyro_queue) > 20:
-    #             gyro_x = np.interp(ts_accel, np.array(list(self.accel_time_queue))[-2:],
-    #                                np.array(list(self.gyro_queue))[-2:, 0])
-    #             gyro_y = np.interp(ts_accel, np.array(list(self.accel_time_queue))[-2:],
-    #                                np.array(list(self.gyro_queue))[-2:, 1])
-    #             gyro_z = np.interp(ts_accel, np.array(list(self.accel_time_queue))[-2:],
-    #                                np.array(list(self.gyro_queue))[-2:, 2])
-    #             gyro_interpolated = np.array([gyro_x, gyro_y, gyro_z])
-    #
-    #             return accel_data, gyro_interpolated, ts_accel
-    #
-    #         else:
-    #             return None
-    #
-    #     return None
 
     def stop(self):
         print("Closing D435i pipelines")

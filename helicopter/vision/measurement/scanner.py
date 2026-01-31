@@ -8,6 +8,7 @@ from filterpy.kalman import UnscentedKalmanFilter
 
 from helicopter.vision.d435i import D435i
 from helicopter.vision.point_detection.measurement.point_handler import PointHandler
+from .madgwick import MadgwickFilter
 from .logger import StateLogger
 from .camera_state_handler import CameraStateHandler
 from .utils import PointQueue
@@ -21,11 +22,13 @@ class Scanner:
                  point_handler: PointHandler,
                  camera_state_handler: CameraStateHandler,
                  ukf: UnscentedKalmanFilter,
+                 madgwick: MadgwickFilter,
                  measurement_time: float = 5.0):
         self.device = device
         self.point_handler = point_handler
         self.camera_state_handler = camera_state_handler
         self.ukf = ukf
+        self.madgwick = madgwick
 
         self.measurement_time = measurement_time
 
@@ -87,6 +90,9 @@ class Scanner:
                                                         self.camera_state_handler.g)
         self.camera_state_handler.gyro_bias = gyro_queue.mean()
         self.camera_state_handler.quaternion = quat
+        self.madgwick.q = quaternion.as_float_array(quat)
+
+        self.camera_state_handler.last_quaternion = quat
 
         print("Orientation initialized")
 
@@ -117,10 +123,21 @@ class Scanner:
 
             scale_factor = dt / (1 / 200)
 
+            lower_bound = 9.0
+            upper_bound = 10.6
+
+            if lower_bound < np.linalg.norm(accel) < upper_bound:
+                current_beta = 0.033
+            else:
+                current_beta = 0.0
+
+            q_madgwick = self.madgwick.update(accel=accel, gyro=gyro, dt=dt, beta=current_beta)
+
             with self.state_lock:
                 nominal_state = self.camera_state_handler.nominal_state.copy()
                 propagated_nominal = propagate(nominal_state, dt, accel, gyro,
-                                               self.camera_state_handler.g)
+                                               self.camera_state_handler.g,
+                                               q_madgwick)
 
                 self.logger.log_state(timestamp=timestamp, event='imu', state_vector=propagated_nominal)
                 self.ukf.Q = self.ukf_Q * scale_factor
@@ -129,7 +146,8 @@ class Scanner:
                                  propagated_nominal=propagated_nominal,
                                  accelerometer=accel,
                                  gyro=gyro,
-                                 g_world=self.camera_state_handler.g)
+                                 g_world=self.camera_state_handler.g,
+                                 q_madgwick=q_madgwick)
 
                 self.camera_state_handler.set_state_from_nominal(propagated_nominal)
                 self.ukf.x.fill(0)
@@ -147,16 +165,20 @@ class Scanner:
         for _ in range(10):
             self.device.pipeline.poll_for_frames()
 
+        while True:
+            success, _ = self.device.imu_pipeline.try_wait_for_frames(timeout_ms=10)
+            if not success:
+                break
+
+        self.device.time_queue.clear()
+
         self.started_running = True
         self.is_running = True
-        debug_flag = False
 
         self.imu_thread.start()
         self.timer = time.time()
         while self.is_running:
             elapsed_time = time.time() - self.timer
-            if elapsed_time > 3.0:
-                debug_flag = False
             if elapsed_time > self.measurement_time:
                 self.is_running = False
 
@@ -167,28 +189,30 @@ class Scanner:
 
             depth_image, ts_depth, ir_image, ts_ir, laser_state = self.device.process_frames(frames)
             if ir_image is not None:
-                if debug_flag:
-                    self.is_running = False
-                    print('whoa video')
-
                 start_detect = time.perf_counter()
-                measured_points_cf = self.point_handler.get_measured_points(ir_frame=ir_image,
-                                                                            depth_frame=depth_image,
-                                                                            intrinsics=self.device.intrinsics)
-                if measured_points_cf is None:
+                measured_out = self.point_handler.get_measured_points(ir_frame=ir_image,
+                                                                      depth_frame=depth_image,
+                                                                      intrinsics=self.device.intrinsics)
+                if measured_out is None:
+                    print('Not enough points')
                     continue
                 else:
-                    measured_points_wf, idxs = self.point_handler.match_points(
-                        measured_points_cf,
-                        camera_position=camera_pos,
-                        camera_quat=camera_quat)
+                    measured_points_cf, keypoints = measured_out
 
-                    reference_points = self.point_handler.get_reference_points(registered_idxs=idxs)
+                    measured_points_wf, measure_idx, reference_idx = self.point_handler.match_points(
+                        measured_points_cf,
+                        camera_position=self.camera_state_handler.last_position,
+                        camera_quat=self.camera_state_handler.last_quaternion)
+
+                    reference_points = self.point_handler.point_map[reference_idx]
 
                     success, visual_quat, visual_translation = self.camera_state_handler.get_visual_pose(
-                        measured_points=measured_points_cf,
+                        measured_points=measured_points_cf[measure_idx],
                         reference_points=reference_points,
                         quat=camera_quat)
+
+                    self.camera_state_handler.last_quaternion = visual_quat
+                    self.camera_state_handler.last_position = visual_translation
 
                     if not success:
                         continue
@@ -199,7 +223,7 @@ class Scanner:
                                 f'Jump from {camera_pos} to {visual_translation} detected')
                             continue
 
-                        self.point_handler.append_points(measured_points_wf, idxs)
+                        self.point_handler.append_points(measured_points_wf, reference_idx)
 
                         projected_z = project_to_tangent_space(visual_quat, visual_translation,
                                                                camera_quat, camera_pos)

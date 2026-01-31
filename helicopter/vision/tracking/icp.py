@@ -37,7 +37,7 @@ class ICP:
             reference_subset = reference_points[reference_idxs]
             sample_subset = sample_points[sample_idxs]
 
-            q, t = self.kabsch.kabsch(reference_subset, sample_subset)
+            q, t = self.kabsch._kabsch(reference_subset, sample_subset)
             transformed_ref = (q * quaternionic.array.from_vector_part(reference_subset) * q.inverse).imag + t
 
             diff = transformed_ref[:, None, :] - sample_subset[None, :, :]

@@ -41,7 +41,7 @@ class PointDetector(ABC):
         center, radius, shift = circle
 
         ix, iy = int(center[0]), int(center[1])
-        margin = int(radius + 2)
+        margin = int(radius + 0.5)
 
         x0, x1 = max(0, ix - margin), min(w, ix + margin + 1)
         y0, y1 = max(0, iy - margin), min(h, iy + margin + 1)
@@ -49,12 +49,16 @@ class PointDetector(ABC):
         depth_roi = depth_frame[y0:y1, x0:x1]
         valid_roi = valid_mask[y0:y1, x0:x1]
 
+        if np.sum(valid_roi) < (0.5 * (np.pi * radius ** 2)):
+            return None
+
         roi_h, roi_w = depth_roi.shape
         local_mask = np.zeros((roi_h, roi_w), dtype=np.uint8)
 
         local_center = (ix - x0, iy - y0)
 
-        c_sub, r_sub = self.draw_subpixel_circle(local_center, radius, shift)
+        # Not strictly correct, but helps draw a better circle
+        c_sub, r_sub = self.draw_subpixel_circle(local_center, radius * 2, shift)
         cv2.circle(local_mask, c_sub, r_sub, 1, -1, shift=shift)
 
         ksize = int(radius) | 1
@@ -63,6 +67,10 @@ class PointDetector(ABC):
 
         g_sum = gaussian_roi.sum()
         if g_sum <= 0:
+            return None
+
+        depth_std = depth_roi.std()
+        if depth_std > self.marker_size:
             return None
 
         depth = np.sum(depth_roi * (gaussian_roi / g_sum))

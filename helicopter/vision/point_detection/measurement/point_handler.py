@@ -72,7 +72,7 @@ class PointHandler:
 
         row_idx, col_idx = linear_sum_assignment(dist_matrix)
 
-        return corrected_points, col_idx
+        return corrected_points[row_idx], row_idx, col_idx
 
     def get_measured_points(self, ir_frame: np.ndarray, depth_frame: np.ndarray,
                             intrinsics: pyrealsense2.intrinsics,
@@ -80,11 +80,11 @@ class PointHandler:
         keypoints = self.detector.detect(ir_frame)
         marker_coords = self.detector.get_point_coords(keypoints, depth_frame, intrinsics, shift)
 
-        return marker_coords
+        if len(marker_coords) <= 3:
+            return None
+
+        return marker_coords, keypoints
 
     def append_points(self, points: np.ndarray, point_idxs: list[int]):
         for idx, point in zip(point_idxs, points):
             self.points[idx].enqueue(point)
-
-    def get_reference_points(self, registered_idxs: list[int]):
-        return self.point_map[registered_idxs]
