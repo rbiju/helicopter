@@ -45,12 +45,17 @@ if __name__ == '__main__':
         results = model(ir_image)
         end_inference = time.perf_counter()
 
-        boxes = results[0].boxes.xyxy.cpu().numpy().astype(int)
-        boxes[:, [1, 3]] -= model.preprocessor.top_pad
+        boxes = results[0].boxes.data
+
+        high_conf_mask = boxes[:, 4] > 0.6
+        clean_boxes = boxes[high_conf_mask]
+        clean_boxes[:, [1, 3]] -= model.preprocessor.top_pad
+
+        boxes = clean_boxes[:, :4].cpu().numpy().astype(int)
 
         circles = []
         for box in boxes:
-            x1, y1, x2, y2 = box.astype(int)
+            x1, y1, x2, y2 = box
             h, w = ir_image.shape
 
             # 1. Safe Crop (Handle edges)

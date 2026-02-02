@@ -32,7 +32,6 @@ class PointQueue:
         loc = (self.queue_tail + 1 + index) % self.max_length
         self.rec_queue[loc] = newItem
 
-    @property
     def mean(self) -> np.ndarray:
         return np.nanmean(self.rec_queue, axis=0)
 

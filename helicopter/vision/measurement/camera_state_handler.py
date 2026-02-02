@@ -7,7 +7,7 @@ from helicopter.vision import PrintHider
 
 
 class CameraStateHandler:
-    def __init__(self):
+    def __init__(self, ransac_iters: int = 100):
         # state vector
         self.quaternion = quaternion.quaternion(1.0, 0.0, 0.0, 0.0)
         self.position = np.array([0.0, 0.0, 0.0])
@@ -17,12 +17,11 @@ class CameraStateHandler:
 
         self.g = np.array([0., 0., 9.80665])
 
+        self.ransac_iters = ransac_iters
+
         print('Compiling pose estimation functions')
         with PrintHider():
             self.ransac_visual_pose(np.random.rand(5, 3), np.random.rand(5, 3))
-
-        self.last_quaternion = self.quaternion
-        self.last_position = self.position
 
     @property
     def nominal_state(self):
@@ -40,14 +39,14 @@ class CameraStateHandler:
         self.gyro_bias = nominal_state[13:16]
 
     @staticmethod
-    def ransac_visual_pose(measured_points: np.ndarray, reference_points: np.ndarray, threshold=15e-3):
-        return _ransac_visual_pose(measured_points, reference_points, threshold)
+    def ransac_visual_pose(measured_points: np.ndarray, reference_points: np.ndarray, threshold=15e-3, iterations=100):
+        return _ransac_visual_pose(measured_points, reference_points, threshold, iterations=iterations)
 
     def get_visual_pose(self, measured_points: np.ndarray, reference_points: np.ndarray, quat: quaternion.quaternion):
-        success, R, t = self.ransac_visual_pose(measured_points, reference_points)
+        success, R, t, rmse = self.ransac_visual_pose(measured_points, reference_points, iterations=self.ransac_iters)
 
         if not success:
-            return False, None, None
+            return False, None, None, None
 
         visual_quat = quaternion.from_rotation_matrix(R)
 
@@ -60,4 +59,4 @@ class CameraStateHandler:
             # noinspection PyUnresolvedReferences
             visual_quat = -visual_quat
 
-        return True, visual_quat, t
+        return True, visual_quat, t, rmse

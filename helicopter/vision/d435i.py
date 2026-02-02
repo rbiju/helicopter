@@ -51,6 +51,10 @@ class D435i:
         # Starting up sensors
         self.enable_motion = enable_motion
         if enable_motion:
+            motion_sensor = device.first_motion_sensor()
+            motion_sensor.set_option(rs.option.frames_queue_size, 1)
+            motion_sensor.set_option(rs.option.global_time_enabled, 1)
+
             self.imu_pipeline, self.imu_profile = self.setup_imu(serial)
 
         self.pipeline, self.profile, self.intrinsics = self.get_camera_pipeline(serial, enable_rgb)
@@ -145,13 +149,8 @@ class D435i:
         config.enable_stream(rs.stream.gyro, rs.format.motion_xyz32f, self.GYRO_RATE)
 
         pipeline = rs.pipeline()
+
         profile = pipeline.start(config)
-
-        device = profile.get_device()
-        motion_sensor = device.first_motion_sensor()
-
-        motion_sensor.set_option(rs.option.frames_queue_size, 1)
-        motion_sensor.set_option(rs.option.global_time_enabled, 1)
 
         print("Warming up imu... waiting 100 frames.")
         for _ in range(100):
@@ -168,14 +167,14 @@ class D435i:
         ir_frame = frames.get_infrared_frame(1)
 
         if depth_frame:
-            depth_image = np.asanyarray(depth_frame.get_data())
+            depth_image = np.asanyarray(depth_frame.get_data()).copy()
             depth_image = depth_image * self.depth_scale
             ts_depth = depth_frame.get_timestamp() / 1000.
         else:
             depth_image = None
             ts_depth = None
         if ir_frame:
-            ir_image = np.asanyarray(ir_frame.get_data())
+            ir_image = np.asanyarray(ir_frame.get_data()).copy()
             ts_ir = ir_frame.get_timestamp() / 1000.
         else:
             ir_image = None
@@ -194,11 +193,11 @@ class D435i:
                 accel_data = frame.as_motion_frame().get_motion_data()
                 # coordinate transform so +Z is pointing up and +X is pointing out of the camera
                 # to match helicopter dynamics simulation
-                accel_data = np.array([accel_data.z, -accel_data.x, -accel_data.y])
+                accel_data = np.array([accel_data.z, -accel_data.x, -accel_data.y]).copy()
                 ts_accel = frame.get_timestamp() / 1000.
             elif frame.get_profile().stream_type() == rs.stream.gyro:
                 gyro_data = frame.as_motion_frame().get_motion_data()
-                gyro_data = np.array([gyro_data.z, -gyro_data.x, -gyro_data.y])
+                gyro_data = np.array([gyro_data.z, -gyro_data.x, -gyro_data.y]).copy()
                 ts_gyro = frame.get_timestamp() / 1000.
 
         self.time_queue.append(ts_gyro)

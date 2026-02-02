@@ -1,5 +1,6 @@
 import numpy as np
 import quaternion
+from torch.nn.init import normal_
 
 IDX_Q = slice(0, 4)
 IDX_P = slice(4, 7)
@@ -37,8 +38,7 @@ def propagate(s: np.ndarray,
               dt,
               accelerometer: np.ndarray,
               gyro: np.ndarray,
-              g_world: np.ndarray,
-              q_madgwick: quaternion.quaternion = None) -> np.ndarray:
+              g_world: np.ndarray) -> np.ndarray:
     q_prev = quaternion.quaternion(*s[IDX_Q])
     p_prev = s[IDX_P]
     v_prev = s[IDX_V]
@@ -48,15 +48,10 @@ def propagate(s: np.ndarray,
     gyro_corrected = gyro - s[IDX_BG]
     acc_corrected = accelerometer - s[IDX_BA]
 
-    if q_madgwick is not None:
-        q_gravity = q_madgwick
-        q_new = q_madgwick
-    else:
-        dq = quaternion.from_rotation_vector(gyro_corrected * dt)
-        q_new = q_prev * dq
-        q_gravity = q_prev
+    dq = quaternion.from_rotation_vector(gyro_corrected * dt)
+    q_new = (q_prev * dq).normalized()
 
-    a_world = (q_gravity * quaternion.from_vector_part(acc_corrected) * q_gravity.inverse()).imag - g_world
+    a_world = (q_prev * quaternion.from_vector_part(acc_corrected) * q_prev.inverse()).imag - g_world
 
     v_new = v_prev + a_world * dt
     p_new = p_prev + v_prev * dt + 0.5 * a_world * dt**2
@@ -78,10 +73,9 @@ def transition_fn(error_state: np.ndarray,
                   propagated_nominal: np.ndarray,
                   accelerometer: np.ndarray,
                   gyro: np.ndarray,
-                  g_world: np.ndarray,
-                  q_madgwick: quaternion.quaternion) -> np.ndarray:
+                  g_world: np.ndarray) -> np.ndarray:
     full_state = compose_fn(nominal_state, error_state)
-    propagated_full = propagate(full_state, dt, accelerometer, gyro, g_world, q_madgwick)
+    propagated_full = propagate(full_state, dt, accelerometer, gyro, g_world)
     return decompose_fn(propagated_nominal, propagated_full)
 
 

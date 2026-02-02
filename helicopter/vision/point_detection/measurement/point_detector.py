@@ -35,66 +35,56 @@ class PointDetector(ABC):
 
         return (cx_rounded, cy_rounded), radius_rounded
 
-    def get_point_coord(self, depth_frame, valid_mask, circle, intrinsics: rs.intrinsics,
-                        sigma_factor=0.5) -> np.ndarray | None:
+    def get_point_coord(self, depth_frame, circle, intrinsics: rs.intrinsics) -> np.ndarray | None:
         h, w = depth_frame.shape
-        center, radius, shift = circle
+        center, radius, _ = circle
+
+        safe_radius = radius * 0.8
 
         ix, iy = int(center[0]), int(center[1])
-        margin = int(radius + 0.5)
+        margin = int(safe_radius + 2)
 
         x0, x1 = max(0, ix - margin), min(w, ix + margin + 1)
         y0, y1 = max(0, iy - margin), min(h, iy + margin + 1)
 
         depth_roi = depth_frame[y0:y1, x0:x1]
-        valid_roi = valid_mask[y0:y1, x0:x1]
 
-        if np.sum(valid_roi) < (0.5 * (np.pi * radius ** 2)):
+        y_grid, x_grid = np.ogrid[y0:y1, x0:x1]
+        dist_sq = (x_grid - center[0]) ** 2 + (y_grid - center[1]) ** 2
+        mask = dist_sq <= safe_radius ** 2
+
+        valid_pixels = depth_roi[mask & (depth_roi > 0)]
+
+        if len(valid_pixels) < 5:
             return None
 
-        roi_h, roi_w = depth_roi.shape
-        local_mask = np.zeros((roi_h, roi_w), dtype=np.uint8)
+        depth_median = np.median(valid_pixels)
 
-        local_center = (ix - x0, iy - y0)
+        noise_tolerance = 0.02
+        clean_pixels = valid_pixels[np.abs(valid_pixels - depth_median) < noise_tolerance]
 
-        # Not strictly correct, but helps draw a better circle
-        c_sub, r_sub = self.draw_subpixel_circle(local_center, radius * 2, shift)
-        cv2.circle(local_mask, c_sub, r_sub, 1, -1, shift=shift)
-
-        ksize = int(radius) | 1
-        gaussian_roi = cv2.GaussianBlur(local_mask.astype(float), (ksize, ksize),
-                                        radius * sigma_factor) * valid_roi
-
-        g_sum = gaussian_roi.sum()
-        if g_sum <= 0:
+        if len(clean_pixels) == 0:
             return None
 
-        depth_std = depth_roi.std()
-        if depth_std > self.marker_size:
-            return None
-
-        depth = np.sum(depth_roi * (gaussian_roi / g_sum))
+        depth = np.mean(clean_pixels)
 
         if depth > self.distance_threshold:
             return None
 
         physical_diameter = (radius * 2 * depth) / intrinsics.fx
-        if physical_diameter > self.marker_size * (
-                1 + self.marker_size_tolerance) or physical_diameter < self.marker_size * (
-                1 - self.marker_size_tolerance):
+
+        if abs(physical_diameter - self.marker_size) > (self.marker_size * self.marker_size_tolerance):
             return None
 
         point = rs.rs2_deproject_pixel_to_point(intrinsics, pixel=[center[0], center[1]], depth=depth)
+
         return np.array([point[2], -point[0], -point[1]])
 
     def get_point_coords(self, keypoints: list[cv2.KeyPoint], depth_frame: np.ndarray, intrinsics: rs.intrinsics,
                          shift: int = 3) -> np.ndarray:
-        valid_mask = 0 < depth_frame
-
         points = []
         for kp in keypoints:
             marker_point = self.get_point_coord(depth_frame,
-                                                valid_mask,
                                                 (kp.pt, kp.size / 2, shift),
                                                 intrinsics)
 
@@ -161,18 +151,21 @@ class YOLOPointDetector(PointDetector):
     def detect(self, ir_frame: np.ndarray) -> Sequence[cv2.KeyPoint]:
         results = self.model(ir_frame)
 
-        boxes = results[0].boxes.xyxy.cpu().numpy().astype(int)
+        boxes = results[0].boxes.data.clone()
         boxes[:, [1, 3]] -= self.model.preprocessor.top_pad
 
+        boxes = boxes[:, :4].cpu().numpy().astype(int)
+
+        margin = 1
         keypoints = []
         for box in boxes:
             x1, y1, x2, y2 = box.astype(int)
             h, w = ir_frame.shape
 
-            x1 = max(0, x1 - 1)
-            y1 = max(0, y1 - 1)
-            x2 = min(w, x2 + 1)
-            y2 = min(h, y2 + 1)
+            x1 = max(0, x1 - margin)
+            y1 = max(0, y1 - margin)
+            x2 = min(w, x2 + margin)
+            y2 = min(h, y2 + margin)
 
             roi = ir_frame[y1:y2, x1:x2]
 
