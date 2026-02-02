@@ -8,31 +8,22 @@ from helicopter.vision import D435i
 from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor
 from helicopter.vision.point_detection.measurement import YOLOPointDetector
 from helicopter.vision.measurement.filter_functions import transition_fn, measurement_fn
-from helicopter.vision.measurement.scanner import Scanner, CameraStateHandler, PointHandler, MadgwickFilter
+from helicopter.vision.measurement.scanner import Scanner, CameraStateHandler, PointHandler
 
 
-def build_Q_matrix(dt: float) -> np.ndarray:
-    sigma_arw = 0.028 * (np.pi / 180.0)
-
-    g_m_s2 = 9.81
-    sigma_vrw = 150e-6 * g_m_s2
-
-    sigma_bgrw = 1.0e-4
-    sigma_barw = 1.0e-4
+def build_Q_matrix(dt: float, std_devs: dict) -> np.ndarray:
     I = np.eye(3)
 
-    Q_dtheta = (sigma_arw ** 2) * I * dt
-    Q_dp = 1.0e-5 * I * dt
+    Q_dtheta = (std_devs['gyro'] ** 2) * I * dt
 
-    Q_dv = (sigma_vrw ** 2) * I * dt
+    Q_dp = std_devs['vel'] * I * dt
 
-    Q_dba = (sigma_barw ** 2) * I * dt
+    Q_dv = (std_devs['accel'] ** 2) * I * dt
 
-    Q_dbg = (sigma_bgrw ** 2) * I * dt
+    Q_dba = (std_devs['bias'] ** 2) * I * dt
+    Q_dbg = (std_devs['bias'] ** 2) * I * dt
 
-    Q = linalg.block_diag(Q_dtheta, Q_dp, Q_dv, Q_dba, Q_dbg)
-
-    return Q
+    return linalg.block_diag(Q_dtheta, Q_dp, Q_dv, Q_dba, Q_dbg)
 
 
 def initialize_P_matrix(std_devs: dict) -> np.ndarray:
@@ -61,37 +52,43 @@ def initialize_R_matrix(std_devs: dict) -> np.ndarray:
     var_q = std_q ** 2
     var_p = std_devs['dp_vis'] ** 2
 
-    diag = np.array([var_q, var_q, var_q, var_p, var_p, var_p])
+    diag = np.array([var_q, var_q, var_q, var_p, var_p * 100, var_p * 100])
 
     return np.diag(diag)
 
 
 if __name__ == '__main__':
-    points = MerweScaledSigmaPoints(n=15, alpha=0.1, beta=2., kappa=0.)
+    points = MerweScaledSigmaPoints(n=15, alpha=0.1, beta=2., kappa=-1)
     ukf = UnscentedKalmanFilter(dim_x=15, dim_z=6, dt=1 / 200,
                                 hx=measurement_fn,
                                 fx=transition_fn,
                                 points=points)
 
-    ukf.Q = build_Q_matrix(dt=1 / 200)
+    q_sigmas = {
+        "gyro": 0.028 * (np.pi / 180.0),
+        "vel": 1e-4,
+        "accel": 1e-4,
+        "bias": 1e-4
+    }
+    ukf.Q = build_Q_matrix(dt=1 / 200, std_devs=q_sigmas)
 
     initial_sigmas = {
         'd_theta': 0.075,
-        'dp': 0.005,
-        'dv': 0.001,
-        'dba': 0.5,
-        'dbg': 0.5
+        'dp': 1e-4,
+        'dv': 1e-4,
+        'dba': 0.75,
+        'dbg': 0.1
     }
     ukf.P = initialize_P_matrix(initial_sigmas)
 
     visual_sigmas = {
-        'd_theta_vis': 0.04,
-        'dp_vis': 0.01
+        'd_theta_vis': 0.05,
+        'dp_vis': 0.005
     }
     ukf.R = initialize_R_matrix(visual_sigmas)
 
     device = D435i(enable_motion=True, projector_power=360., autoexpose=False, exposure_time=1600,
-                   ema_factor=0.15)
+                   ema_factor=0.2)
 
     point_handler = PointHandler(
         detector=YOLOPointDetector(
@@ -108,10 +105,10 @@ if __name__ == '__main__':
 
     scanner = Scanner(device=device,
                       point_handler=point_handler,
-                      camera_state_handler=CameraStateHandler(),
+                      camera_state_handler=CameraStateHandler(ransac_iters=200),
                       ukf=ukf,
-                      madgwick=MadgwickFilter(beta=0.033),
-                      measurement_time=10.0)
+                      measurement_time=10.0,
+                      vis_ema=0.2)
 
     scanner.scan()
 

@@ -143,7 +143,7 @@ def register_points(_point_collection: list[np.ndarray]):
         if len(_registered_points) < 1:
             return None
 
-        point_list = [pq.mean for pq in _registered_points.values()]
+        point_list = [pq.mean() for pq in _registered_points.values()]
         registered_points_coords = np.array(point_list)
 
         norm = np.linalg.norm(registered_points_coords - _point, axis=1)
