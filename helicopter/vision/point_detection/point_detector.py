@@ -13,7 +13,7 @@ class PointDetector(ABC):
     def __init__(self, marker_tolerance: float = 0.01,
                  marker_size: float = 0.003,
                  marker_size_tolerance: float = 0.3,
-                 distance_threshold: float = 0.5,):
+                 distance_threshold: float = 0.5, ):
         self.marker_tolerance = marker_tolerance
         self.marker_size = marker_size
         self.marker_size_tolerance = marker_size_tolerance
@@ -42,10 +42,10 @@ class PointDetector(ABC):
         safe_radius = radius * 0.8
 
         ix, iy = int(center[0]), int(center[1])
-        margin = int(safe_radius + 2)
+        margin = int(safe_radius + 1)
 
-        x0, x1 = max(0, ix - margin), min(w, ix + margin + 1)
-        y0, y1 = max(0, iy - margin), min(h, iy + margin + 1)
+        x0, x1 = max(0, ix - margin), min(w, ix + margin)
+        y0, y1 = max(0, iy - margin), min(h, iy + margin)
 
         depth_roi = depth_frame[y0:y1, x0:x1]
 
@@ -80,20 +80,89 @@ class PointDetector(ABC):
 
         return np.array([point[2], -point[0], -point[1]])
 
-    def get_point_coords(self, keypoints: list[cv2.KeyPoint], depth_frame: np.ndarray, intrinsics: rs.intrinsics,
-                         shift: int = 3) -> np.ndarray:
-        points = []
-        for kp in keypoints:
-            marker_point = self.get_point_coord(depth_frame,
-                                                (kp.pt, kp.size / 2, shift),
-                                                intrinsics)
+    def get_points_coords(self, depth_frame, keypoints, intrinsics) -> np.ndarray:
+        if len(keypoints) == 0:
+            return np.empty((0, 3))
 
-            if marker_point is None:
+        h, w = depth_frame.shape
+
+        valid_depths = []
+        valid_uvs = []
+        valid_radii = []
+
+        for kp in keypoints:
+            cx, cy = kp.pt
+            radius = kp.size / 2
+
+            ix, iy = int(cx), int(cy)
+
+            if ix < 0 or ix >= w or iy < 0 or iy >= h:
                 continue
 
-            points.append(marker_point)
+            safe_r = int(radius * 0.8)
+            if safe_r < 1:
+                safe_r = 1
 
-        return np.array(points)
+            x0, x1 = max(0, ix - safe_r), min(w, ix + safe_r + 1)
+            y0, y1 = max(0, iy - safe_r), min(h, iy + safe_r + 1)
+
+            roi = depth_frame[y0:y1, x0:x1]
+
+            valid_pixels = roi[roi > 0]
+
+            if len(valid_pixels) < 3:
+                continue
+
+            d_mean = np.mean(valid_pixels)
+            d_std = np.std(valid_pixels)
+
+            if d_std > 0.01:
+                d_median = np.median(valid_pixels)
+                clean_pixels = valid_pixels[np.abs(valid_pixels - d_median) < 0.02]
+                if len(clean_pixels) == 0:
+                    continue
+                depth = np.mean(clean_pixels)
+            else:
+                depth = d_mean
+
+            if depth > self.distance_threshold or depth <= 0:
+                continue
+
+            valid_depths.append(depth)
+            valid_uvs.append((cx, cy))
+            valid_radii.append(radius)
+
+        if not valid_depths:
+            return np.empty((0, 3))
+
+        depths = np.array(valid_depths)
+        uvs = np.array(valid_uvs)
+        radii = np.array(valid_radii)
+
+        fx, fy = intrinsics.fx, intrinsics.fy
+        ppx, ppy = intrinsics.ppx, intrinsics.ppy
+
+        z_cam = depths
+        x_cam = (uvs[:, 0] - ppx) * z_cam / fx
+        y_cam = (uvs[:, 1] - ppy) * z_cam / fy
+
+        physical_diameters = (radii * 2 * z_cam) / fx
+
+        size_error = np.abs(physical_diameters - self.marker_size)
+        tolerance = self.marker_size * self.marker_size_tolerance
+
+        valid_mask = size_error <= tolerance
+
+        if not np.any(valid_mask):
+            return np.empty((0, 3))
+
+        x_cam = x_cam[valid_mask]
+        y_cam = y_cam[valid_mask]
+        z_cam = z_cam[valid_mask]
+
+        final_points = np.column_stack((z_cam, -x_cam, -y_cam))
+
+        return final_points
 
 
 class BlobPointDetector(PointDetector):
@@ -148,43 +217,43 @@ class YOLOPointDetector(PointDetector):
         super().__init__(marker_tolerance, marker_size, marker_size_tolerance, distance_threshold)
         self.model = model
 
-    def detect(self, ir_frame: np.ndarray) -> Sequence[cv2.KeyPoint]:
-        results = self.model(ir_frame)
+    @staticmethod
+    def get_refined_keypoints(ir_frame, boxes, margin=2) -> Sequence[cv2.KeyPoint]:
+        if len(boxes) == 0:
+            return []
 
-        boxes = results[0].boxes.data.clone()
-        boxes[:, [1, 3]] -= self.model.preprocessor.top_pad
+        h, w = ir_frame.shape
 
-        boxes = boxes[:, :4].cpu().numpy().astype(int)
+        x1 = np.clip(boxes[:, 0] - margin, 0, w).astype(int)
+        y1 = np.clip(boxes[:, 1] - margin, 0, h).astype(int)
+        x2 = np.clip(boxes[:, 2] + margin, 0, w).astype(int)
+        y2 = np.clip(boxes[:, 3] + margin, 0, h).astype(int)
 
-        margin = 1
         keypoints = []
-        for box in boxes:
-            x1, y1, x2, y2 = box.astype(int)
-            h, w = ir_frame.shape
 
-            x1 = max(0, x1 - margin)
-            y1 = max(0, y1 - margin)
-            x2 = min(w, x2 + margin)
-            y2 = min(h, y2 + margin)
-
-            roi = ir_frame[y1:y2, x1:x2]
+        for i in range(len(boxes)):
+            roi = ir_frame[y1[i]:y2[i], x1[i]:x2[i]]
 
             if roi.size == 0:
                 continue
-            _, binary = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-            contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            _, roi_clean = cv2.threshold(roi, 60, 255, cv2.THRESH_TOZERO)
 
-            if not contours:
+            M = cv2.moments(roi_clean, binaryImage=False)
+
+            if M["m00"] <= 0:
                 continue
 
-            largest_contour = max(contours, key=cv2.contourArea)
+            cx = x1[i] + (M["m10"] / M["m00"])
+            cy = y1[i] + (M["m01"] / M["m00"])
 
-            (cx_roi, cy_roi), radius = cv2.minEnclosingCircle(largest_contour)
+            _radius = np.sqrt(M["m00"] / 255.0 / np.pi)
 
-            final_x = x1 + cx_roi
-            final_y = y1 + cy_roi
+            keypoints.append(cv2.KeyPoint(x=float(cx), y=float(cy), size=float(_radius * 2)))
 
-            keypoints.append(cv2.KeyPoint(x=final_x, y=final_y, size=radius * 2))
+        return keypoints
 
+    def detect(self, ir_frame: np.ndarray) -> Sequence[cv2.KeyPoint]:
+        boxes = self.model(ir_frame)
+        keypoints = self.get_refined_keypoints(ir_frame, boxes, margin=2)
         return keypoints

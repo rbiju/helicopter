@@ -1,13 +1,12 @@
-import time
-
 import cv2
 import numpy as np
-import pyrealsense2 as rs
+from tqdm import tqdm
 
 from ultralytics import YOLO
 
+from helicopter.utils import Profiler
 from helicopter.vision import D435i
-from helicopter.vision.point_detection import HelicopterYOLO
+from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor
 
 
 def draw_subpixel_circle(center, _radius, _shift=4):
@@ -22,134 +21,162 @@ def draw_subpixel_circle(center, _radius, _shift=4):
     return (cx_rounded, cy_rounded), radius_rounded
 
 
+def get_refined_keypoints_fast(ir_frame, _boxes, margin=2):
+    if len(_boxes) == 0:
+        return []
+
+    h, w = ir_frame.shape
+
+    x1 = np.clip(_boxes[:, 0] - margin, 0, w).astype(int)
+    y1 = np.clip(_boxes[:, 1] - margin, 0, h).astype(int)
+    x2 = np.clip(_boxes[:, 2] + margin, 0, w).astype(int)
+    y2 = np.clip(_boxes[:, 3] + margin, 0, h).astype(int)
+
+    keypoints = []
+
+    for i in range(len(_boxes)):
+        roi = ir_frame[y1[i]:y2[i], x1[i]:x2[i]]
+
+        if roi.size == 0: continue
+
+        _, roi_clean = cv2.threshold(roi, 60, 255, cv2.THRESH_TOZERO)
+
+        M = cv2.moments(roi_clean, binaryImage=False)
+
+        if M["m00"] <= 0: continue
+
+        cx = x1[i] + (M["m10"] / M["m00"])
+        cy = y1[i] + (M["m01"] / M["m00"])
+
+        _radius = np.sqrt(M["m00"] / 255.0 / np.pi)
+
+        keypoints.append(cv2.KeyPoint(x=float(cx), y=float(cy), size=float(_radius * 2)))
+
+    return keypoints
+
+
+def get_points_coords(depth_frame, keypoints, intrinsics) -> np.ndarray:
+    if not keypoints:
+        return np.empty((0, 3))
+
+    h, w = depth_frame.shape
+
+    valid_depths = []
+    valid_uvs = []
+    valid_radii = []
+
+    for kp in keypoints:
+        cx, cy = kp.pt
+        radius = kp.size / 2
+
+        ix, iy = int(cx), int(cy)
+
+        if ix < 0 or ix >= w or iy < 0 or iy >= h:
+            continue
+
+        safe_r = int(radius * 0.8)
+        if safe_r < 1:
+            safe_r = 1
+
+        x0, x1 = max(0, ix - safe_r), min(w, ix + safe_r + 1)
+        y0, y1 = max(0, iy - safe_r), min(h, iy + safe_r + 1)
+
+        roi = depth_frame[y0:y1, x0:x1]
+
+        valid_pixels = roi[roi > 0]
+
+        if len(valid_pixels) < 3:
+            continue
+
+        d_mean = np.mean(valid_pixels)
+        d_std = np.std(valid_pixels)
+
+        if d_std > 0.01:
+            d_median = np.median(valid_pixels)
+            clean_pixels = valid_pixels[np.abs(valid_pixels - d_median) < 0.02]
+            if len(clean_pixels) == 0:
+                continue
+            depth = np.mean(clean_pixels)
+        else:
+            depth = d_mean
+
+        if depth > 0.5 or depth <= 0:
+            continue
+
+        valid_depths.append(depth)
+        valid_uvs.append((cx, cy))
+        valid_radii.append(radius)
+
+    if not valid_depths:
+        return np.empty((0, 3))
+
+    depths = np.array(valid_depths)
+    uvs = np.array(valid_uvs)
+    radii = np.array(valid_radii)
+
+    fx, fy = intrinsics.fx, intrinsics.fy
+    ppx, ppy = intrinsics.ppx, intrinsics.ppy
+
+    z_cam = depths
+    x_cam = (uvs[:, 0] - ppx) * z_cam / fx
+    y_cam = (uvs[:, 1] - ppy) * z_cam / fy
+
+    physical_diameters = (radii * 2 * z_cam) / fx
+
+    size_error = np.abs(physical_diameters - 0.003)
+    tolerance = 0.003 * 0.5
+
+    valid_mask = size_error <= tolerance
+
+    if not np.any(valid_mask):
+        return np.empty((0, 3))
+
+    x_cam = x_cam[valid_mask]
+    y_cam = y_cam[valid_mask]
+    z_cam = z_cam[valid_mask]
+
+    final_points = np.column_stack((z_cam, -x_cam, -y_cam))
+
+    return final_points
+
+
 if __name__ == '__main__':
+    profiler = Profiler()
     camera = D435i(projector_power=360.,
                    autoexpose=False,
-                   exposure_time=2000)
+                   exposure_time=1600)
+    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
+                                      task='detect'),
+                           preprocessor=GPUImagePreprocessor(),
+                           conf=0.3)
+    pbar = tqdm(desc='Collecting Frames')
     ir_image = None
     depth_image = None
     frame_count = 0
-    while frame_count < 1:
+    while frame_count < 50:
         frames = camera.pipeline.wait_for_frames()
         depth_image, ts_depth, ir_image, ts_ir, laser_state = camera.process_frames(frames)
         frame_count += 1
+        pbar.update(1)
+
+        if ir_image is not None:
+            profiler.start('E2E')
+            profiler.start("Inference")
+            profiler.start("Detect")
+
+            boxes = model(ir_image)
+            profiler.end("Inference")
+
+            profiler.start('Keypoints')
+            circles = get_refined_keypoints_fast(ir_image, boxes, margin=2)
+            profiler.end("Keypoints")
+            profiler.end("Detect")
+
+            profiler.start("Deproject")
+            points = get_points_coords(depth_image, circles, camera.intrinsics)
+            profiler.end("Deproject")
+            profiler.end("E2E")
 
     camera.stop()
-
-    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure/weights/best.engine',
-                                      task='detect'),
-                           conf=0.6)
-
-    if ir_image is not None:
-        start_detect = time.perf_counter()
-        results = model(ir_image)
-        end_inference = time.perf_counter()
-
-        boxes = results[0].boxes.data
-
-        high_conf_mask = boxes[:, 4] > 0.6
-        clean_boxes = boxes[high_conf_mask]
-        clean_boxes[:, [1, 3]] -= model.preprocessor.top_pad
-
-        boxes = clean_boxes[:, :4].cpu().numpy().astype(int)
-
-        circles = []
-        for box in boxes:
-            x1, y1, x2, y2 = box
-            h, w = ir_image.shape
-
-            # 1. Safe Crop (Handle edges)
-            x1 = max(0, x1 - 1)
-            y1 = max(0, y1 - 1)
-            x2 = min(w, x2 + 1)
-            y2 = min(h, y2 + 1)
-
-            roi = ir_image[y1:y2, x1:x2]
-
-            if roi.size == 0:
-                continue
-            _, binary = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-            contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-            if not contours:
-                continue
-
-            largest_contour = max(contours, key=cv2.contourArea)
-
-            (cx_roi, cy_roi), radius = cv2.minEnclosingCircle(largest_contour)
-
-            final_x = x1 + cx_roi
-            final_y = y1 + cy_roi
-
-            circles.append(cv2.KeyPoint(x=final_x, y=final_y, size=radius * 2))
-
-        end_detect = time.perf_counter()
-        detect_time = end_detect - start_detect
-
-        valid_mask = depth_image > 0
-        filtered_keypoints = []
-        points = []
-        shift = 4
-        h, w = depth_image.shape
-        for kp in circles:
-            r_pixel = kp.size / 2
-            ix, iy = int(kp.pt[0]), int(kp.pt[1])
-            margin = int(r_pixel + 0.5)
-
-            x0, x1 = max(0, ix - margin), min(w, ix + margin + 1)
-            y0, y1 = max(0, iy - margin), min(h, iy + margin + 1)
-
-            depth_roi = depth_image[y0:y1, x0:x1]
-            valid_roi = valid_mask[y0:y1, x0:x1]
-
-            if np.sum(valid_roi) < (0.5 * (np.pi * r_pixel ** 2)):
-                continue
-
-            roi_h, roi_w = depth_roi.shape
-            local_mask = np.zeros((roi_h, roi_w), dtype=np.uint8)
-
-            local_center = (kp.pt[0] - x0, kp.pt[1] - y0)
-
-            c_sub, r_sub = draw_subpixel_circle(local_center, r_pixel, shift)
-            cv2.circle(local_mask, c_sub, r_sub, 1, -1, shift=shift)
-
-            ksize = max(int(r_pixel) | 1, 3)
-            gaussian_roi = cv2.GaussianBlur(local_mask.astype(float), (ksize, ksize),
-                                            r_pixel * 0.9) * valid_roi
-
-            g_sum = gaussian_roi.sum()
-            if g_sum <= 0:
-                continue
-
-            depth_std = depth_roi.std()
-            if depth_std > 0.003:
-                continue
-
-            depth = np.sum(depth_roi * gaussian_roi / g_sum)
-            if np.isnan(depth):
-                continue
-            if depth > 0.5:
-                continue
-
-            physical_diameter = (r_pixel * 2 * depth) / camera.intrinsics.fx
-            if physical_diameter > 0.003 * (1 + 0.5) or physical_diameter < 0.003 * 0.5:
-                continue
-
-            filtered_keypoints.append(kp)
-
-            point = rs.rs2_deproject_pixel_to_point(camera.intrinsics, pixel=[kp.pt[0], kp.pt[1]], depth=depth)
-            points.append(np.array([point[2], -point[0], -point[1]]))
-
-        end_point_get = time.perf_counter()
-        point_get = end_point_get - start_detect
-
-        display_image = ir_image.copy()
-        display_image = cv2.cvtColor(display_image, cv2.COLOR_GRAY2BGR)
-        for kp in filtered_keypoints:
-            (cx, cy) = kp.pt
-            radius = kp.size / 2
-            # c_sub, r_sub = draw_subpixel_circle((cx, cy), radius, 0)
-            cv2.circle(display_image, (int(cx), int(cy)), int(kp.size), (255, 0, 0), 1)
 
     print('done')

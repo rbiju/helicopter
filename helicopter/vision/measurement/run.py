@@ -6,7 +6,7 @@ from ultralytics import YOLO
 
 from helicopter.vision import D435i
 from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor
-from helicopter.vision.point_detection.measurement import YOLOPointDetector
+from helicopter.vision.point_detection import YOLOPointDetector
 from helicopter.vision.measurement.filter_functions import transition_fn, measurement_fn
 from helicopter.vision.measurement.scanner import Scanner, CameraStateHandler, PointHandler
 
@@ -48,26 +48,22 @@ def initialize_P_matrix(std_devs: dict) -> np.ndarray:
 
 
 def initialize_R_matrix(std_devs: dict) -> np.ndarray:
-    std_q = std_devs['d_theta_vis'] / 2
-    var_q = std_q ** 2
-    var_p = std_devs['dp_vis'] ** 2
-
-    diag = np.array([var_q, var_q, var_q, var_p, var_p * 100, var_p * 100])
+    diag = np.array([std_devs['dp_x'] ** 2, std_devs['dp_y'] ** 2, std_devs['dp_z'] ** 2])
 
     return np.diag(diag)
 
 
 if __name__ == '__main__':
-    points = MerweScaledSigmaPoints(n=15, alpha=0.1, beta=2., kappa=-1)
-    ukf = UnscentedKalmanFilter(dim_x=15, dim_z=6, dt=1 / 200,
+    points = MerweScaledSigmaPoints(n=15, alpha=0.0001, beta=2., kappa=0)
+    ukf = UnscentedKalmanFilter(dim_x=15, dim_z=3, dt=1 / 200,
                                 hx=measurement_fn,
                                 fx=transition_fn,
                                 points=points)
 
     q_sigmas = {
-        "gyro": 0.028 * (np.pi / 180.0),
-        "vel": 1e-4,
-        "accel": 1e-4,
+        "gyro": 0.03 * (np.pi / 180.0),
+        "vel": 1e-6,
+        "accel": 1e-5,
         "bias": 1e-4
     }
     ukf.Q = build_Q_matrix(dt=1 / 200, std_devs=q_sigmas)
@@ -75,25 +71,27 @@ if __name__ == '__main__':
     initial_sigmas = {
         'd_theta': 0.075,
         'dp': 1e-4,
-        'dv': 1e-4,
-        'dba': 0.75,
+        'dv': 1e-6,
+        'dba': 1.0,
         'dbg': 0.1
     }
     ukf.P = initialize_P_matrix(initial_sigmas)
 
     visual_sigmas = {
-        'd_theta_vis': 0.05,
-        'dp_vis': 0.005
+        'dp_x': 0.005,
+        'dp_y': 0.005,
+        'dp_z': 0.005,
     }
     ukf.R = initialize_R_matrix(visual_sigmas)
 
-    device = D435i(enable_motion=True, projector_power=360., autoexpose=False, exposure_time=1600,
+    device = D435i(enable_motion=True, video_rate=30,
+                   projector_power=360., autoexpose=False, exposure_time=1600,
                    ema_factor=0.2)
 
     point_handler = PointHandler(
         detector=YOLOPointDetector(
             model=HelicopterYOLO(preprocessor=GPUImagePreprocessor(imgsz=device.IR_RESOLUTION),
-                                 model=YOLO('/home/ray/yolo_models/helicopter/measure/weights/best.engine',
+                                 model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                             task='detect'),
                                  conf=0.6),
             marker_tolerance=0.01,
@@ -105,10 +103,10 @@ if __name__ == '__main__':
 
     scanner = Scanner(device=device,
                       point_handler=point_handler,
-                      camera_state_handler=CameraStateHandler(ransac_iters=200),
+                      camera_state_handler=CameraStateHandler(),
                       ukf=ukf,
-                      measurement_time=10.0,
-                      vis_ema=0.2)
+                      measurement_time=5.0,
+                      R=ukf.R.copy())
 
     scanner.scan()
 

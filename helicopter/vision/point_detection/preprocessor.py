@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
 import math
 
+import cv2
+import numpy as np
 import torch
 from torchvision.transforms import Pad
-import numpy as np
-import cv2
 
 
 class ImagePreprocessor(ABC, torch.nn.Module):
@@ -35,14 +35,16 @@ class GPUImagePreprocessor(ImagePreprocessor):
 
         self.pad = Pad(self.pad_sequence, fill=114)
 
+        self.kernel = torch.ones(9, 3).to(self.device)
+
     def preprocess(self, ir_frame: np.ndarray):
         tensor = torch.from_numpy(ir_frame)
         tensor = tensor.to(self.device, non_blocking=True)
         tensor = self.pad(tensor)
-
         tensor = tensor.expand(1, 3, -1, -1).contiguous().float()
 
         tensor = tensor / 255.
+
         return tensor
 
 

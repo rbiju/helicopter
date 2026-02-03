@@ -3,7 +3,7 @@ import pyrealsense2
 import quaternion
 from scipy.optimize import linear_sum_assignment
 
-from helicopter.vision import PointQueue
+from helicopter.utils import PointQueue
 from .point_detector import PointDetector
 
 
@@ -75,10 +75,9 @@ class PointHandler:
         return corrected_points[row_idx], row_idx, col_idx
 
     def get_measured_points(self, ir_frame: np.ndarray, depth_frame: np.ndarray,
-                            intrinsics: pyrealsense2.intrinsics,
-                            shift=2):
+                            intrinsics: pyrealsense2.intrinsics):
         keypoints = self.detector.detect(ir_frame)
-        marker_coords = self.detector.get_point_coords(keypoints, depth_frame, intrinsics, shift)
+        marker_coords = self.detector.get_points_coords(depth_frame, keypoints, intrinsics)
 
         if len(marker_coords) <= 3:
             print('Not enough points')

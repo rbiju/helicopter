@@ -8,13 +8,14 @@ import numpy as np
 import quaternion
 from filterpy.kalman import UnscentedKalmanFilter
 
+from helicopter.utils import PointQueue, Profiler
 from helicopter.vision.d435i import D435i
-from helicopter.vision.point_detection.measurement.point_handler import PointHandler
+from helicopter.vision.point_detection import PointHandler
+
 from .logger import StateLogger
 from .camera_state_handler import CameraStateHandler
-from helicopter.vision import PointQueue
 
-from .filter_functions import compose_fn, project_to_tangent_space, propagate
+from .filter_functions import compose_fn, propagate
 
 
 class Scanner:
@@ -23,12 +24,13 @@ class Scanner:
                  point_handler: PointHandler,
                  camera_state_handler: CameraStateHandler,
                  ukf: UnscentedKalmanFilter,
-                 measurement_time: float = 5.0,
-                 vis_ema: float = 0.5):
+                 R: np.ndarray,
+                 measurement_time: float = 5.0):
         self.device = device
         self.point_handler = point_handler
         self.camera_state_handler = camera_state_handler
         self.ukf = ukf
+        self.profiler = Profiler()
 
         self.measurement_time = measurement_time
 
@@ -45,17 +47,13 @@ class Scanner:
 
         self.logger = StateLogger()
 
-        self.update_time = 0
-
         self.last_fused_time = 0.0
         self.first_imu_frame = True
 
         self.vision_queue = queue.Queue()
         self.imu_queue = deque(maxlen=25)
 
-        self.vis_ema_param = vis_ema
-        self.smooth_vis_translation = None
-        self.smooth_vis_quat = None
+        self.R = R
 
     def initialize_orientation(self):
         accel_queue = PointQueue(750, np.array([0, 0, 0.0]))
@@ -103,7 +101,7 @@ class Scanner:
         self.camera_state_handler.quaternion = quat
         self.camera_state_handler.last_quaternion = quat
 
-        print("Orientation initialized")
+        print(f"Orientation initialized, mean acceleration: {v_B}")
 
     def imu_loop(self):
         is_first_frame = True
@@ -134,10 +132,11 @@ class Scanner:
             depth_image, ts_depth, ir_image, ts_ir, laser_state = self.device.process_frames(frames)
 
             if ir_image is not None:
+                self.profiler.start('Measure_Points')
                 measured_out = self.point_handler.get_measured_points(ir_frame=ir_image,
                                                                       depth_frame=depth_image,
                                                                       intrinsics=self.device.intrinsics)
-
+                self.profiler.end('Measure_Points')
                 if measured_out is None:
                     continue
                 else:
@@ -153,7 +152,6 @@ class Scanner:
 
         self.started_running = True
         self.is_running = True
-
         self.imu_thread.start()
         self.vision_thread.start()
 
@@ -171,8 +169,7 @@ class Scanner:
             except queue.Empty:
                 continue
 
-            start_update = time.perf_counter()
-
+            self.profiler.start('IMU_Integration')
             while self.imu_queue:
                 imu_t, accel, gyro = self.imu_queue[0]
 
@@ -206,80 +203,39 @@ class Scanner:
 
                 self.logger.log_state(timestamp=imu_t, event='imu', state_vector=propagated_nominal)
                 self.camera_state_handler.set_state_from_nominal(propagated_nominal)
+            self.profiler.end('IMU_Integration')
 
             camera_pos = self.camera_state_handler.position
             camera_quat = self.camera_state_handler.quaternion
 
+            self.profiler.start('Match_Points')
             measured_points_wf, measure_idx, reference_idx = self.point_handler.match_points(
                 measured_points,
                 camera_position=camera_pos,
                 camera_quat=camera_quat)
+            self.profiler.end('Match_Points')
 
-            reference_points = self.point_handler.point_map[reference_idx]
-
-            success, visual_quat, visual_translation, rmse = self.camera_state_handler.get_visual_pose(
-                measured_points=measured_points[measure_idx],
-                reference_points=reference_points,
-                quat=camera_quat)
-
-            if not success:
-                continue
-            else:
-                if self.smooth_vis_translation is None:
-                    self.smooth_vis_translation = visual_translation
-                    self.smooth_vis_quat = visual_quat
-                else:
-                    self.smooth_vis_translation = (self.vis_ema_param * visual_translation) + \
-                                                  ((1 - self.vis_ema_param) * self.smooth_vis_translation)
-
-                    self.smooth_vis_quat = quaternion.slerp(self.smooth_vis_quat,
-                                                            visual_quat,
-                                                            0, 1,
-                                                            self.vis_ema_param).normalized()
-
-                position_delta = self.smooth_vis_translation - camera_pos
-                if np.linalg.norm(position_delta) > 0.05:
-                    print(
-                        f'Jump from {camera_pos} to {visual_translation} detected')
-                    continue
-
-                projected_z = project_to_tangent_space(self.smooth_vis_quat, self.smooth_vis_translation,
-                                                       camera_quat, camera_pos)
-
-                self.point_handler.append_points(measured_points_wf, reference_idx)
-
-                quality_factor = (rmse / 0.0005) ** 2
-                ukf_R = self.ukf.R.copy() * max(1.0, quality_factor)
-
-                x_backup = self.ukf.x.copy()
-                P_backup = self.ukf.P.copy()
-
+            self.profiler.start('UKF_Update')
+            for m_idx, r_idx in zip(measure_idx, reference_idx):
+                self.ukf.sigmas_f = self.ukf.points_fn.sigma_points(self.ukf.x, self.ukf.P)
                 self.ukf.update(
-                    z=projected_z,
-                    R=ukf_R,
-                    nominal_state=self.camera_state_handler.nominal_state.copy())
+                    z=measured_points[m_idx],
+                    nominal_state=self.camera_state_handler.nominal_state.copy(),
+                    map_point=self.point_handler.point_map[r_idx])
 
-                if self.ukf.mahalanobis > self.GATE_THRESHOLD:
-                    print(f"REJECTED: Outlier detected (Score: {self.ukf.mahalanobis:.2f})")
+            self.ukf.P = (self.ukf.P + self.ukf.P.T) / 2.0
+            self.ukf.P += np.eye(len(self.ukf.x)) * 1e-6
 
-                    self.ukf.x = x_backup
-                    self.ukf.P = P_backup
+            nominal_state = compose_fn(self.camera_state_handler.nominal_state.copy(),
+                                       self.ukf.x.copy())
 
-                    continue
+            self.camera_state_handler.set_state_from_nominal(nominal_state.copy())
+            self.ukf.x.fill(0)
+            self.profiler.end('UKF_Update')
 
-                nominal_state = compose_fn(self.camera_state_handler.nominal_state.copy(),
-                                           self.ukf.x.copy())
+            self.point_handler.append_points(measured_points_wf, reference_idx)
 
-                self.camera_state_handler.set_state_from_nominal(nominal_state.copy())
-                self.ukf.x.fill(0)
-
-                self.logger.log_state(timestamp=vision_time, event='vision', state_vector=nominal_state)
-                self.logger.log_vision(timestamp=vision_time, quat=visual_quat, translation=visual_translation)
-
-                end_update = time.perf_counter()
-
-                self.update_time = (end_update - start_update)
-
+            self.logger.log_state(timestamp=vision_time, event='vision', state_vector=nominal_state)
         pbar.close()
 
     def scan(self):
@@ -296,3 +252,4 @@ class Scanner:
 
             if self.started_running:
                 self.logger.save()
+                print(self.profiler)
