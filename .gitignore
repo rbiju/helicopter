@@ -4,5 +4,5 @@
 /notebooks/imu_log.csv
 /notebooks/log.csv
 /notebooks/vision_log.csv
-/.idea/
-/.DS_Store
+.idea/
+.DS_Store
