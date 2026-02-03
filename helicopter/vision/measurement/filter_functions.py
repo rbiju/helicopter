@@ -1,6 +1,5 @@
 import numpy as np
 import quaternion
-from torch.nn.init import normal_
 
 IDX_Q = slice(0, 4)
 IDX_P = slice(4, 7)
@@ -79,26 +78,14 @@ def transition_fn(error_state: np.ndarray,
     return decompose_fn(propagated_nominal, propagated_full)
 
 
-def project_to_tangent_space(measured_quat,
-                             measured_pos: np.ndarray,
-                             ref_quat: quaternion.quaternion,
-                             ref_position: np.ndarray) -> np.ndarray:
-    q_diff = ref_quat.conjugate() * measured_quat
-
-    if q_diff.w < 0:
-        q_diff = -q_diff
-
-    rot_vec = quaternion.as_rotation_vector(q_diff)
-    pos_error = measured_pos - ref_position
-
-    return np.concatenate([rot_vec, pos_error])
-
-
 def measurement_fn(error_state: np.ndarray,
-                   nominal_state: np.ndarray) -> np.ndarray:
+                   nominal_state: np.ndarray,
+                   map_point: np.ndarray) -> np.ndarray:
     full_state_hypothesis = compose_fn(nominal_state, error_state)
 
-    q_sigma = quaternion.quaternion(*full_state_hypothesis[IDX_Q])
-    p_sigma = full_state_hypothesis[IDX_P]
+    q = quaternion.from_float_array(full_state_hypothesis[IDX_Q])
+    t = full_state_hypothesis[IDX_P]
 
-    return project_to_tangent_space(q_sigma, p_sigma, quaternion.from_float_array(nominal_state[IDX_Q]), nominal_state[IDX_P])
+    camera_frame_point = quaternion.rotate_vectors(q, map_point - t)
+
+    return camera_frame_point

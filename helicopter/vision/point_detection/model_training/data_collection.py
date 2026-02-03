@@ -12,10 +12,10 @@ if __name__ == '__main__':
     camera = D435i(projector_power=360.,
                    toggle_projector=False,
                    autoexpose=False,
-                   exposure_time=1600)
+                   exposure_time=2400)
 
     images = []
-    for i in tqdm(range(25)):
+    for i in tqdm(range(10)):
         frames = camera.pipeline.wait_for_frames()
         depth_image, ts_depth, ir_image, ts_ir, laser_state = camera.process_frames(frames)
 

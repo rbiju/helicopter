@@ -40,13 +40,3 @@ class PointQueue:
 
     def __str__(self):
         return "tail: " + str(self.queue_tail) + "\narray:\n" + str(self.rec_queue)
-
-
-class PrintHider:
-    def __enter__(self):
-        self._original_stdout = sys.stdout
-        sys.stdout = open(os.devnull, 'w')
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stdout.close()
-        sys.stdout = self._original_stdout

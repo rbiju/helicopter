@@ -5,7 +5,7 @@ import cv2
 import pyrealsense2 as rs
 
 from helicopter.vision import D435i
-from helicopter.vision.utils import PointQueue
+from helicopter.utils import PointQueue, Profiler
 
 
 def snapshot(_camera: D435i):
@@ -172,9 +172,12 @@ if __name__ == '__main__':
 
     final_detections = []
     point_collection = []
-    for i in range(100):
+    profiler = Profiler()
+    for i in range(50):
         _depth_image, _ir_image = snapshot(camera)
+        profiler.start('detection')
         detect_out = detect_points(_ir_image, _depth_image, camera.intrinsics)
+        profiler.end('detection')
         if detect_out is None:
             continue
         else:
@@ -186,11 +189,10 @@ if __name__ == '__main__':
 
     camera.stop()
 
-    start_register = time.perf_counter()
+    profiler.start('register')
     registered_points = register_points(point_collection)
-    end_register = time.perf_counter()
+    profiler.end('register')
 
-    print(f"Register time: {end_register-start_register}")
     out = np.vstack([pq.mean for pq in registered_points.values()])
     string_out = np.array2string(out, precision=4, separator=', ')
     print(string_out)

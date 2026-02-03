@@ -7,9 +7,9 @@
 #
 # from helicopter.vision.d435i import D435i
 # from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor
-# from helicopter.vision.point_detection.measurement import YOLOPointDetector
-# from helicopter.vision.measurement.logger import StateLogger
-# from helicopter.vision.measurement.scanner import CameraStateHandler, PointHandler, PointQueue
+# from helicopter.vision.point_detection.model_training import YOLOPointDetector
+# from helicopter.vision.model_training.logger import StateLogger
+# from helicopter.vision.model_training.scanner import CameraStateHandler, PointHandler, PointQueue
 #
 #
 # class VisionOnlyMeasurementTool:
@@ -72,7 +72,7 @@
 #
 #     def loop(self):
 #         try:
-#             print("Starting measurement in...")
+#             print("Starting model_training in...")
 #             time.sleep(0.5)
 #             print('3')
 #             time.sleep(0.5)

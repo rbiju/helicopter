@@ -55,13 +55,13 @@ def control_process(shared_coords, new_data_evt):
         kf.predict(dt, last_command)
 
         # --- KALMAN STEP 2: CORRECTION (Asynchronous) ---
-        # Check if the CV process has posted a new measurement
+        # Check if the CV process has posted a new model_training
         if new_data_evt.is_set():
             with shared_coords.get_lock():
-                measurement = list(shared_coords)
+                model_training = list(shared_coords)
 
             new_data_evt.clear() # Reset the flag
-            kf.update(measurement) # Correct the filter with real data
+            kf.update(model_training) # Correct the filter with real data
 
         # --- CONTROL STEP ---
         filtered_state = kf.get_state()

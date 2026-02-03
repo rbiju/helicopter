@@ -54,6 +54,7 @@ class D435i:
             motion_sensor = device.first_motion_sensor()
             motion_sensor.set_option(rs.option.frames_queue_size, 1)
             motion_sensor.set_option(rs.option.global_time_enabled, 1)
+            motion_sensor.set_option(rs.option.enable_motion_correction, 1)
 
             self.imu_pipeline, self.imu_profile = self.setup_imu(serial)
 
