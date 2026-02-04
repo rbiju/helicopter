@@ -6,3 +6,4 @@
 /notebooks/vision_log.csv
 .idea/
 .DS_Store
+/helicopter/vision/test_scripts/detections.mp4

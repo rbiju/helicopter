@@ -1,10 +1,10 @@
 import time
 import threading
-from collections import deque
 import queue
 
 from tqdm import tqdm
 import numpy as np
+import scipy
 import quaternion
 from filterpy.kalman import UnscentedKalmanFilter
 
@@ -24,7 +24,6 @@ class Scanner:
                  point_handler: PointHandler,
                  camera_state_handler: CameraStateHandler,
                  ukf: UnscentedKalmanFilter,
-                 R: np.ndarray,
                  measurement_time: float = 5.0):
         self.device = device
         self.point_handler = point_handler
@@ -50,10 +49,10 @@ class Scanner:
         self.last_fused_time = 0.0
         self.first_imu_frame = True
 
-        self.vision_queue = queue.Queue()
-        self.imu_queue = deque(maxlen=25)
+        self.vision_queue = queue.Queue(maxsize=1)
+        self.imu_queue = queue.Queue(maxsize=25)
 
-        self.R = R
+        self.R = self.ukf.R.copy()
 
     def initialize_orientation(self):
         accel_queue = PointQueue(750, np.array([0, 0, 0.0]))
@@ -99,14 +98,13 @@ class Scanner:
 
         self.camera_state_handler.gyro_bias = gyro_queue.mean()
         self.camera_state_handler.quaternion = quat
-        self.camera_state_handler.last_quaternion = quat
 
         print(f"Orientation initialized, mean acceleration: {v_B}")
 
     def imu_loop(self):
         is_first_frame = True
         while self.is_running:
-            imu_frames = self.device.imu_pipeline.wait_for_frames()
+            imu_frames = self.device.imu_pipeline.wait_for_frames(timeout_ms=100)
 
             imu_data = self.device.process_imu_frames(imu_frames)
 
@@ -123,25 +121,22 @@ class Scanner:
             if dt <= 0:
                 continue
 
-            self.imu_queue.append((timestamp, accel, gyro))
+            try:
+                self.imu_queue.put((timestamp, accel, gyro), block=False)
+            except queue.Full:
+                continue
 
     def vision_loop(self):
         while self.is_running:
-            frames = self.device.pipeline.wait_for_frames()
+            frames = self.device.pipeline.wait_for_frames(timeout_ms=100)
 
             depth_image, ts_depth, ir_image, ts_ir, laser_state = self.device.process_frames(frames)
 
             if ir_image is not None:
-                self.profiler.start('Measure_Points')
-                measured_out = self.point_handler.get_measured_points(ir_frame=ir_image,
-                                                                      depth_frame=depth_image,
-                                                                      intrinsics=self.device.intrinsics)
-                self.profiler.end('Measure_Points')
-                if measured_out is None:
+                try:
+                    self.vision_queue.put((ts_ir, ir_image, depth_image), block=False)
+                except queue.Full:
                     continue
-                else:
-                    measured_points, keypoints = measured_out
-                    self.vision_queue.put((ts_ir, measured_points))
 
     def loop(self):
         # flushing device buffers
@@ -165,13 +160,21 @@ class Scanner:
 
             try:
                 vision_data = self.vision_queue.get(timeout=0.1)
-                vision_time, measured_points = vision_data
+                vision_time, ir_frame, depth_frame = vision_data
             except queue.Empty:
                 continue
 
+            self.profiler.start("Measure_Points")
+            measured_out = self.point_handler.get_measured_points(ir_frame, depth_frame, self.device.intrinsics)
+            self.profiler.end("Measure_Points")
+            if measured_out is None:
+                continue
+            else:
+                measured_points, keypoints = measured_out
+
             self.profiler.start('IMU_Integration')
             while self.imu_queue:
-                imu_t, accel, gyro = self.imu_queue[0]
+                imu_t, accel, gyro = self.imu_queue.get()
 
                 if self.first_imu_frame:
                     self.last_fused_time = imu_t
@@ -183,7 +186,6 @@ class Scanner:
                 if imu_t > vision_time:
                     break
 
-                self.imu_queue.popleft()
                 dt = imu_t - self.last_fused_time
                 self.last_fused_time = imu_t
 
@@ -216,15 +218,15 @@ class Scanner:
             self.profiler.end('Match_Points')
 
             self.profiler.start('UKF_Update')
-            for m_idx, r_idx in zip(measure_idx, reference_idx):
-                self.ukf.sigmas_f = self.ukf.points_fn.sigma_points(self.ukf.x, self.ukf.P)
-                self.ukf.update(
-                    z=measured_points[m_idx],
-                    nominal_state=self.camera_state_handler.nominal_state.copy(),
-                    map_point=self.point_handler.point_map[r_idx])
+            R = scipy.linalg.block_diag(*[self.R for _ in range(len(measure_idx))])
+            self.ukf.update(
+                z=measured_points[measure_idx].flatten(),
+                R=R,
+                nominal_state=self.camera_state_handler.nominal_state.copy(),
+                map_point=self.point_handler.point_map[reference_idx])
 
             self.ukf.P = (self.ukf.P + self.ukf.P.T) / 2.0
-            self.ukf.P += np.eye(len(self.ukf.x)) * 1e-6
+            self.ukf.P += np.eye(len(self.ukf.x)) * 2e-6
 
             nominal_state = compose_fn(self.camera_state_handler.nominal_state.copy(),
                                        self.ukf.x.copy())
@@ -245,10 +247,16 @@ class Scanner:
 
         finally:
             print("Cleaning up sensor")
-            self.device.stop()
 
-            if self.is_running:
-                self.is_running = False
+            self.is_running = False
+
+            if self.imu_thread.is_alive():
+                self.imu_thread.join(timeout=1.0)
+
+            if self.vision_thread.is_alive():
+                self.vision_thread.join(timeout=1.0)
+
+            self.device.stop()
 
             if self.started_running:
                 self.logger.save()

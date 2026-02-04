@@ -12,7 +12,7 @@ from helicopter.vision.point_detection import HelicopterYOLO
 class PointDetector(ABC):
     def __init__(self, marker_tolerance: float = 0.01,
                  marker_size: float = 0.003,
-                 marker_size_tolerance: float = 0.3,
+                 marker_size_tolerance: float = 0.5,
                  distance_threshold: float = 0.5, ):
         self.marker_tolerance = marker_tolerance
         self.marker_size = marker_size
@@ -87,7 +87,7 @@ class PointDetector(ABC):
         h, w = depth_frame.shape
 
         valid_depths = []
-        valid_uvs = []
+        valid_centers = []
         valid_radii = []
 
         for kp in keypoints:
@@ -129,36 +129,21 @@ class PointDetector(ABC):
                 continue
 
             valid_depths.append(depth)
-            valid_uvs.append((cx, cy))
+            valid_centers.append((cx, cy))
             valid_radii.append(radius)
 
         if not valid_depths:
             return np.empty((0, 3))
 
         depths = np.array(valid_depths)
-        uvs = np.array(valid_uvs)
-        radii = np.array(valid_radii)
+        centers = np.array(valid_centers)
 
         fx, fy = intrinsics.fx, intrinsics.fy
         ppx, ppy = intrinsics.ppx, intrinsics.ppy
 
         z_cam = depths
-        x_cam = (uvs[:, 0] - ppx) * z_cam / fx
-        y_cam = (uvs[:, 1] - ppy) * z_cam / fy
-
-        physical_diameters = (radii * 2 * z_cam) / fx
-
-        size_error = np.abs(physical_diameters - self.marker_size)
-        tolerance = self.marker_size * self.marker_size_tolerance
-
-        valid_mask = size_error <= tolerance
-
-        if not np.any(valid_mask):
-            return np.empty((0, 3))
-
-        x_cam = x_cam[valid_mask]
-        y_cam = y_cam[valid_mask]
-        z_cam = z_cam[valid_mask]
+        x_cam = (centers[:, 0] - ppx) * z_cam / fx
+        y_cam = (centers[:, 1] - ppy) * z_cam / fy
 
         final_points = np.column_stack((z_cam, -x_cam, -y_cam))
 
@@ -255,5 +240,5 @@ class YOLOPointDetector(PointDetector):
 
     def detect(self, ir_frame: np.ndarray) -> Sequence[cv2.KeyPoint]:
         boxes = self.model(ir_frame)
-        keypoints = self.get_refined_keypoints(ir_frame, boxes, margin=2)
+        keypoints = self.get_refined_keypoints(ir_frame, boxes, margin=1)
         return keypoints

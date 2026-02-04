@@ -86,6 +86,6 @@ def measurement_fn(error_state: np.ndarray,
     q = quaternion.from_float_array(full_state_hypothesis[IDX_Q])
     t = full_state_hypothesis[IDX_P]
 
-    camera_frame_point = quaternion.rotate_vectors(q, map_point - t)
+    camera_frame_point = quaternion.rotate_vectors(q.inverse(), map_point - t)
 
-    return camera_frame_point
+    return camera_frame_point.ravel()

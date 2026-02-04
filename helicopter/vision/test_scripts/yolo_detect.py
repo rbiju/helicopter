@@ -37,13 +37,15 @@ def get_refined_keypoints_fast(ir_frame, _boxes, margin=2):
     for i in range(len(_boxes)):
         roi = ir_frame[y1[i]:y2[i], x1[i]:x2[i]]
 
-        if roi.size == 0: continue
+        if roi.size == 0:
+            continue
 
         _, roi_clean = cv2.threshold(roi, 60, 255, cv2.THRESH_TOZERO)
 
         M = cv2.moments(roi_clean, binaryImage=False)
 
-        if M["m00"] <= 0: continue
+        if M["m00"] <= 0:
+            continue
 
         cx = x1[i] + (M["m10"] / M["m00"])
         cy = y1[i] + (M["m01"] / M["m00"])
@@ -140,6 +142,13 @@ def get_points_coords(depth_frame, keypoints, intrinsics) -> np.ndarray:
     return final_points
 
 
+def get_fourcc(codec_str):
+    return (ord(codec_str[0]) & 255) + \
+        ((ord(codec_str[1]) & 255) << 8) + \
+        ((ord(codec_str[2]) & 255) << 16) + \
+        ((ord(codec_str[3]) & 255) << 24)
+
+
 if __name__ == '__main__':
     profiler = Profiler()
     camera = D435i(projector_power=360.,
@@ -150,8 +159,7 @@ if __name__ == '__main__':
                            preprocessor=GPUImagePreprocessor(),
                            conf=0.3)
     pbar = tqdm(desc='Collecting Frames')
-    ir_image = None
-    depth_image = None
+    detected_images = []
     frame_count = 0
     while frame_count < 50:
         frames = camera.pipeline.wait_for_frames()
@@ -169,6 +177,9 @@ if __name__ == '__main__':
 
             profiler.start('Keypoints')
             circles = get_refined_keypoints_fast(ir_image, boxes, margin=2)
+            a = cv2.cvtColor(ir_image, cv2.COLOR_GRAY2RGB)
+            a = cv2.drawKeypoints(ir_image, circles, a, color=(0, 0, 255), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
+            detected_images.append(a)
             profiler.end("Keypoints")
             profiler.end("Detect")
 
@@ -178,5 +189,16 @@ if __name__ == '__main__':
             profiler.end("E2E")
 
     camera.stop()
+
+    print(profiler)
+
+    output_path = "detections.mp4"
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, 60.0, (640, 480), isColor=True)
+
+    for frame in detected_images:
+        out.write(frame)
+
+    out.release()
 
     print('done')

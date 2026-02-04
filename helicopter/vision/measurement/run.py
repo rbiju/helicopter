@@ -62,29 +62,29 @@ if __name__ == '__main__':
 
     q_sigmas = {
         "gyro": 0.03 * (np.pi / 180.0),
-        "vel": 1e-6,
-        "accel": 1e-5,
-        "bias": 1e-4
+        "vel": 1e-5,
+        "accel": 1e-4,
+        "bias": 1e-6
     }
     ukf.Q = build_Q_matrix(dt=1 / 200, std_devs=q_sigmas)
 
     initial_sigmas = {
-        'd_theta': 0.075,
-        'dp': 1e-4,
-        'dv': 1e-6,
-        'dba': 1.0,
-        'dbg': 0.1
+        'd_theta': 0.1,
+        'dp': 1e-5,
+        'dv': 0.1,
+        'dba': 1e-3,
+        'dbg': 1e-5
     }
     ukf.P = initialize_P_matrix(initial_sigmas)
 
     visual_sigmas = {
         'dp_x': 0.005,
-        'dp_y': 0.005,
-        'dp_z': 0.005,
+        'dp_y': 0.01,
+        'dp_z': 0.01,
     }
     ukf.R = initialize_R_matrix(visual_sigmas)
 
-    device = D435i(enable_motion=True, video_rate=30,
+    device = D435i(enable_motion=True, video_rate=60,
                    projector_power=360., autoexpose=False, exposure_time=1600,
                    ema_factor=0.2)
 
@@ -93,10 +93,10 @@ if __name__ == '__main__':
             model=HelicopterYOLO(preprocessor=GPUImagePreprocessor(imgsz=device.IR_RESOLUTION),
                                  model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                             task='detect'),
-                                 conf=0.6),
+                                 conf=0.3),
             marker_tolerance=0.01,
             marker_size=0.003,
-            marker_size_tolerance=0.3,
+            marker_size_tolerance=0.75,
             distance_threshold=0.5
         ),
         queue_len=75)
@@ -105,8 +105,7 @@ if __name__ == '__main__':
                       point_handler=point_handler,
                       camera_state_handler=CameraStateHandler(),
                       ukf=ukf,
-                      measurement_time=5.0,
-                      R=ukf.R.copy())
+                      measurement_time=20.0)
 
     scanner.scan()
 

@@ -51,11 +51,6 @@ class D435i:
         # Starting up sensors
         self.enable_motion = enable_motion
         if enable_motion:
-            motion_sensor = device.first_motion_sensor()
-            motion_sensor.set_option(rs.option.frames_queue_size, 1)
-            motion_sensor.set_option(rs.option.global_time_enabled, 1)
-            motion_sensor.set_option(rs.option.enable_motion_correction, 1)
-
             self.imu_pipeline, self.imu_profile = self.setup_imu(serial)
 
         self.pipeline, self.profile, self.intrinsics = self.get_camera_pipeline(serial, enable_rgb)
@@ -151,6 +146,13 @@ class D435i:
 
         pipeline = rs.pipeline()
 
+        ctx = rs.context()
+        device = ctx.query_devices()[0]
+        motion_sensor = device.first_motion_sensor()
+
+        motion_sensor.set_option(rs.option.frames_queue_size, 1)
+        motion_sensor.set_option(rs.option.global_time_enabled, 1)
+
         profile = pipeline.start(config)
 
         print("Warming up imu... waiting 100 frames.")
@@ -168,14 +170,14 @@ class D435i:
         ir_frame = frames.get_infrared_frame(1)
 
         if depth_frame:
-            depth_image = np.asanyarray(depth_frame.get_data()).copy()
+            depth_image = np.asanyarray(depth_frame.get_data().copy())
             depth_image = depth_image * self.depth_scale
             ts_depth = depth_frame.get_timestamp() / 1000.
         else:
             depth_image = None
             ts_depth = None
         if ir_frame:
-            ir_image = np.asanyarray(ir_frame.get_data()).copy()
+            ir_image = np.asanyarray(ir_frame.get_data().copy())
             ts_ir = ir_frame.get_timestamp() / 1000.
         else:
             ir_image = None
@@ -215,5 +217,12 @@ class D435i:
     def stop(self):
         print("Closing D435i pipelines")
         if self.enable_motion:
-            self.imu_pipeline.stop()
-        self.pipeline.stop()
+            try:
+                self.imu_pipeline.stop()
+            except RuntimeError:
+                pass
+
+        try:
+            self.pipeline.stop()
+        except RuntimeError:
+            pass
