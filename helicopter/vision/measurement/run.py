@@ -54,7 +54,7 @@ def initialize_R_matrix(std_devs: dict) -> np.ndarray:
 
 
 if __name__ == '__main__':
-    points = MerweScaledSigmaPoints(n=15, alpha=0.0001, beta=2., kappa=0)
+    points = MerweScaledSigmaPoints(n=15, alpha=0.001, beta=2., kappa=-12)
     ukf = UnscentedKalmanFilter(dim_x=15, dim_z=3, dt=1 / 200,
                                 hx=measurement_fn,
                                 fx=transition_fn,
@@ -85,7 +85,7 @@ if __name__ == '__main__':
     ukf.R = initialize_R_matrix(visual_sigmas)
 
     device = D435i(enable_motion=True, video_rate=60,
-                   projector_power=360., autoexpose=False, exposure_time=1600,
+                   projector_power=360., autoexpose=False, exposure_time=2400,
                    ema_factor=0.2)
 
     point_handler = PointHandler(
@@ -93,7 +93,7 @@ if __name__ == '__main__':
             model=HelicopterYOLO(preprocessor=GPUImagePreprocessor(imgsz=device.IR_RESOLUTION),
                                  model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                             task='detect'),
-                                 conf=0.3),
+                                 conf=0.5),
             marker_tolerance=0.01,
             marker_size=0.003,
             marker_size_tolerance=0.75,
@@ -105,7 +105,7 @@ if __name__ == '__main__':
                       point_handler=point_handler,
                       camera_state_handler=CameraStateHandler(),
                       ukf=ukf,
-                      measurement_time=20.0)
+                      measurement_time=10.0)
 
     scanner.scan()
 

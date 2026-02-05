@@ -43,6 +43,7 @@ class Scanner:
 
         self.imu_thread = threading.Thread(target=self.imu_loop, daemon=True)
         self.vision_thread = threading.Thread(target=self.vision_loop, daemon=True)
+        self.lock = threading.Lock()
 
         self.logger = StateLogger()
 
@@ -58,7 +59,7 @@ class Scanner:
         accel_queue = PointQueue(750, np.array([0, 0, 0.0]))
         gyro_queue = PointQueue(750, np.array([0, 0, 0.0]))
 
-        orientation_iters = 1000
+        orientation_iters = 500
         pbar = tqdm(total=orientation_iters, desc="Initializing sensor orientation. Do not move camera")
         counter = 0
         while counter < orientation_iters:
@@ -104,7 +105,8 @@ class Scanner:
     def imu_loop(self):
         is_first_frame = True
         while self.is_running:
-            imu_frames = self.device.imu_pipeline.wait_for_frames(timeout_ms=100)
+            with self.lock:
+                imu_frames = self.device.imu_pipeline.wait_for_frames(timeout_ms=20)
 
             imu_data = self.device.process_imu_frames(imu_frames)
 
@@ -128,7 +130,8 @@ class Scanner:
 
     def vision_loop(self):
         while self.is_running:
-            frames = self.device.pipeline.wait_for_frames(timeout_ms=100)
+            with self.lock:
+                frames = self.device.pipeline.wait_for_frames(timeout_ms=20)
 
             depth_image, ts_depth, ir_image, ts_ir, laser_state = self.device.process_frames(frames)
 

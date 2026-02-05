@@ -45,7 +45,6 @@ class D435i:
             print('Emitter always on enabled')
             depth_sensor.set_option(rs.option.emitter_always_on, 1)
 
-        depth_sensor.set_option(rs.option.global_time_enabled, 1)
         depth_sensor.set_option(rs.option.frames_queue_size, 1)
 
         # Starting up sensors
@@ -151,7 +150,6 @@ class D435i:
         motion_sensor = device.first_motion_sensor()
 
         motion_sensor.set_option(rs.option.frames_queue_size, 1)
-        motion_sensor.set_option(rs.option.global_time_enabled, 1)
 
         profile = pipeline.start(config)
 
@@ -170,14 +168,14 @@ class D435i:
         ir_frame = frames.get_infrared_frame(1)
 
         if depth_frame:
-            depth_image = np.asanyarray(depth_frame.get_data().copy())
+            depth_image = np.asanyarray(depth_frame.get_data()).copy()
             depth_image = depth_image * self.depth_scale
             ts_depth = depth_frame.get_timestamp() / 1000.
         else:
             depth_image = None
             ts_depth = None
         if ir_frame:
-            ir_image = np.asanyarray(ir_frame.get_data().copy())
+            ir_image = np.asanyarray(ir_frame.get_data()).copy()
             ts_ir = ir_frame.get_timestamp() / 1000.
         else:
             ir_image = None
