@@ -4,8 +4,6 @@ from typing import Sequence
 import cv2
 import numpy as np
 
-import pyrealsense2 as rs
-
 from helicopter.vision.point_detection import HelicopterYOLO
 
 
@@ -22,63 +20,6 @@ class PointDetector(ABC):
     @abstractmethod
     def detect(self, ir_frame: np.ndarray) -> list[cv2.KeyPoint]:
         raise NotImplementedError
-
-    @staticmethod
-    def draw_subpixel_circle(center, radius, shift):
-        factor = 1 << shift
-
-        cx, cy = center
-
-        cx_rounded = round(cx * factor)
-        cy_rounded = round(cy * factor)
-        radius_rounded = round(radius * factor)
-
-        return (cx_rounded, cy_rounded), radius_rounded
-
-    def get_point_coord(self, depth_frame, circle, intrinsics: rs.intrinsics) -> np.ndarray | None:
-        h, w = depth_frame.shape
-        center, radius, _ = circle
-
-        safe_radius = radius * 0.8
-
-        ix, iy = int(center[0]), int(center[1])
-        margin = int(safe_radius + 1)
-
-        x0, x1 = max(0, ix - margin), min(w, ix + margin)
-        y0, y1 = max(0, iy - margin), min(h, iy + margin)
-
-        depth_roi = depth_frame[y0:y1, x0:x1]
-
-        y_grid, x_grid = np.ogrid[y0:y1, x0:x1]
-        dist_sq = (x_grid - center[0]) ** 2 + (y_grid - center[1]) ** 2
-        mask = dist_sq <= safe_radius ** 2
-
-        valid_pixels = depth_roi[mask & (depth_roi > 0)]
-
-        if len(valid_pixels) < 5:
-            return None
-
-        depth_median = np.median(valid_pixels)
-
-        noise_tolerance = 0.02
-        clean_pixels = valid_pixels[np.abs(valid_pixels - depth_median) < noise_tolerance]
-
-        if len(clean_pixels) == 0:
-            return None
-
-        depth = np.mean(clean_pixels)
-
-        if depth > self.distance_threshold:
-            return None
-
-        physical_diameter = (radius * 2 * depth) / intrinsics.fx
-
-        if abs(physical_diameter - self.marker_size) > (self.marker_size * self.marker_size_tolerance):
-            return None
-
-        point = rs.rs2_deproject_pixel_to_point(intrinsics, pixel=[center[0], center[1]], depth=depth)
-
-        return np.array([point[2], -point[0], -point[1]])
 
     def get_points_coords(self, depth_frame, keypoints, intrinsics) -> np.ndarray:
         if len(keypoints) == 0:

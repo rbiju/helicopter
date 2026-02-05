@@ -157,7 +157,7 @@ if __name__ == '__main__':
     model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(),
-                           conf=0.3)
+                           conf=0.6)
     pbar = tqdm(desc='Collecting Frames')
     detected_images = []
     frame_count = 0

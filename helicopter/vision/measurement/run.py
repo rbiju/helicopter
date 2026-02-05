@@ -54,25 +54,26 @@ def initialize_R_matrix(std_devs: dict) -> np.ndarray:
 
 
 if __name__ == '__main__':
-    points = MerweScaledSigmaPoints(n=15, alpha=0.001, beta=2., kappa=-12)
-    ukf = UnscentedKalmanFilter(dim_x=15, dim_z=3, dt=1 / 200,
+    N = 15
+    points = MerweScaledSigmaPoints(n=N, alpha=0.01, beta=2., kappa=0)
+    ukf = UnscentedKalmanFilter(dim_x=N, dim_z=3, dt=1 / 200,
                                 hx=measurement_fn,
                                 fx=transition_fn,
                                 points=points)
 
     q_sigmas = {
-        "gyro": 0.03 * (np.pi / 180.0),
-        "vel": 1e-5,
+        "gyro": 0.02 * (np.pi / 180.0),
+        "vel": 1e-4,
         "accel": 1e-4,
-        "bias": 1e-6
+        "bias": 1e-5
     }
     ukf.Q = build_Q_matrix(dt=1 / 200, std_devs=q_sigmas)
 
     initial_sigmas = {
-        'd_theta': 0.1,
+        'd_theta': 0.01,
         'dp': 1e-5,
         'dv': 0.1,
-        'dba': 1e-3,
+        'dba': 1e-4,
         'dbg': 1e-5
     }
     ukf.P = initialize_P_matrix(initial_sigmas)
@@ -85,7 +86,7 @@ if __name__ == '__main__':
     ukf.R = initialize_R_matrix(visual_sigmas)
 
     device = D435i(enable_motion=True, video_rate=60,
-                   projector_power=360., autoexpose=False, exposure_time=2400,
+                   projector_power=360., autoexpose=False, exposure_time=1600,
                    ema_factor=0.2)
 
     point_handler = PointHandler(

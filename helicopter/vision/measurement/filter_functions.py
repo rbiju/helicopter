@@ -1,4 +1,5 @@
 import numpy as np
+from numba import njit
 import quaternion
 
 IDX_Q = slice(0, 4)
@@ -89,3 +90,20 @@ def measurement_fn(error_state: np.ndarray,
     camera_frame_point = quaternion.rotate_vectors(q.inverse(), map_point - t)
 
     return camera_frame_point.ravel()
+
+
+@njit(cache=True)
+def robust_cholesky(matrix):
+    sym_matrix = (matrix + matrix.T) * 0.5
+
+    vals, vecs = np.linalg.eigh(sym_matrix)
+
+    vals = np.maximum(vals, 1e-8)
+
+    return (vecs * vals) @ vecs.T
+
+
+def compile_cholesky(n):
+    print('Compiling cholesky function')
+    a = np.diag(np.ones(n))
+    return robust_cholesky(a)

@@ -4,7 +4,6 @@ import queue
 
 from tqdm import tqdm
 import numpy as np
-import scipy
 import quaternion
 from filterpy.kalman import UnscentedKalmanFilter
 
@@ -54,6 +53,14 @@ class Scanner:
         self.imu_queue = queue.Queue(maxsize=25)
 
         self.R = self.ukf.R.copy()
+
+    @staticmethod
+    def nearest_pd(matrix):
+        sym_matrix = (matrix + matrix.T) * 0.5
+        vals, vecs = np.linalg.eigh(sym_matrix)
+        vals = np.maximum(vals, 1e-9)
+
+        return (vecs * vals) @ vecs.T
 
     def initialize_orientation(self):
         accel_queue = PointQueue(750, np.array([0, 0, 0.0]))
@@ -142,10 +149,6 @@ class Scanner:
                     continue
 
     def loop(self):
-        # flushing device buffers
-        for _ in range(10):
-            self.device.pipeline.poll_for_frames()
-
         self.device.time_queue.clear()
 
         self.started_running = True
@@ -176,7 +179,7 @@ class Scanner:
                 measured_points, keypoints = measured_out
 
             self.profiler.start('IMU_Integration')
-            while self.imu_queue:
+            while not self.imu_queue.empty():
                 imu_t, accel, gyro = self.imu_queue.get()
 
                 if self.first_imu_frame:
@@ -199,6 +202,7 @@ class Scanner:
                                                self.camera_state_handler.g)
 
                 self.ukf.Q = self.ukf_Q * scale_factor
+                # self.ukf.P = self.nearest_pd(self.ukf.P.copy())
                 self.ukf.predict(dt=dt,
                                  nominal_state=self.camera_state_handler.nominal_state.copy(),
                                  propagated_nominal=propagated_nominal,
@@ -221,15 +225,15 @@ class Scanner:
             self.profiler.end('Match_Points')
 
             self.profiler.start('UKF_Update')
-            R = scipy.linalg.block_diag(*[self.R for _ in range(len(measure_idx))])
+            R = np.kron(np.eye(len(measure_idx)), self.R)
+
             self.ukf.update(
                 z=measured_points[measure_idx].flatten(),
                 R=R,
                 nominal_state=self.camera_state_handler.nominal_state.copy(),
                 map_point=self.point_handler.point_map[reference_idx])
 
-            self.ukf.P = (self.ukf.P + self.ukf.P.T) / 2.0
-            self.ukf.P += np.eye(len(self.ukf.x)) * 2e-6
+            self.ukf.P = self.nearest_pd(self.ukf.P.copy())
 
             nominal_state = compose_fn(self.camera_state_handler.nominal_state.copy(),
                                        self.ukf.x.copy())
