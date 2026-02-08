@@ -1,6 +1,6 @@
-import numpy as np
-from numba import njit
-import quaternion
+import jax.numpy as jnp
+from jax import jit
+from jax.scipy.spatial.transform import Rotation
 
 IDX_Q = slice(0, 4)
 IDX_P = slice(4, 7)
@@ -9,101 +9,70 @@ IDX_BA = slice(10, 13)
 IDX_BG = slice(13, 16)
 
 
-def compose_fn(state: np.ndarray, error: np.ndarray):
-    new_state = state.copy()
+@jit
+def compose_fn(state, error):
+    q_nom = Rotation.from_quat(state[IDX_Q])
+    dq = Rotation.from_rotvec(error[:3])
+    q_new = q_nom * dq
 
-    new_state[4:] = state[4:] + error[3:]
+    new_rest = state[4:] + error[3:]
 
-    dq = quaternion.from_rotation_vector(error[:3])
-
-    quat = quaternion.quaternion(*state[:4]) * dq
-    new_state[:4] = quaternion.as_float_array(quat.normalized())
-
-    return new_state
+    return jnp.concatenate([q_new, new_rest])
 
 
-def decompose_fn(old_state: np.ndarray, new_state: np.ndarray):
-    error = np.empty(old_state.shape[0] - 1)
-    error[3:] = new_state[4:] - old_state[4:]
+@jit
+def decompose_fn(old_state, new_state):
+    q_old = Rotation.from_quat(old_state[IDX_Q])
+    q_new = Rotation.from_quat(new_state[IDX_Q])
 
-    q_old = quaternion.quaternion(*old_state[:4])
-    q_new = quaternion.quaternion(*new_state[:4])
+    error_quat = q_old.inv() * q_new
+    error_theta = error_quat.as_rotvec()
 
-    error_quat = q_old.inverse() * q_new
-    error[:3] = quaternion.as_rotation_vector(error_quat)
-    return error
+    error_rest = new_state[4:] - old_state[4:]
+
+    return jnp.concatenate([error_theta, error_rest])
 
 
-def propagate(s: np.ndarray,
-              dt,
-              accelerometer: np.ndarray,
-              gyro: np.ndarray,
-              g_world: np.ndarray) -> np.ndarray:
-    q_prev = quaternion.quaternion(*s[IDX_Q])
+@jit
+def propagate(s, dt, accel, gyro, g_world):
+    q_prev = Rotation.from_quat(s[IDX_Q])
     p_prev = s[IDX_P]
     v_prev = s[IDX_V]
     ba_prev = s[IDX_BA]
     bg_prev = s[IDX_BG]
 
-    gyro_corrected = gyro - s[IDX_BG]
-    acc_corrected = accelerometer - s[IDX_BA]
+    gyro_corrected = gyro - bg_prev
+    acc_corrected = accel - ba_prev
 
-    dq = quaternion.from_rotation_vector(gyro_corrected * dt)
-    q_new = (q_prev * dq).normalized()
+    dq = Rotation.from_rotvec(gyro_corrected * dt)
+    q_new = q_prev * dq
 
-    a_world = (q_prev * quaternion.from_vector_part(acc_corrected) * q_prev.inverse()).imag - g_world
+    a_world = q_prev.apply(acc_corrected) - g_world
 
     v_new = v_prev + a_world * dt
     p_new = p_prev + v_prev * dt + 0.5 * a_world * dt**2
 
-    new_state = s.copy()
-    new_state[IDX_Q] = quaternion.as_float_array(q_new)
-    new_state[IDX_P] = p_new
-    new_state[IDX_V] = v_new
-
-    new_state[IDX_BA] = ba_prev
-    new_state[IDX_BG] = bg_prev
-
-    return new_state
+    return jnp.concatenate([
+        q_new.as_quat(canonical=True),
+        p_new,
+        v_new,
+        ba_prev,
+        bg_prev
+    ])
 
 
-def transition_fn(error_state: np.ndarray,
-                  dt: float,
-                  nominal_state: np.ndarray,
-                  propagated_nominal: np.ndarray,
-                  accelerometer: np.ndarray,
-                  gyro: np.ndarray,
-                  g_world: np.ndarray) -> np.ndarray:
+@jit
+def transition_fn(error_state, dt, nominal_state, propagated_nominal, accel, gyro, g_world):
     full_state = compose_fn(nominal_state, error_state)
-    propagated_full = propagate(full_state, dt, accelerometer, gyro, g_world)
+    propagated_full = propagate(full_state, dt, accel, gyro, g_world)
     return decompose_fn(propagated_nominal, propagated_full)
 
 
-def measurement_fn(error_state: np.ndarray,
-                   nominal_state: np.ndarray,
-                   map_point: np.ndarray) -> np.ndarray:
+@jit
+def measurement_fn(error_state, ref_point, nominal_state):
     full_state_hypothesis = compose_fn(nominal_state, error_state)
 
-    q = quaternion.from_float_array(full_state_hypothesis[IDX_Q])
+    q = Rotation.from_quat(full_state_hypothesis[IDX_Q])
     t = full_state_hypothesis[IDX_P]
 
-    camera_frame_point = quaternion.rotate_vectors(q.inverse(), map_point - t)
-
-    return camera_frame_point.ravel()
-
-
-@njit(cache=True)
-def robust_cholesky(matrix):
-    sym_matrix = (matrix + matrix.T) * 0.5
-
-    vals, vecs = np.linalg.eigh(sym_matrix)
-
-    vals = np.maximum(vals, 1e-8)
-
-    return (vecs * vals) @ vecs.T
-
-
-def compile_cholesky(n):
-    print('Compiling cholesky function')
-    a = np.diag(np.ones(n))
-    return robust_cholesky(a)
+    return q.inv().apply(ref_point - t)

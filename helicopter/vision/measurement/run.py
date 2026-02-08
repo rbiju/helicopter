@@ -1,13 +1,13 @@
+import jax
+import jax.numpy as jnp
 import numpy as np
 import scipy.linalg as linalg
-from filterpy.kalman import UnscentedKalmanFilter, MerweScaledSigmaPoints
-
 from ultralytics import YOLO
 
 from helicopter.vision import D435i
+from helicopter.vision import ErrorStateSquareRootUnscentedKalmanFilter as UKF
 from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor
 from helicopter.vision.point_detection import YOLOPointDetector
-from helicopter.vision.measurement.filter_functions import transition_fn, measurement_fn
 from helicopter.vision.measurement.scanner import Scanner, CameraStateHandler, PointHandler
 
 
@@ -20,13 +20,13 @@ def build_Q_matrix(dt: float, std_devs: dict) -> np.ndarray:
 
     Q_dv = (std_devs['accel'] ** 2) * I * dt
 
-    Q_dba = (std_devs['bias'] ** 2) * I * dt
-    Q_dbg = (std_devs['bias'] ** 2) * I * dt
+    Q_dba = (std_devs['bias_acc'] ** 2) * I * dt
+    Q_dbg = (std_devs['bias_gyro'] ** 2) * I * dt
 
     return linalg.block_diag(Q_dtheta, Q_dp, Q_dv, Q_dba, Q_dbg)
 
 
-def initialize_P_matrix(std_devs: dict) -> np.ndarray:
+def initialize_S_matrix(std_devs: dict) -> jax.Array:
     var_dtheta = std_devs['d_theta'] ** 2
     P_dtheta = np.eye(3) * var_dtheta
 
@@ -43,8 +43,9 @@ def initialize_P_matrix(std_devs: dict) -> np.ndarray:
     P_dbg = np.eye(3) * var_dbg
 
     P0 = linalg.block_diag(P_dtheta, P_dp, P_dv, P_dba, P_dbg)
+    _S = jax.lax.linalg.cholesky(jnp.array(P0)).T
 
-    return P0
+    return _S
 
 
 def initialize_R_matrix(std_devs: dict) -> np.ndarray:
@@ -55,38 +56,36 @@ def initialize_R_matrix(std_devs: dict) -> np.ndarray:
 
 if __name__ == '__main__':
     N = 15
-    points = MerweScaledSigmaPoints(n=N, alpha=0.01, beta=2., kappa=0)
-    ukf = UnscentedKalmanFilter(dim_x=N, dim_z=3, dt=1 / 200,
-                                hx=measurement_fn,
-                                fx=transition_fn,
-                                points=points)
-
     q_sigmas = {
-        "gyro": 0.02 * (np.pi / 180.0),
-        "vel": 1e-4,
-        "accel": 1e-4,
-        "bias": 1e-5
+        "gyro": 0.1 * (np.pi / 180.0),
+        "vel": 1e-5,
+        "accel": 2e-2,
+        "bias_acc": 1e-3,
+        "bias_gyro": 1e-4
     }
-    ukf.Q = build_Q_matrix(dt=1 / 200, std_devs=q_sigmas)
+
+    Q = build_Q_matrix(dt=1 / 200, std_devs=q_sigmas)
 
     initial_sigmas = {
-        'd_theta': 0.01,
-        'dp': 1e-5,
+        'd_theta': 0.05,
+        'dp': 1e-2,
         'dv': 0.1,
-        'dba': 1e-4,
-        'dbg': 1e-5
+        'dba': 0.2,
+        'dbg': 0.02
     }
-    ukf.P = initialize_P_matrix(initial_sigmas)
+    S = initialize_S_matrix(initial_sigmas)
 
     visual_sigmas = {
-        'dp_x': 0.005,
+        'dp_x': 0.01,
         'dp_y': 0.01,
         'dp_z': 0.01,
     }
-    ukf.R = initialize_R_matrix(visual_sigmas)
+    R = initialize_R_matrix(visual_sigmas)
+    x = jnp.zeros(N)
+    ukf = UKF(x=x, S=S, Q=Q, R=R, alpha=0.1, beta=2.0, kappa=-12)
 
     device = D435i(enable_motion=True, video_rate=60,
-                   projector_power=360., autoexpose=False, exposure_time=1600,
+                   projector_power=360., autoexpose=False, exposure_time=2400,
                    ema_factor=0.2)
 
     point_handler = PointHandler(
@@ -94,7 +93,7 @@ if __name__ == '__main__':
             model=HelicopterYOLO(preprocessor=GPUImagePreprocessor(imgsz=device.IR_RESOLUTION),
                                  model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                             task='detect'),
-                                 conf=0.5),
+                                 conf=0.8),
             marker_tolerance=0.01,
             marker_size=0.003,
             marker_size_tolerance=0.75,
@@ -106,7 +105,7 @@ if __name__ == '__main__':
                       point_handler=point_handler,
                       camera_state_handler=CameraStateHandler(),
                       ukf=ukf,
-                      measurement_time=10.0)
+                      measurement_time=3.0)
 
     scanner.scan()
 

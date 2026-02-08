@@ -153,42 +153,45 @@ if __name__ == '__main__':
     profiler = Profiler()
     camera = D435i(projector_power=360.,
                    autoexpose=False,
-                   exposure_time=1600)
+                   exposure_time=2200)
     model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(),
-                           conf=0.6)
-    pbar = tqdm(desc='Collecting Frames')
-    detected_images = []
-    frame_count = 0
-    while frame_count < 50:
-        frames = camera.pipeline.wait_for_frames()
-        depth_image, ts_depth, ir_image, ts_ir, laser_state = camera.process_frames(frames)
-        frame_count += 1
-        pbar.update(1)
+                           conf=0.8)
 
-        if ir_image is not None:
-            profiler.start('E2E')
-            profiler.start("Inference")
-            profiler.start("Detect")
+    try:
+        camera.start()
+        pbar = tqdm(desc='Collecting Frames')
+        detected_images = []
+        frame_count = 0
+        while frame_count < 50:
+            frames = camera.pipeline.wait_for_frames()
+            depth_image, ts_depth, ir_image, ts_ir, laser_state = camera.process_frames(frames)
+            frame_count += 1
+            pbar.update(1)
 
-            boxes = model(ir_image)
-            profiler.end("Inference")
+            if ir_image is not None:
+                profiler.start('E2E')
+                profiler.start("Inference")
+                profiler.start("Detect")
 
-            profiler.start('Keypoints')
-            circles = get_refined_keypoints_fast(ir_image, boxes, margin=2)
-            a = cv2.cvtColor(ir_image, cv2.COLOR_GRAY2RGB)
-            a = cv2.drawKeypoints(ir_image, circles, a, color=(0, 0, 255), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
-            detected_images.append(a)
-            profiler.end("Keypoints")
-            profiler.end("Detect")
+                boxes = model(ir_image)
+                profiler.end("Inference")
 
-            profiler.start("Deproject")
-            points = get_points_coords(depth_image, circles, camera.intrinsics)
-            profiler.end("Deproject")
-            profiler.end("E2E")
+                profiler.start('Keypoints')
+                circles = get_refined_keypoints_fast(ir_image, boxes, margin=2)
+                a = cv2.cvtColor(ir_image, cv2.COLOR_GRAY2RGB)
+                a = cv2.drawKeypoints(ir_image, circles, a, color=(0, 0, 255), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
+                detected_images.append(a)
+                profiler.end("Keypoints")
+                profiler.end("Detect")
 
-    camera.stop()
+                profiler.start("Deproject")
+                points = get_points_coords(depth_image, circles, camera.intrinsics)
+                profiler.end("Deproject")
+                profiler.end("E2E")
+    finally:
+        camera.stop()
 
     print(profiler)
 

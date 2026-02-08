@@ -1,7 +1,11 @@
+import cv2
 import numpy as np
+import jax.numpy as jnp
+
+from scipy.spatial.transform import Rotation
+from lapjv import lapjv
+
 import pyrealsense2
-import quaternion
-from scipy.optimize import linear_sum_assignment
 
 from helicopter.utils import PointQueue
 from .point_detector import PointDetector
@@ -10,11 +14,13 @@ from .point_detector import PointDetector
 class PointHandler:
     def __init__(self,
                  detector: PointDetector,
-                 queue_len: int = 50) -> None:
+                 queue_len: int = 50,
+                 max_detections: int = 20) -> None:
         self.detector = detector
         self.maxlen = queue_len
+        self.max_detections = max_detections
 
-        self.point_map = np.empty((0, 3), dtype=np.float64)
+        self.point_map = np.empty((0, 3))
         self.points: dict[int, PointQueue] = {}
 
         self._next_id = 0
@@ -36,46 +42,54 @@ class PointHandler:
 
         return points
 
-    def get_registered_idx(self, point: np.ndarray) -> bool | int | None:
-        if self.point_map.shape[0] < 1:
-            return None
-
-        norm = np.linalg.norm(self.point_map - point, axis=1)
-        comp = norm < self.detector.marker_tolerance
-        if np.any(comp):
-            return int(np.argmin(norm))
-        else:
-            return None
-
-    def correct_points(self, points: np.ndarray, camera_position: np.ndarray,
-                       camera_quat: quaternion.quaternion) -> np.ndarray:
-        corrected = quaternion.rotate_vectors(camera_quat, points) + camera_position
+    def correct_points(self, points: np.ndarray, camera_position: np.ndarray, camera_quat: Rotation) -> np.ndarray:
+        corrected = camera_quat.apply(points) + camera_position
 
         return corrected
 
     def register_points(self, points: np.ndarray):
+        filtered_points = []
         for point in points:
             if self.point_map.shape[0] < 1:
                 self.add_point(point)
             else:
                 norm = np.linalg.norm(self.point_map - point, axis=1)
                 comp = norm > self.detector.marker_tolerance
+                filtered_points.append(point)
                 if np.all(comp):
                     self.add_point(point)
 
-    def match_points(self, points: np.ndarray, camera_position: np.ndarray, camera_quat: quaternion.quaternion):
+        return np.vstack(filtered_points)
+
+    def match_points(self, points: np.ndarray, camera_position: np.ndarray, camera_quat: Rotation):
         corrected_points = self.correct_points(points, camera_position, camera_quat)
         self.register_points(corrected_points)
 
         diff = corrected_points[:, np.newaxis, :] - self.point_map[np.newaxis, :, :]
         dist_matrix = np.linalg.norm(diff, axis=2)
 
-        row_idx, col_idx = linear_sum_assignment(dist_matrix)
+        n_measured, n_map = dist_matrix.shape
+        target_size = max(n_measured, n_map)
 
-        return corrected_points[row_idx], row_idx, col_idx
+        pad_rows = target_size - n_measured
+        pad_cols = target_size - n_map
+
+        dist_matrix_padded = np.pad(dist_matrix,
+                                    ((0, pad_rows), (0, pad_cols)),
+                                    mode='constant',
+                                    constant_values=1000.)
+
+        row_idx, col_idx, _ = lapjv(dist_matrix_padded)
+
+        valid_matches = (row_idx < n_measured) & (col_idx < n_map)
+
+        real_row_idx = row_idx[valid_matches]
+        real_col_idx = col_idx[valid_matches]
+
+        return corrected_points[real_row_idx], real_row_idx, real_col_idx
 
     def get_measured_points(self, ir_frame: np.ndarray, depth_frame: np.ndarray,
-                            intrinsics: pyrealsense2.intrinsics):
+                            intrinsics: pyrealsense2.intrinsics) -> tuple[np.ndarray, list[cv2.KeyPoint]] | None:
         keypoints = self.detector.detect(ir_frame)
         marker_coords = self.detector.get_points_coords(depth_frame, keypoints, intrinsics)
 
@@ -84,6 +98,29 @@ class PointHandler:
             return None
 
         return marker_coords, keypoints
+
+    def get_filter_inputs(self, measured_points, measure_idx, reference_points, reference_idx):
+        m_slice = measured_points[measure_idx].astype(np.float32)
+        r_slice = reference_points[reference_idx].astype(np.float32)
+
+        n_valid = m_slice.shape[0]
+        dim = m_slice.shape[1] if n_valid > 0 else 3
+
+        if n_valid > self.max_detections:
+            m_slice = m_slice[:self.max_detections]
+            r_slice = r_slice[:self.max_detections]
+            n_valid = self.max_detections
+
+        z_padded = np.zeros((self.max_detections, dim), dtype=m_slice.dtype)
+        ref_padded = np.zeros((self.max_detections, dim), dtype=r_slice.dtype)
+
+        if n_valid > 0:
+            z_padded[:n_valid] = m_slice
+            ref_padded[:n_valid] = r_slice
+
+        return (jnp.array(z_padded, dtype=jnp.float32),
+                jnp.array(ref_padded, dtype=jnp.float32),
+                jnp.array(n_valid, dtype=jnp.int32))
 
     def append_points(self, points: np.ndarray, point_idxs: list[int]):
         for idx, point in zip(point_idxs, points):
