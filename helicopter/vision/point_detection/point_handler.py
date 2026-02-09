@@ -3,7 +3,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from scipy.spatial.transform import Rotation
-from lapjv import lapjv
+from scipy.optimize import linear_sum_assignment
 
 import pyrealsense2
 
@@ -90,30 +90,14 @@ class PointHandler:
 
     def match_points(self, points: np.ndarray, camera_position: np.ndarray, camera_quat: Rotation):
         corrected_points = self.correct_points(points, camera_position, camera_quat)
-        corrected_points = self.register_points(corrected_points)
+        self.register_points(corrected_points)
 
         diff = corrected_points[:, np.newaxis, :] - self.point_map[np.newaxis, :, :]
         dist_matrix = np.linalg.norm(diff, axis=2)
 
-        n_measured, n_map = dist_matrix.shape
-        target_size = max(n_measured, n_map)
+        row_idx, col_idx = linear_sum_assignment(dist_matrix)
 
-        pad_rows = target_size - n_measured
-        pad_cols = target_size - n_map
-
-        dist_matrix_padded = np.pad(dist_matrix,
-                                    ((0, pad_rows), (0, pad_cols)),
-                                    mode='constant',
-                                    constant_values=1000.)
-
-        row_idx, col_idx, _ = lapjv(dist_matrix_padded)
-
-        valid_matches = (row_idx < n_measured) & (col_idx < n_map)
-
-        real_row_idx = row_idx[valid_matches]
-        real_col_idx = col_idx[valid_matches]
-
-        return corrected_points[real_row_idx], real_row_idx, real_col_idx
+        return corrected_points[row_idx], row_idx, col_idx
 
     def get_measured_points(self, ir_frame: np.ndarray, depth_frame: np.ndarray,
                             intrinsics: pyrealsense2.intrinsics) -> tuple[np.ndarray, list[cv2.KeyPoint]] | None:

@@ -153,11 +153,11 @@ if __name__ == '__main__':
     profiler = Profiler()
     camera = D435i(projector_power=360.,
                    autoexpose=False,
-                   exposure_time=1600)
+                   exposure_time=2200)
     model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(),
-                           conf=0.75)
+                           conf=0.7)
 
     try:
         camera.start()
