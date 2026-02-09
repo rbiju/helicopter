@@ -57,10 +57,10 @@ def initialize_R_matrix(std_devs: dict) -> np.ndarray:
 if __name__ == '__main__':
     N = 15
     q_sigmas = {
-        "gyro": 0.1 * (np.pi / 180.0),
-        "pos": 1e-5,
-        "vel": 0.2,
-        "bias_acc": 1e-4,
+        "gyro": 0.05 * (np.pi / 180.0),
+        "pos": 1e-10,
+        "vel": 0.05,
+        "bias_acc": 1e-5,
         "bias_gyro": 1e-5
     }
 
@@ -68,16 +68,16 @@ if __name__ == '__main__':
 
     initial_sigmas = {
         'd_theta': 0.05,
-        'dp': 1e-4,
-        'dv': 1e-1,
-        'dba': 0.5,
-        'dbg': 0.2
+        'dp': 1e-6,
+        'dv': 1e-3,
+        'dba': 0.1,
+        'dbg': 0.01
     }
     S = initialize_S_matrix(initial_sigmas)
 
     visual_sigmas = {
         'dp_x': 0.01,
-        'dp_y': 0.05,
+        'dp_y': 0.01,
         'dp_z': 0.01,
     }
     R = initialize_R_matrix(visual_sigmas)
