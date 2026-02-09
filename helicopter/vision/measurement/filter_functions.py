@@ -17,7 +17,7 @@ def compose_fn(state, error):
 
     new_rest = state[4:] + error[3:]
 
-    return jnp.concatenate([q_new, new_rest])
+    return jnp.concatenate([q_new.as_quat(canonical=True), new_rest])
 
 
 @jit

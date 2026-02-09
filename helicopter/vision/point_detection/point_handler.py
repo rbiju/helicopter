@@ -47,23 +47,50 @@ class PointHandler:
 
         return corrected
 
+    def deduplicate(self, points: np.ndarray) -> np.ndarray:
+        if len(points) > 0:
+            kept_indices = []
+            dists = np.linalg.norm(points[:, None] - points[None, :], axis=2)
+            np.fill_diagonal(dists, np.inf)
+
+            processed = np.zeros(len(points), dtype=bool)
+            for i in range(len(points)):
+                if processed[i]:
+                    continue
+
+                kept_indices.append(i)
+                processed[i] = True
+
+                neighbors = np.where(dists[i] < self.detector.marker_tolerance)[0]
+                processed[neighbors] = True
+
+            return points[kept_indices]
+        else:
+            return points
+
     def register_points(self, points: np.ndarray):
-        filtered_points = []
-        for point in points:
+        deduplicated = self.deduplicate(points)
+        final_points = []
+
+        for point in deduplicated:
+            final_points.append(point)
+
             if self.point_map.shape[0] < 1:
                 self.add_point(point)
             else:
                 norm = np.linalg.norm(self.point_map - point, axis=1)
-                comp = norm > self.detector.marker_tolerance
-                filtered_points.append(point)
-                if np.all(comp):
+                is_new = np.all(norm > self.detector.marker_tolerance)
+                if is_new:
                     self.add_point(point)
 
-        return np.vstack(filtered_points)
+        if len(final_points) == 0:
+            return np.empty((0, 3))
+
+        return np.vstack(final_points)
 
     def match_points(self, points: np.ndarray, camera_position: np.ndarray, camera_quat: Rotation):
         corrected_points = self.correct_points(points, camera_position, camera_quat)
-        self.register_points(corrected_points)
+        corrected_points = self.register_points(corrected_points)
 
         diff = corrected_points[:, np.newaxis, :] - self.point_map[np.newaxis, :, :]
         dist_matrix = np.linalg.norm(diff, axis=2)

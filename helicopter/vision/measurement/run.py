@@ -16,9 +16,9 @@ def build_Q_matrix(dt: float, std_devs: dict) -> np.ndarray:
 
     Q_dtheta = (std_devs['gyro'] ** 2) * I * dt
 
-    Q_dp = std_devs['vel'] * I * dt
+    Q_dp = (std_devs['pos'] ** 2) * I * dt
 
-    Q_dv = (std_devs['accel'] ** 2) * I * dt
+    Q_dv = (std_devs['vel'] ** 2) * I * dt
 
     Q_dba = (std_devs['bias_acc'] ** 2) * I * dt
     Q_dbg = (std_devs['bias_gyro'] ** 2) * I * dt
@@ -58,26 +58,26 @@ if __name__ == '__main__':
     N = 15
     q_sigmas = {
         "gyro": 0.1 * (np.pi / 180.0),
-        "vel": 1e-5,
-        "accel": 2e-2,
-        "bias_acc": 1e-3,
-        "bias_gyro": 1e-4
+        "pos": 1e-5,
+        "vel": 0.2,
+        "bias_acc": 1e-4,
+        "bias_gyro": 1e-5
     }
 
     Q = build_Q_matrix(dt=1 / 200, std_devs=q_sigmas)
 
     initial_sigmas = {
         'd_theta': 0.05,
-        'dp': 1e-2,
-        'dv': 0.1,
-        'dba': 0.2,
-        'dbg': 0.02
+        'dp': 1e-4,
+        'dv': 1e-1,
+        'dba': 0.5,
+        'dbg': 0.2
     }
     S = initialize_S_matrix(initial_sigmas)
 
     visual_sigmas = {
         'dp_x': 0.01,
-        'dp_y': 0.01,
+        'dp_y': 0.05,
         'dp_z': 0.01,
     }
     R = initialize_R_matrix(visual_sigmas)
@@ -85,7 +85,7 @@ if __name__ == '__main__':
     ukf = UKF(x=x, S=S, Q=Q, R=R, alpha=0.1, beta=2.0, kappa=-12)
 
     device = D435i(enable_motion=True, video_rate=60,
-                   projector_power=360., autoexpose=False, exposure_time=2400,
+                   projector_power=360., autoexpose=False, exposure_time=1600,
                    ema_factor=0.2)
 
     point_handler = PointHandler(
@@ -93,7 +93,7 @@ if __name__ == '__main__':
             model=HelicopterYOLO(preprocessor=GPUImagePreprocessor(imgsz=device.IR_RESOLUTION),
                                  model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                             task='detect'),
-                                 conf=0.8),
+                                 conf=0.75),
             marker_tolerance=0.01,
             marker_size=0.003,
             marker_size_tolerance=0.75,
@@ -105,7 +105,7 @@ if __name__ == '__main__':
                       point_handler=point_handler,
                       camera_state_handler=CameraStateHandler(),
                       ukf=ukf,
-                      measurement_time=3.0)
+                      measurement_time=5.0)
 
     scanner.scan()
 

@@ -101,7 +101,6 @@ class Scanner:
 
         print("JAX Compilation complete")
 
-    # noinspection PyArgumentList
     def initialize_orientation(self):
         accel_queue = PointQueue(750, np.array([0, 0, 0.0]))
         gyro_queue = PointQueue(750, np.array([0, 0, 0.0]))
@@ -138,21 +137,23 @@ class Scanner:
         quat_array = np.array((*(np.sin(theta_half) * rotation_axis), np.cos(theta_half)))
         quat = Rotation.from_quat(quat_array)
 
-        self.camera_state_handler.accelerometer_bias = quat.apply(v_B) - self.camera_state_handler.g
+        expected_gravity_body = quat.inv().apply(self.camera_state_handler.g)
+        self.camera_state_handler.accelerometer_bias = v_B - expected_gravity_body
 
         self.camera_state_handler.gyro_bias = gyro_queue.mean()
         self.camera_state_handler.quaternion = quat
 
-        print(f"Orientation initialized, mean acceleration: {v_B}")
+        print(f"Orientation initialized, \n "
+              f"mean acceleration: {v_B} \n"
+              f"mean gyro: {gyro_queue.mean()}")
 
     def imu_loop(self):
         is_first_frame = True
         while self.is_running:
-            with self.lock:
-                try:
-                    imu_frames = self.device.imu_pipeline.wait_for_frames(timeout_ms=10)
-                except RuntimeError:
-                    continue
+            try:
+                imu_frames = self.device.imu_pipeline.wait_for_frames(timeout_ms=10)
+            except RuntimeError:
+                continue
 
             imu_data = self.device.process_imu_frames(imu_frames)
 
@@ -176,8 +177,7 @@ class Scanner:
 
     def vision_loop(self):
         while self.is_running:
-            with self.lock:
-                frames = self.device.pipeline.wait_for_frames(timeout_ms=20)
+            frames = self.device.pipeline.wait_for_frames(timeout_ms=20)
 
             depth_image, ts_depth, ir_image, ts_ir, laser_state = self.device.process_frames(frames)
 
@@ -220,6 +220,12 @@ class Scanner:
 
             self.profiler.start('IMU_Integration')
             while not self.imu_queue.empty():
+                with self.imu_queue.mutex:
+                    imu_t = self.imu_queue.queue[0][0]
+
+                if imu_t > vision_time:
+                    break
+
                 imu_t, accel, gyro = self.imu_queue.get()
 
                 if self.first_imu_frame:
@@ -231,9 +237,6 @@ class Scanner:
                 accel = jnp.array(accel, dtype=jnp.float32)
                 gyro = jnp.array(gyro, dtype=jnp.float32)
                 g_world = jnp.array(self.camera_state_handler.g, dtype=jnp.float32)
-
-                if imu_t > vision_time:
-                    break
 
                 dt = jnp.array(imu_t - self.last_fused_time, dtype=jnp.float32)
                 self.last_fused_time = imu_t
@@ -302,26 +305,24 @@ class Scanner:
 
         self.is_running = False
 
-        if self.imu_thread.is_alive():
-            self.imu_thread.join(timeout=1.0)
-
-        if self.vision_thread.is_alive():
-            self.vision_thread.join(timeout=1.0)
-
-        self.device.stop()
-
         if self.started_running:
+            if self.imu_thread.is_alive():
+                self.imu_thread.join(timeout=1.0)
+
+            if self.vision_thread.is_alive():
+                self.vision_thread.join(timeout=1.0)
+
             self.logger.save()
             print(self.profiler)
 
+        self.device.stop()
         self.cleaned_up = True
 
     def scan(self):
         try:
             self.device.start()
             self.initialize_orientation()
-            with jax.log_compiles():
-                self.loop()
+            self.loop()
 
         finally:
             if not self.cleaned_up:
