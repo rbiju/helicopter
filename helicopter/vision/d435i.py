@@ -34,6 +34,7 @@ class D435i:
         device = self.get_device_from_serial(ctx, serial)
         depth_sensor = device.first_depth_sensor()
         depth_sensor.set_option(rs.option.visual_preset, 4)
+        self.depth_scale = depth_sensor.get_depth_scale()
         self.set_exposure(depth_sensor, autoexposure=autoexpose, exposure_time=exposure_time)
         self.set_projector_power(depth_sensor, projector_power)
 
@@ -47,15 +48,12 @@ class D435i:
 
         depth_sensor.set_option(rs.option.frames_queue_size, 1)
 
-        # Starting up sensors
         self.enable_motion = enable_motion
         if enable_motion:
-            self.imu_pipeline, self.imu_profile = self.setup_imu(serial)
+            self.imu_pipeline, self.imu_config = self.get_imu_pipeline(serial)
 
-        self.pipeline, self.profile, self.intrinsics = self.get_camera_pipeline(serial, enable_rgb)
-        self.warmup_camera()
+        self.pipeline, self.config, self.intrinsics = self.get_camera_pipeline(serial, enable_rgb)
 
-        self.depth_scale = self.profile.get_device().first_depth_sensor().get_depth_scale()
         self.hdr_merge = rs.hdr_merge()
 
         self.align = rs.align(rs.stream.infrared)
@@ -102,6 +100,29 @@ class D435i:
 
             print("Auto-exposure enabled")
 
+    @staticmethod
+    def get_intrinsics(serial, stream_type=rs.stream.infrared, stream_index=1, width=640, height=480, fps=30,
+                       _format=rs.format.y8):
+        ctx = rs.context()
+        devices = [dev for dev in ctx.devices if dev.get_info(rs.camera_info.serial_number) == serial]
+        if not devices:
+            raise RuntimeError(f"Device {serial} not found")
+        device = devices[0]
+
+        for sensor in device.query_sensors():
+            for profile in sensor.get_stream_profiles():
+                if (profile.stream_type() == stream_type and
+                        profile.stream_index() == stream_index and
+                        profile.format() == _format and
+                        profile.fps() == fps):
+
+                    if profile.is_video_stream_profile():
+                        v_profile = profile.as_video_stream_profile()
+                        if v_profile.width() == width and v_profile.height() == height:
+                            return v_profile.get_intrinsics()
+
+        raise RuntimeError(f"Stream configuration not found for device {serial}")
+
     def get_camera_pipeline(self, serial, enable_rgb: bool):
         ctx = rs.context()
 
@@ -119,25 +140,22 @@ class D435i:
                                  self.COLOR_RATE)
 
         pipeline = rs.pipeline(ctx)
-        profile = pipeline.start(config)
 
-        ir_stream = profile.get_stream(rs.stream.infrared, 1)
-        ir_video_profile = ir_stream.as_video_stream_profile()
-        ir_intrinsics = ir_video_profile.get_intrinsics()
+        ir_intrinsics = self.get_intrinsics(serial,
+                                            rs.stream.infrared,
+                                            1,
+                                            self.IR_RESOLUTION[1],
+                                            self.IR_RESOLUTION[0],
+                                            self.IR_RATE, rs.format.y8)
 
         print("Successfully retrieved IR Intrinsics:")
         print(f"  Resolution: {ir_intrinsics.width}x{ir_intrinsics.height}")
         print(f"  Focal Length (fx, fy): ({ir_intrinsics.fx:.2f}, {ir_intrinsics.fy:.2f})")
         print(f"  Principal Point (cx, cy): ({ir_intrinsics.ppx:.2f}, {ir_intrinsics.ppy:.2f})")
 
-        return pipeline, profile, ir_intrinsics
+        return pipeline, config, ir_intrinsics
 
-    def warmup_camera(self):
-        print("Warming up camera... waiting 60 frames.")
-        for _ in range(60):
-            self.pipeline.wait_for_frames()
-
-    def setup_imu(self, serial):
+    def get_imu_pipeline(self, serial):
         config = rs.config()
         config.enable_device(serial)
         config.enable_stream(rs.stream.accel, rs.format.motion_xyz32f, self.ACCEL_RATE)
@@ -149,15 +167,24 @@ class D435i:
         device = ctx.query_devices()[0]
         motion_sensor = device.first_motion_sensor()
 
+        motion_sensor.set_option(rs.option.enable_motion_correction, 1)
         motion_sensor.set_option(rs.option.frames_queue_size, 1)
 
-        profile = pipeline.start(config)
+        return pipeline, config
 
-        print("Warming up imu... waiting 100 frames.")
-        for _ in range(100):
-            pipeline.wait_for_frames()
+    def start(self):
+        if self.enable_motion:
+            self.imu_pipeline.start(self.imu_config)
 
-        return pipeline, profile
+            print("Warming up imu... waiting 100 frames.")
+            for _ in range(100):
+                self.imu_pipeline.wait_for_frames()
+
+        self.pipeline.start(self.config)
+
+        print("Warming up camera... waiting 60 frames.")
+        for _ in range(60):
+            self.pipeline.wait_for_frames()
 
     def process_frames(self, frames: rs.composite_frame):
         frames = self.align.process(frames)

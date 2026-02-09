@@ -29,10 +29,10 @@ class Profiler:
             else:
                 times = np.array(list(times))
                 means[name] = {}
-                means[name]['mean'] = f"{np.mean(times):.3f} sec"
-                means[name]['std'] = f"{np.std(times):.3f} sec"
-                means[name]['min'] = f"{np.min(times):.3f} sec"
-                means[name]['max'] = f"{np.max(times):.3f} sec"
+                means[name]['mean'] = f"{np.mean(times):.6f} sec"
+                means[name]['std'] = f"{np.std(times):.6f} sec"
+                means[name]['min'] = f"{np.min(times):.6f} sec"
+                means[name]['max'] = f"{np.max(times):.6f} sec"
         means = json.dumps(means, indent=4)
         return (f'Profiler: \n'
                 f'{means}')

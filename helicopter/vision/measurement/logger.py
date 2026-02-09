@@ -11,7 +11,7 @@ class StateLogger:
         self.data = []
         self.headers = [
             'timestamp', 'event',
-            'qw', 'qx', 'qy', 'qz',
+            'qx', 'qy', 'qz', 'qw',
             'px', 'py', 'pz',
             'vx', 'vy', 'vz',
             'b_ax', 'b_ay', 'b_az',
