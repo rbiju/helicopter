@@ -116,53 +116,46 @@ class ErrorStateSquareRootUnscentedKalmanFilter:
         )
 
     @partial(jax.jit, static_argnames=['measurement_fn'])
-    def update(self, z_points, ref_points, num_valid, measurement_fn, nominal_state):
+    def update(self, measurement_fn, z_point, **kwargs):
+        points = self._generate_sigma_points(self.x, self.S)
 
-        def body(i, carry):
-            x_curr, S_curr = carry
-            z = z_points[i]
-            ref_point = ref_points[i]
+        Z_sig = jax.vmap(lambda p: measurement_fn(p, **kwargs))(points)
+        z_pred = jnp.dot(self.Wm, Z_sig)
 
-            points = self._generate_sigma_points(x_curr, S_curr)
-            Z_sig = jax.vmap(lambda p: measurement_fn(p, ref_point, nominal_state))(points)
-            z_pred = jnp.dot(self.Wm, Z_sig)
+        diff_z = Z_sig - z_pred
+        weight_sqrt = jnp.sqrt(self.Wc[1])
+        weighted_diff_z = diff_z[1:].T * weight_sqrt
 
-            diff_z = Z_sig - z_pred
-            weight_sqrt = jnp.sqrt(self.Wc[1])
-            weighted_diff_z = diff_z[1:].T * weight_sqrt
+        M = jnp.hstack([weighted_diff_z, self.R_upper.T])
+        _, S_yy = lax.linalg.qr(M.T, full_matrices=False)
 
-            M = jnp.hstack([weighted_diff_z, self.R_upper.T])
-            _, S_yy = lax.linalg.qr(M.T, full_matrices=False)
+        def _downdate_Syy(s):
+            return self._cholesky_downdate(s, diff_z[0] * jnp.sqrt(-self.Wc[0]))
 
-            def _downdate_Syy(s):
-                return self._cholesky_downdate(s, diff_z[0] * jnp.sqrt(-self.Wc[0]))
+        def _update_Syy(s):
+            return lax.linalg.cholesky_update(s, diff_z[0] * jnp.sqrt(self.Wc[0]))
 
-            def _update_Syy(s):
-                return lax.linalg.cholesky_update(s, diff_z[0] * jnp.sqrt(self.Wc[0]))
+        S_yy = lax.cond(self.Wc[0] < 0, _downdate_Syy, _update_Syy, S_yy)
 
-            S_yy = lax.cond(self.Wc[0] < 0, _downdate_Syy, _update_Syy, S_yy)
+        diff_x = points - self.x
+        weighted_diff_x = diff_x.T * self.Wc
+        P_xy = weighted_diff_x @ diff_z
 
-            diff_x = points - x_curr
-            weighted_diff_x = diff_x.T * self.Wc
-            P_xy = weighted_diff_x @ diff_z
+        Y = lax.linalg.triangular_solve(S_yy, P_xy.T, left_side=True, lower=False, transpose_a=True)
+        K_T = lax.linalg.triangular_solve(S_yy, Y, left_side=True, lower=False, transpose_a=False)
+        K = K_T.T
 
-            Y = lax.linalg.triangular_solve(S_yy, P_xy.T, left_side=True, lower=False, transpose_a=True)
-            K_T = lax.linalg.triangular_solve(S_yy, Y, left_side=True, lower=False, transpose_a=False)
-            K = K_T.T
+        x_new = self.x + K @ (z_point - z_pred)
 
-            x_new = x_curr + K @ (z - z_pred)
-            U = K @ S_yy.T
+        U = K @ S_yy.T
 
-            def scan_downdate(s_carry, u_col):
-                return self._cholesky_downdate(s_carry, u_col), None
+        def scan_downdate(s_carry, u_col):
+            return self._cholesky_downdate(s_carry, u_col), None
 
-            S_new, _ = lax.scan(scan_downdate, S_curr, U.T)
+        S_new, _ = lax.scan(scan_downdate, self.S, U.T)
 
-            return x_new, S_new
-
-        x_final, S_final = lax.fori_loop(0, num_valid, body, (self.x, self.S))
-
+        # 7. Return new filter instance
         return self.tree_unflatten(
             {'n_dim': self.n_dim, 'c': self.c},
-            (x_final, S_final, self.Q_upper, self.R_upper, self.Wm, self.Wc)
+            (x_new, S_new, self.Q_upper, self.R_upper, self.Wm, self.Wc)
         )

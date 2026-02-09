@@ -66,14 +66,6 @@ class Scanner:
         dummy_nominal = jnp.array(self.camera_state_handler.nominal_state, dtype=jnp.float32)
         dummy_error = jnp.zeros(15, dtype=jnp.float32)
 
-        dummy_points = np.ones((10, 3), dtype=np.float32)
-        dummy_idx = np.arange(0, 10, 1)
-
-        z_points, ref_points, num_valid = self.point_handler.get_filter_inputs(measured_points=dummy_points,
-                                                                               measure_idx=dummy_idx,
-                                                                               reference_points=dummy_points,
-                                                                               reference_idx=dummy_idx)
-
         accel = jnp.array(np.zeros(3, dtype=np.float32))
         gyro = jnp.array(np.zeros(3, dtype=np.float32))
         g_world = jnp.array(self.camera_state_handler.g, dtype=jnp.float32)
@@ -89,13 +81,13 @@ class Scanner:
                                gyro=gyro,
                                g_world=g_world)
 
-        for _ in range(2):
-            tmp = tmp.update(z_points=z_points,
-                             ref_points=ref_points,
-                             num_valid=num_valid,
-                             measurement_fn=measurement_fn,
-                             nominal_state=dummy_nominal
-                             )
+        dummy_points = np.ones((10, 3), dtype=np.float32)
+
+        for z_point, ref_point in zip(dummy_points, dummy_points):
+            _ = self.ukf.update(measurement_fn=measurement_fn,
+                                z_point=z_point,
+                                ref_point=ref_point,
+                                nominal_state=dummy_nominal)
 
         jax.block_until_ready(tmp)
 
@@ -274,17 +266,14 @@ class Scanner:
             self.profiler.end('Match_Points')
 
             self.profiler.start('UKF_Update')
-            z_points, ref_points, num_valid = self.point_handler.get_filter_inputs(measured_points=measured_points,
-                                                                                   measure_idx=measure_idx,
-                                                                                   reference_points=self.point_handler.point_map,
-                                                                                   reference_idx=reference_idx)
+            z_points = measured_points[measure_idx]
+            ref_points = self.point_handler.point_map[reference_idx]
 
-            self.ukf = self.ukf.update(z_points=z_points,
-                                       ref_points=ref_points,
-                                       num_valid=num_valid,
-                                       measurement_fn=measurement_fn,
-                                       nominal_state=nominal_state,
-                                       )
+            for z_point, ref_point in zip(z_points, ref_points):
+                self.ukf = self.ukf.update(measurement_fn=measurement_fn,
+                                           z_point=z_point,
+                                           ref_point=ref_point,
+                                           nominal_state=nominal_state)
 
             nominal_state = np.array(compose_fn(nominal_state,
                                                 self.ukf.x))
@@ -322,7 +311,8 @@ class Scanner:
         try:
             self.device.start()
             self.initialize_orientation()
-            self.loop()
+            with jax.log_compiles():
+                self.loop()
 
         finally:
             if not self.cleaned_up:

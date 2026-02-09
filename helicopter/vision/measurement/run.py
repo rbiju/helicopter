@@ -93,7 +93,7 @@ if __name__ == '__main__':
             model=HelicopterYOLO(preprocessor=GPUImagePreprocessor(imgsz=device.IR_RESOLUTION),
                                  model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                             task='detect'),
-                                 conf=0.75),
+                                 conf=0.6),
             marker_tolerance=0.01,
             marker_size=0.003,
             marker_size_tolerance=0.75,
