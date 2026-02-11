@@ -142,22 +142,15 @@ def get_points_coords(depth_frame, keypoints, intrinsics) -> np.ndarray:
     return final_points
 
 
-def get_fourcc(codec_str):
-    return (ord(codec_str[0]) & 255) + \
-        ((ord(codec_str[1]) & 255) << 8) + \
-        ((ord(codec_str[2]) & 255) << 16) + \
-        ((ord(codec_str[3]) & 255) << 24)
-
-
 if __name__ == '__main__':
     profiler = Profiler()
     camera = D435i(projector_power=360.,
                    autoexpose=False,
-                   exposure_time=2200)
+                   exposure_time=1800)
     model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(),
-                           conf=0.7)
+                           conf=0.75)
 
     try:
         camera.start()
