@@ -70,8 +70,8 @@ if __name__ == '__main__':
         'd_theta': 0.05,
         'dp': 1e-6,
         'dv': 1e-3,
-        'dba': 0.5,
-        'dbg': 0.5
+        'dba': 0.7,
+        'dbg': 1.0
     }
     S = initialize_S_matrix(initial_sigmas)
 
