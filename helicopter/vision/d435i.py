@@ -68,19 +68,22 @@ class D435i:
     def last_imu_time(self):
         return self.time_queue[-2]
 
-    def get_device_from_serial(self, ctx, serial):
+    @staticmethod
+    def get_device_from_serial(ctx, serial):
         for dev in ctx.devices:
             if dev.get_info(rs.camera_info.serial_number) == serial:
                 return dev
         raise RuntimeError(f"Device {serial} not found")
 
-    def get_device_serial(self):
+    @staticmethod
+    def get_device_serial():
         ctx = rs.context()
         if not ctx.devices:
             raise RuntimeError("No RealSense device detected.")
         return ctx.devices[0].get_info(rs.camera_info.serial_number)
 
-    def set_projector_power(self, depth_sensor: rs.depth_sensor, power: float):
+    @staticmethod
+    def set_projector_power(depth_sensor: rs.depth_sensor, power: float):
         if 0. <= power <= 360:
             print(f"Setting projector power to {power}")
             depth_sensor.set_option(rs.option.laser_power, power)
@@ -89,7 +92,8 @@ class D435i:
             warnings.warn(f"Specified projector power {power} is invalid. Must be between 0 and 360."
                           f"Projector power setting skipped.")
 
-    def set_exposure(self, depth_sensor: rs.depth_sensor, autoexposure: bool, exposure_time: int):
+    @staticmethod
+    def set_exposure(depth_sensor: rs.depth_sensor, autoexposure: bool, exposure_time: int):
         if not autoexposure:
             depth_sensor.set_option(rs.option.enable_auto_exposure, 0)
             depth_sensor.set_option(rs.option.exposure, exposure_time)

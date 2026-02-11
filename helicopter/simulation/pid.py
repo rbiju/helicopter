@@ -62,16 +62,19 @@ class Helicopter:
                         'error_height', 'error_dist', 'error_heading',
                         'thrust', 'pitch', 'yaw']
 
-    def parse_gain(self, gain):
+    @staticmethod
+    def parse_gain(gain):
         if gain:
             return gain
         else:
             return PIDGains(0., 0., 0.)
 
-    def rotate_to_body_frame(self, vector_body: np.ndarray, q_body_to_world: quaternion.quaternion) -> np.ndarray:
+    @staticmethod
+    def rotate_to_body_frame(vector_body: np.ndarray, q_body_to_world: quaternion.quaternion) -> np.ndarray:
         return (q_body_to_world.inverse() * quaternion.from_vector_part(vector_body) * q_body_to_world).imag
 
-    def rotate_to_world_frame(self, vector_world: np.ndarray, q_body_to_world: quaternion.quaternion) -> np.ndarray:
+    @staticmethod
+    def rotate_to_world_frame(vector_world: np.ndarray, q_body_to_world: quaternion.quaternion) -> np.ndarray:
         return (q_body_to_world * quaternion.from_vector_part(vector_world) * q_body_to_world.inverse()).imag
 
     @staticmethod

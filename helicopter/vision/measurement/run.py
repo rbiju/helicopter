@@ -58,7 +58,7 @@ if __name__ == '__main__':
     N = 15
     q_sigmas = {
         "gyro": 0.05 * (np.pi / 180.0),
-        "pos": 1e-10,
+        "pos": 1e-6,
         "vel": 0.05,
         "bias_acc": 1e-6,
         "bias_gyro": 1e-6
@@ -71,7 +71,7 @@ if __name__ == '__main__':
         'dp': 1e-6,
         'dv': 1e-3,
         'dba': 0.5,
-        'dbg': 0.01
+        'dbg': 0.5
     }
     S = initialize_S_matrix(initial_sigmas)
 
@@ -82,18 +82,18 @@ if __name__ == '__main__':
     }
     R = initialize_R_matrix(visual_sigmas)
     x = jnp.zeros(N)
-    ukf = UKF(x=x, S=S, Q=Q, R=R, alpha=0.1, beta=2.0, kappa=-12)
+    ukf = UKF(x=x, S=S, Q=Q, R=R, alpha=1.0, beta=2.0, kappa=-12)
 
     device = D435i(enable_motion=True, video_rate=60,
                    projector_power=360., autoexpose=False, exposure_time=2200,
-                   ema_factor=0.2)
+                   ema_factor=0.5)
 
     point_handler = PointHandler(
         detector=YOLOPointDetector(
             model=HelicopterYOLO(preprocessor=GPUImagePreprocessor(imgsz=device.IR_RESOLUTION),
                                  model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                             task='detect'),
-                                 conf=0.7),
+                                 conf=0.65),
             marker_tolerance=0.01,
             marker_size=0.003,
             marker_size_tolerance=0.75,

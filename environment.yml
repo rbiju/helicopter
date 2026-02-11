@@ -8,3 +8,12 @@ dependencies:
   - pybind11
   - scikit-build-core
   - pip
+  - jax
+  - numpy
+  - scipy
+  - ultralytics
+  - tqdm
+  - opencv-python-headless
+  - numpy-quaternion
+  - pandas
+  - matplotlib

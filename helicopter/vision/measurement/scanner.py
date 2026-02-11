@@ -169,7 +169,10 @@ class Scanner:
 
     def vision_loop(self):
         while self.is_running:
-            frames = self.device.pipeline.wait_for_frames(timeout_ms=20)
+            try:
+                frames = self.device.pipeline.wait_for_frames(timeout_ms=20)
+            except RuntimeError:
+                continue
 
             depth_image, ts_depth, ir_image, ts_ir, laser_state = self.device.process_frames(frames)
 
