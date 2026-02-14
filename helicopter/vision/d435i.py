@@ -214,7 +214,7 @@ class D435i:
 
         return depth_image, ts_depth, ir_image, ts_ir, laser_state
 
-    def process_imu_frames(self, frames):
+    def process_imu_frames(self, frames, ema: bool = True):
         accel_data = None
         ts_accel = None
         gyro_data = None
@@ -239,8 +239,14 @@ class D435i:
             self.last_gyro = gyro_data
             return None
         else:
+            if not ema:
+                return accel_data, ts_accel, gyro_data, ts_gyro
+
             accel_data = self.ema_factor * accel_data + (1 - self.ema_factor) * self.last_accel
             gyro_data = self.ema_factor * gyro_data + (1 - self.ema_factor) * self.last_gyro
+
+            self.last_accel = accel_data
+            self.last_gyro = gyro_data
             return accel_data, ts_accel, gyro_data, ts_gyro
 
     def stop(self):

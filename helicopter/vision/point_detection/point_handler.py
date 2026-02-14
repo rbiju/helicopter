@@ -42,7 +42,8 @@ class PointHandler:
 
         return points
 
-    def correct_points(self, points: np.ndarray, camera_position: np.ndarray, camera_quat: Rotation) -> np.ndarray:
+    @staticmethod
+    def correct_points(points: np.ndarray, camera_position: np.ndarray, camera_quat: Rotation) -> np.ndarray:
         corrected = camera_quat.apply(points) + camera_position
 
         return corrected

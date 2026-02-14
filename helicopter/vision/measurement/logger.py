@@ -8,6 +8,7 @@ import quaternion
 class StateLogger:
     def __init__(self, save_dir="../../../notebooks"):
         self.save_dir = Path(save_dir)
+        self.warmup_data = []
         self.data = []
         self.headers = [
             'timestamp', 'event',
@@ -28,7 +29,7 @@ class StateLogger:
                                'qw', 'qx', 'qy', 'qz',
                                'px', 'py', 'pz']
 
-    def log_state(self, timestamp: float, event: str, state_vector: np.ndarray):
+    def log_state(self, timestamp: float, event: str, state_vector: np.ndarray, warmup: bool = False):
         s = state_vector.flatten()
 
         row = [
@@ -40,7 +41,10 @@ class StateLogger:
             f"{s[10]:.6f}", f"{s[11]:.6f}", f"{s[12]:.6f}",
             f"{s[13]:.6f}", f"{s[14]:.6f}", f"{s[15]:.6f}"
         ]
-        self.data.append(row)
+        if warmup:
+            self.warmup_data.append(row)
+        else:
+            self.data.append(row)
 
     def log_imu(self, timestamp: float, accel: np.ndarray, gyro: np.ndarray):
         row = [
@@ -58,26 +62,24 @@ class StateLogger:
         ]
         self.vision_data.append(row)
 
+    @staticmethod
+    def write_file(save_path: Path, headers, data):
+        with open(save_path, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(headers)
+            writer.writerows(data)
+
     def save(self):
         print(f"Saving logs to {self.save_dir} with {len(self.data)} entries...")
 
+        warmup_path = self.save_dir / "warmup.csv"
         log_path = self.save_dir / "log.csv"
         imu_path = self.save_dir / "imu_log.csv"
         vision_path = self.save_dir / "vision_log.csv"
 
-        with open(log_path, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(self.headers)
-            writer.writerows(self.data)
-
-        with open(imu_path, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(self.imu_headers)
-            writer.writerows(self.imu_data)
-
-        with open(vision_path, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(self.vision_headers)
-            writer.writerows(self.vision_data)
+        self.write_file(warmup_path, self.headers, self.warmup_data)
+        self.write_file(log_path, self.headers, self.data)
+        self.write_file(imu_path, self.imu_headers, self.imu_data)
+        self.write_file(vision_path, self.vision_headers, self.vision_data)
 
         print("Logs saved.")

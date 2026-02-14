@@ -43,7 +43,7 @@ class ErrorStateSquareRootUnscentedKalmanFilter:
         obj.x, obj.S, obj.Q_upper, obj.R_upper, obj.Wm, obj.Wc = children
         return obj
 
-    def reset(self, x=None):
+    def reset(self, x=None) -> "ErrorStateSquareRootUnscentedKalmanFilter":
         new_x = x if x is not None else jnp.zeros(self.n_dim)
 
         obj = self.tree_unflatten(
@@ -87,7 +87,7 @@ class ErrorStateSquareRootUnscentedKalmanFilter:
         return jnp.concatenate([x[None, :], points_plus, points_minus], axis=0)
 
     @partial(jax.jit, static_argnames=['transition_fn'])
-    def predict(self, transition_fn, dt, **kwargs):
+    def predict(self, transition_fn, dt, **kwargs) -> "ErrorStateSquareRootUnscentedKalmanFilter":
         points = self._generate_sigma_points(self.x, self.S)
         points_pred = jax.vmap(lambda p: transition_fn(p, dt, **kwargs))(points)
 
@@ -116,7 +116,7 @@ class ErrorStateSquareRootUnscentedKalmanFilter:
         )
 
     @partial(jax.jit, static_argnames=['measurement_fn'])
-    def update(self, measurement_fn, z_point, **kwargs):
+    def update(self, measurement_fn, z_point, **kwargs) -> "ErrorStateSquareRootUnscentedKalmanFilter":
         points = self._generate_sigma_points(self.x, self.S)
 
         Z_sig = jax.vmap(lambda p: measurement_fn(p, **kwargs))(points)

@@ -146,18 +146,18 @@ if __name__ == '__main__':
     profiler = Profiler()
     camera = D435i(projector_power=360.,
                    autoexpose=False,
-                   exposure_time=1800)
+                   exposure_time=2200)
     model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(),
-                           conf=0.75)
+                           conf=0.65)
 
     try:
         camera.start()
         pbar = tqdm(desc='Collecting Frames')
         detected_images = []
         frame_count = 0
-        while frame_count < 100:
+        while frame_count < 250:
             frames = camera.pipeline.wait_for_frames()
             depth_image, ts_depth, ir_image, ts_ir, laser_state = camera.process_frames(frames)
             frame_count += 1

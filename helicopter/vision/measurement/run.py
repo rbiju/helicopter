@@ -59,33 +59,62 @@ if __name__ == '__main__':
     q_sigmas = {
         "gyro": 0.05 * (np.pi / 180.0),
         "pos": 1e-6,
-        "vel": 0.05,
-        "bias_acc": 1e-6,
-        "bias_gyro": 1e-6
+        "vel": 0.5,
+        "bias_acc": 5e-5,
+        "bias_gyro": 5e-5
     }
 
     Q = build_Q_matrix(dt=1 / 200, std_devs=q_sigmas)
 
     initial_sigmas = {
-        'd_theta': 0.05,
-        'dp': 1e-6,
-        'dv': 1e-3,
-        'dba': 0.7,
-        'dbg': 1.0
+        'd_theta': 0.01,
+        'dp': 1e-3,
+        'dv': 1e-2,
+        'dba': 1e-4,
+        'dbg': 1e-4
     }
     S = initialize_S_matrix(initial_sigmas)
 
     visual_sigmas = {
-        'dp_x': 0.01,
-        'dp_y': 0.01,
-        'dp_z': 0.01,
+        'dp_x': 5e-3,
+        'dp_y': 5e-3,
+        'dp_z': 5e-3,
     }
     R = initialize_R_matrix(visual_sigmas)
     x = jnp.zeros(N)
     ukf = UKF(x=x, S=S, Q=Q, R=R, alpha=1.0, beta=2.0, kappa=-12)
 
+    # Warmup Filter
+    warmup_q_sigmas = {
+        "gyro": 0.014 * (np.pi / 180.0),
+        "pos": 1e-6,
+        "vel": 1e-4,
+        "bias_acc": 5e-6,
+        "bias_gyro": 5e-6
+    }
+
+    warmup_Q = build_Q_matrix(dt=1 / 200, std_devs=warmup_q_sigmas)
+
+    warmup_initial_sigmas = {
+        'd_theta': 0.01,
+        'dp': 1e-3,
+        'dv': 1e-2,
+        'dba': 1.0,
+        'dbg': 1.0
+    }
+    warmup_S = initialize_S_matrix(warmup_initial_sigmas)
+
+    warmup_visual_sigmas = {
+        'dp_x': 1e-5,
+        'dp_y': 1e-5,
+        'dp_z': 1e-5,
+    }
+    warmup_R = initialize_R_matrix(warmup_visual_sigmas)
+    warmup_x = jnp.zeros(N)
+    warmup_ukf = UKF(x=warmup_x, S=warmup_S, Q=warmup_Q, R=warmup_R, alpha=1.0, beta=2.0, kappa=-12)
+
     device = D435i(enable_motion=True, video_rate=60,
-                   projector_power=360., autoexpose=False, exposure_time=1800,
+                   projector_power=360., autoexpose=False, exposure_time=2200,
                    ema_factor=0.5)
 
     point_handler = PointHandler(
@@ -93,7 +122,7 @@ if __name__ == '__main__':
             model=HelicopterYOLO(preprocessor=GPUImagePreprocessor(imgsz=device.IR_RESOLUTION),
                                  model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                             task='detect'),
-                                 conf=0.70),
+                                 conf=0.65),
             marker_tolerance=0.01,
             marker_size=0.003,
             marker_size_tolerance=0.75,
@@ -105,7 +134,8 @@ if __name__ == '__main__':
                       point_handler=point_handler,
                       camera_state_handler=CameraStateHandler(),
                       ukf=ukf,
-                      measurement_time=15.0)
+                      warmup_ukf=warmup_ukf,
+                      measurement_time=5.0)
 
     scanner.scan()
 
