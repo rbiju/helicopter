@@ -60,8 +60,8 @@ if __name__ == '__main__':
         "gyro": 0.05 * (np.pi / 180.0),
         "pos": 1e-6,
         "vel": 0.5,
-        "bias_acc": 5e-5,
-        "bias_gyro": 5e-5
+        "bias_acc": 1e-4,
+        "bias_gyro": 1e-4
     }
 
     Q = build_Q_matrix(dt=1 / 200, std_devs=q_sigmas)
@@ -70,8 +70,8 @@ if __name__ == '__main__':
         'd_theta': 0.01,
         'dp': 1e-3,
         'dv': 1e-2,
-        'dba': 1e-4,
-        'dbg': 1e-4
+        'dba': 5e-4,
+        'dbg': 5e-4
     }
     S = initialize_S_matrix(initial_sigmas)
 
@@ -89,8 +89,8 @@ if __name__ == '__main__':
         "gyro": 0.014 * (np.pi / 180.0),
         "pos": 1e-6,
         "vel": 1e-4,
-        "bias_acc": 5e-6,
-        "bias_gyro": 5e-6
+        "bias_acc": 1e-6,
+        "bias_gyro": 1e-6
     }
 
     warmup_Q = build_Q_matrix(dt=1 / 200, std_devs=warmup_q_sigmas)
@@ -100,7 +100,7 @@ if __name__ == '__main__':
         'dp': 1e-3,
         'dv': 1e-2,
         'dba': 1.0,
-        'dbg': 1.0
+        'dbg': 0.5
     }
     warmup_S = initialize_S_matrix(warmup_initial_sigmas)
 
@@ -114,8 +114,8 @@ if __name__ == '__main__':
     warmup_ukf = UKF(x=warmup_x, S=warmup_S, Q=warmup_Q, R=warmup_R, alpha=1.0, beta=2.0, kappa=-12)
 
     device = D435i(enable_motion=True, video_rate=60,
-                   projector_power=360., autoexpose=False, exposure_time=2200,
-                   ema_factor=0.5)
+                   projector_power=360., autoexpose=False, exposure_time=1800,
+                   ema_factor=1.0)
 
     point_handler = PointHandler(
         detector=YOLOPointDetector(
