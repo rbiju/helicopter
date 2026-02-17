@@ -1,5 +1,6 @@
 import warnings
 from collections import deque
+from typing import Optional
 
 import numpy as np
 import pyrealsense2 as rs
@@ -214,7 +215,7 @@ class D435i:
 
         return depth_image, ts_depth, ir_image, ts_ir, laser_state
 
-    def process_imu_frames(self, frames, ema: bool = True):
+    def process_imu_frames(self, frames, ema_factor: Optional[float] = None):
         accel_data = None
         ts_accel = None
         gyro_data = None
@@ -239,11 +240,11 @@ class D435i:
             self.last_gyro = gyro_data
             return None
         else:
-            if not ema:
-                return accel_data, ts_accel, gyro_data, ts_gyro
+            if ema_factor is None:
+                ema_factor = self.ema_factor
 
-            accel_data = self.ema_factor * accel_data + (1 - self.ema_factor) * self.last_accel
-            gyro_data = self.ema_factor * gyro_data + (1 - self.ema_factor) * self.last_gyro
+            accel_data = ema_factor * accel_data + (1 - ema_factor) * self.last_accel
+            gyro_data = ema_factor * gyro_data + (1 - ema_factor) * self.last_gyro
 
             self.last_accel = accel_data
             self.last_gyro = gyro_data

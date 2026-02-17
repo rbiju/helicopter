@@ -33,13 +33,13 @@ class StateLogger:
         s = state_vector.flatten()
 
         row = [
-            f"{timestamp:.6f}",
+            f"{timestamp:.8f}",
             event,
-            f"{s[0]:.6f}", f"{s[1]:.6f}", f"{s[2]:.6f}", f"{s[3]:.6f}",
-            f"{s[4]:.6f}", f"{s[5]:.6f}", f"{s[6]:.6f}",
-            f"{s[7]:.6f}", f"{s[8]:.6f}", f"{s[9]:.6f}",
-            f"{s[10]:.6f}", f"{s[11]:.6f}", f"{s[12]:.6f}",
-            f"{s[13]:.6f}", f"{s[14]:.6f}", f"{s[15]:.6f}"
+            f"{s[0]:.8f}", f"{s[1]:.8f}", f"{s[2]:.8f}", f"{s[3]:.8f}",
+            f"{s[4]:.8f}", f"{s[5]:.8f}", f"{s[6]:.8f}",
+            f"{s[7]:.8f}", f"{s[8]:.8f}", f"{s[9]:.8f}",
+            f"{s[10]:.8f}", f"{s[11]:.8f}", f"{s[12]:.8f}",
+            f"{s[13]:.8f}", f"{s[14]:.8f}", f"{s[15]:.8f}"
         ]
         if warmup:
             self.warmup_data.append(row)
@@ -48,17 +48,17 @@ class StateLogger:
 
     def log_imu(self, timestamp: float, accel: np.ndarray, gyro: np.ndarray):
         row = [
-            f"{timestamp:.6f}",
-            f"{accel[0]:.6f}", f"{accel[1]:.6f}", f"{accel[2]:.6f}",
-            f"{gyro[0]:.6f}", f"{gyro[1]:.6f}", f"{gyro[2]:.6f}",
+            f"{timestamp:.8f}",
+            f"{accel[0]:.8f}", f"{accel[1]:.8f}", f"{accel[2]:.8f}",
+            f"{gyro[0]:.8f}", f"{gyro[1]:.8f}", f"{gyro[2]:.8f}",
         ]
         self.imu_data.append(row)
 
     def log_vision(self, timestamp: float, quat: quaternion.quaternion, translation: np.ndarray):
         row = [
-            f"{timestamp:.6f}",
-            f"{quat.w:.6f}", f"{quat.x:.6f}", f"{quat.y:.6f}", f"{quat.z:.6f}",
-            f"{translation[0]:.6f}", f"{translation[1]:.6f}", f"{translation[2]:.6f}",
+            f"{timestamp:.8f}",
+            f"{quat.w:.8f}", f"{quat.x:.8f}", f"{quat.y:.8f}", f"{quat.z:.8f}",
+            f"{translation[0]:.8f}", f"{translation[1]:.8f}", f"{translation[2]:.8f}",
         ]
         self.vision_data.append(row)
 

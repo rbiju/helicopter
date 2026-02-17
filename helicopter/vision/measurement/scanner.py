@@ -27,7 +27,6 @@ class Scanner:
                  device: D435i,
                  point_handler: PointHandler,
                  camera_state_handler: CameraStateHandler,
-                 warmup_ukf: UKF,
                  ukf: UKF,
                  measurement_time: float = 5.0):
         self.device = device
@@ -35,7 +34,6 @@ class Scanner:
         self.camera_state_handler = camera_state_handler
 
         self.ukf = ukf
-        self.warmup_ukf = warmup_ukf
         self.init_jax()
 
         self.profiler = Profiler()
@@ -96,15 +94,15 @@ class Scanner:
         print("JAX Compilation complete")
 
     def initialize_orientation(self):
-        accel_queue = PointQueue(500, np.array([0, 0, 0.0]))
-        gyro_queue = PointQueue(500, np.array([0, 0, 0.0]))
+        accel_queue = PointQueue(600, np.array([0, 0, 0.0]))
+        gyro_queue = PointQueue(50, np.array([0, 0, 0.0]))
 
-        orientation_iters = 500
+        orientation_iters = 750
         pbar = tqdm(total=orientation_iters, desc="Initializing sensor orientation. Do not move camera")
         counter = 0
         while counter < orientation_iters:
             imu_frames = self.device.imu_pipeline.wait_for_frames()
-            imu_data = self.device.process_imu_frames(imu_frames, ema=False)
+            imu_data = self.device.process_imu_frames(imu_frames, ema_factor=0.01)
             if imu_data is not None:
                 accel_data, ts_accel, gyro_data, ts_gyro = imu_data
                 accel_queue.enqueue(accel_data)
@@ -136,75 +134,6 @@ class Scanner:
 
         self.camera_state_handler.gyro_bias = gyro_queue.mean()
         self.camera_state_handler.quaternion = quat
-
-        refinement_iters = 1000
-        pbar = tqdm(total=refinement_iters, desc="Refining bias estimates. Do not move camera")
-        ref_points = np.random.rand(6, 3)
-        ref_points = ref_points / np.linalg.norm(ref_points, axis=1, keepdims=True)
-        # noinspection All
-        z_points: np.ndarray = self.camera_state_handler.quaternion.inv().apply(ref_points - self.camera_state_handler.position)
-
-        first_frame = True
-        last_time = 0
-        counter = 0
-        while counter < refinement_iters:
-            self.profiler.start("Bias_Estimation")
-            imu_frames = self.device.imu_pipeline.wait_for_frames()
-            imu_data = self.device.process_imu_frames(imu_frames, ema=False)
-            if imu_data is not None:
-                accel, ts_accel, gyro, ts_gyro = imu_data
-
-                if first_frame:
-                    last_time = ts_gyro
-                    first_frame = False
-                    continue
-
-                if last_time == ts_gyro:
-                    last_time = ts_gyro
-                    continue
-
-                accel = jnp.array(accel, dtype=jnp.float32)
-                gyro = jnp.array(gyro, dtype=jnp.float32)
-                g_world = jnp.array(self.camera_state_handler.g, dtype=jnp.float32)
-
-                dt = jnp.array(ts_gyro - last_time, dtype=jnp.float32)
-                last_time = ts_gyro
-
-                nominal_state = jnp.array(self.camera_state_handler.nominal_state)
-                propagated_nominal = propagate(nominal_state, dt, accel, gyro,
-                                               g_world)
-
-                self.warmup_ukf = self.warmup_ukf.predict(transition_fn=transition_fn,
-                                                          dt=dt,
-                                                          nominal_state=nominal_state,
-                                                          propagated_nominal=propagated_nominal,
-                                                          accel=accel,
-                                                          gyro=gyro,
-                                                          g_world=g_world)
-                self.camera_state_handler.set_state_from_nominal(np.array(propagated_nominal))
-                self.logger.log_state(timestamp=ts_gyro, event='predict', state_vector=np.array(nominal_state), warmup=True)
-
-                for ref_point, z_point in zip(ref_points, z_points):
-                    self.warmup_ukf = self.warmup_ukf.update(measurement_fn=measurement_fn,
-                                                             ref_point=ref_point,
-                                                             z_point=z_point,
-                                                             nominal_state=propagated_nominal,)
-
-                nominal_state = np.array(compose_fn(propagated_nominal,
-                                                    self.warmup_ukf.x))
-
-                self.warmup_ukf = self.warmup_ukf.reset()
-                self.camera_state_handler.set_state_from_nominal(nominal_state)
-
-                self.logger.log_state(timestamp=ts_gyro, event='update', state_vector=nominal_state,
-                                      warmup=True)
-
-                self.profiler.end("Bias_Estimation")
-
-                pbar.update(1)
-                counter += 1
-
-        self.camera_state_handler.zero()
 
         print(f" \nOrientation initialized, \n"
               f"mean acceleration: {v_B} \n"
