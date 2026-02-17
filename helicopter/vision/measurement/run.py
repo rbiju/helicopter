@@ -57,7 +57,7 @@ def initialize_R_matrix(std_devs: dict) -> np.ndarray:
 if __name__ == '__main__':
     N = 15
     q_sigmas = {
-        "gyro": 0.05 * (np.pi / 180.0),
+        "gyro": 0.5 * (np.pi / 180.0),
         "pos": 1e-6,
         "vel": 5e-3,
         "bias_acc": 1e-7,
@@ -67,7 +67,7 @@ if __name__ == '__main__':
     Q = initialize_Q_matrix(dt=1 / 200, std_devs=q_sigmas)
 
     initial_sigmas = {
-        'd_theta': 1.5 * (np.pi / 180.0),
+        'd_theta': 0.05 * (np.pi / 180.0),
         'dp': 1e-4,
         'dv': 1e-3,
         'dba': 1e-5,
@@ -85,8 +85,9 @@ if __name__ == '__main__':
     ukf = UKF(x=x, S=S, Q=Q, R=R, alpha=0.1, beta=2.0, kappa=-12)
 
     device = D435i(enable_motion=True, video_rate=60,
-                   projector_power=360., autoexpose=False, exposure_time=2200,
-                   ema_factor=0.5)
+                   projector_power=360., autoexpose=False, exposure_time=1800,
+                   ema_accel=0.75,
+                   ema_gyro=0.75,)
 
     point_handler = PointHandler(
         detector=YOLOPointDetector(
@@ -105,13 +106,6 @@ if __name__ == '__main__':
                       point_handler=point_handler,
                       camera_state_handler=CameraStateHandler(),
                       ukf=ukf,
-                      measurement_time=5.0)
+                      measurement_time=10.0)
 
     scanner.scan()
-
-    np.save('../../../notebooks/measured_points.npy', scanner.point_handler.points_coords)
-    string_out = np.array2string(scanner.point_handler.points_coords, precision=4, separator=', ')
-
-    print(string_out)
-
-    print('done')

@@ -17,7 +17,8 @@ class D435i:
                  toggle_projector: bool = False,
                  autoexpose: bool = True,
                  exposure_time: int = 800,
-                 ema_factor: float = 1.0):
+                 ema_accel: float = 1.0,
+                 ema_gyro: float = 1.0,):
         self.ACCEL_RATE = accel_rate
         self.GYRO_RATE = gyro_rate
 
@@ -59,7 +60,8 @@ class D435i:
 
         self.align = rs.align(rs.stream.infrared)
 
-        self.ema_factor = ema_factor
+        self.ema_accel = ema_accel
+        self.ema_gyro = ema_gyro
         self.last_accel = None
         self.last_gyro = None
 
@@ -215,7 +217,7 @@ class D435i:
 
         return depth_image, ts_depth, ir_image, ts_ir, laser_state
 
-    def process_imu_frames(self, frames, ema_factor: Optional[float] = None):
+    def process_imu_frames(self, frames, ema_accel: Optional[float] = None, ema_gyro: Optional[float] = None):
         accel_data = None
         ts_accel = None
         gyro_data = None
@@ -240,11 +242,13 @@ class D435i:
             self.last_gyro = gyro_data
             return None
         else:
-            if ema_factor is None:
-                ema_factor = self.ema_factor
+            if ema_accel is None:
+                ema_accel = self.ema_accel
+            if ema_gyro is None:
+                ema_gyro = self.ema_gyro
 
-            accel_data = ema_factor * accel_data + (1 - ema_factor) * self.last_accel
-            gyro_data = ema_factor * gyro_data + (1 - ema_factor) * self.last_gyro
+            accel_data = ema_accel * accel_data + (1 - ema_accel) * self.last_accel
+            gyro_data = ema_gyro * gyro_data + (1 - ema_gyro) * self.last_gyro
 
             self.last_accel = accel_data
             self.last_gyro = gyro_data

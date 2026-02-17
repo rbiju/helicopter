@@ -1,6 +1,7 @@
+from pathlib import Path
+
 import cv2
 import numpy as np
-import jax.numpy as jnp
 
 from scipy.spatial.transform import Rotation
 from scipy.optimize import linear_sum_assignment
@@ -15,15 +16,22 @@ class PointHandler:
     def __init__(self,
                  detector: PointDetector,
                  queue_len: int = 50,
-                 max_detections: int = 20) -> None:
+                 save_dir: str = "../../../notebooks/points") -> None:
         self.detector = detector
         self.maxlen = queue_len
-        self.max_detections = max_detections
+        self.save_dir = Path(save_dir)
 
         self.point_map = np.empty((0, 3))
         self.points: dict[int, PointQueue] = {}
 
         self._next_id = 0
+
+    def __repr__(self):
+        summary = {'Num_Points': self._next_id,
+                   'Points': self.points_coords}
+
+        return (f"PointHandler: \n"
+                f"{summary}")
 
     @property
     def next_id(self):
@@ -111,29 +119,9 @@ class PointHandler:
 
         return marker_coords, keypoints
 
-    def get_filter_inputs(self, measured_points, measure_idx, reference_points, reference_idx):
-        m_slice = measured_points[measure_idx].astype(np.float32)
-        r_slice = reference_points[reference_idx].astype(np.float32)
-
-        n_valid = m_slice.shape[0]
-        dim = m_slice.shape[1] if n_valid > 0 else 3
-
-        if n_valid > self.max_detections:
-            m_slice = m_slice[:self.max_detections]
-            r_slice = r_slice[:self.max_detections]
-            n_valid = self.max_detections
-
-        z_padded = np.zeros((self.max_detections, dim), dtype=m_slice.dtype)
-        ref_padded = np.zeros((self.max_detections, dim), dtype=r_slice.dtype)
-
-        if n_valid > 0:
-            z_padded[:n_valid] = m_slice
-            ref_padded[:n_valid] = r_slice
-
-        return (jnp.array(z_padded, dtype=jnp.float32),
-                jnp.array(ref_padded, dtype=jnp.float32),
-                jnp.array(n_valid, dtype=jnp.int32))
-
     def append_points(self, points: np.ndarray, point_idxs: list[int]):
         for idx, point in zip(point_idxs, points):
             self.points[idx].enqueue(point)
+
+    def save(self):
+        np.save(self.save_dir / 'measured_points.npy', self.points_coords)

@@ -6,7 +6,7 @@ import quaternion
 
 
 class StateLogger:
-    def __init__(self, save_dir="../../../notebooks"):
+    def __init__(self, save_dir="../../../notebooks/logs"):
         self.save_dir = Path(save_dir)
         self.warmup_data = []
         self.data = []
@@ -23,11 +23,6 @@ class StateLogger:
         self.imu_headers = ['timestamp',
                             'ax', 'ay', 'az',
                             'gx', 'gy', 'gz',]
-
-        self.vision_data = []
-        self.vision_headers = ['timestamp',
-                               'qw', 'qx', 'qy', 'qz',
-                               'px', 'py', 'pz']
 
     def log_state(self, timestamp: float, event: str, state_vector: np.ndarray, warmup: bool = False):
         s = state_vector.flatten()
@@ -54,14 +49,6 @@ class StateLogger:
         ]
         self.imu_data.append(row)
 
-    def log_vision(self, timestamp: float, quat: quaternion.quaternion, translation: np.ndarray):
-        row = [
-            f"{timestamp:.8f}",
-            f"{quat.w:.8f}", f"{quat.x:.8f}", f"{quat.y:.8f}", f"{quat.z:.8f}",
-            f"{translation[0]:.8f}", f"{translation[1]:.8f}", f"{translation[2]:.8f}",
-        ]
-        self.vision_data.append(row)
-
     @staticmethod
     def write_file(save_path: Path, headers, data):
         with open(save_path, 'w', newline='') as f:
@@ -72,14 +59,10 @@ class StateLogger:
     def save(self):
         print(f"Saving logs to {self.save_dir} with {len(self.data)} entries...")
 
-        warmup_path = self.save_dir / "warmup.csv"
         log_path = self.save_dir / "log.csv"
         imu_path = self.save_dir / "imu_log.csv"
-        vision_path = self.save_dir / "vision_log.csv"
 
-        self.write_file(warmup_path, self.headers, self.warmup_data)
         self.write_file(log_path, self.headers, self.data)
         self.write_file(imu_path, self.imu_headers, self.imu_data)
-        self.write_file(vision_path, self.vision_headers, self.vision_data)
 
         print("Logs saved.")

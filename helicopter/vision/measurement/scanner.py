@@ -95,14 +95,14 @@ class Scanner:
 
     def initialize_orientation(self):
         accel_queue = PointQueue(600, np.array([0, 0, 0.0]))
-        gyro_queue = PointQueue(50, np.array([0, 0, 0.0]))
+        gyro_queue = PointQueue(75, np.array([0, 0, 0.0]))
 
         orientation_iters = 750
         pbar = tqdm(total=orientation_iters, desc="Initializing sensor orientation. Do not move camera")
         counter = 0
         while counter < orientation_iters:
             imu_frames = self.device.imu_pipeline.wait_for_frames()
-            imu_data = self.device.process_imu_frames(imu_frames, ema_factor=0.01)
+            imu_data = self.device.process_imu_frames(imu_frames, ema_gyro=0.01)
             if imu_data is not None:
                 accel_data, ts_accel, gyro_data, ts_gyro = imu_data
                 accel_queue.enqueue(accel_data)
@@ -308,6 +308,10 @@ class Scanner:
 
             self.logger.save()
             print(self.profiler)
+
+            self.point_handler.save()
+            print(self.point_handler)
+
 
         self.device.stop()
         self.cleaned_up = True
