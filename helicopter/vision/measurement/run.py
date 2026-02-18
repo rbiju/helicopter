@@ -1,6 +1,4 @@
 import jax
-jax.config.update('jax_platform_name', 'cpu')
-
 import jax.numpy as jnp
 import numpy as np
 import scipy.linalg as linalg
@@ -59,7 +57,7 @@ def initialize_R_matrix(std_devs: dict) -> np.ndarray:
 if __name__ == '__main__':
     N = 15
     q_sigmas = {
-        "gyro": 0.25 * (np.pi / 180.0),
+        "gyro": 0.3 * (np.pi / 180.0),
         "pos": 1e-6,
         "vel": 5e-3,
         "bias_acc": 1e-7,
@@ -78,9 +76,9 @@ if __name__ == '__main__':
     S = initialize_S_matrix(initial_sigmas)
 
     visual_sigmas = {
-        'dp_x': 5e-3,
-        'dp_y': 5e-3,
-        'dp_z': 5e-3,
+        'dp_x': 3e-3,
+        'dp_y': 3e-3,
+        'dp_z': 3e-3,
     }
     R = initialize_R_matrix(visual_sigmas)
     x = jnp.zeros(N)
@@ -108,6 +106,6 @@ if __name__ == '__main__':
                       point_handler=point_handler,
                       camera_state_handler=CameraStateHandler(),
                       ukf=ukf,
-                      measurement_time=10.0)
+                      measurement_time=20.0)
 
     scanner.scan()
