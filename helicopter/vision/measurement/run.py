@@ -1,4 +1,6 @@
 import jax
+jax.config.update('jax_platform_name', 'cpu')
+
 import jax.numpy as jnp
 import numpy as np
 import scipy.linalg as linalg
@@ -57,7 +59,7 @@ def initialize_R_matrix(std_devs: dict) -> np.ndarray:
 if __name__ == '__main__':
     N = 15
     q_sigmas = {
-        "gyro": 0.5 * (np.pi / 180.0),
+        "gyro": 0.25 * (np.pi / 180.0),
         "pos": 1e-6,
         "vel": 5e-3,
         "bias_acc": 1e-7,

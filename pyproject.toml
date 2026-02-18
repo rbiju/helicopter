@@ -9,11 +9,15 @@ dependencies = [
     "numpy",
     "numpy-quaternion",
     "pandas",
-    "filterpy",
     "matplotlib",
-    "scipy"]
+    "scipy",
+    "jax",
+    "ultralytics-opencv-headless",
+    "opencv-python-headless",
+    "matplotlib"]
 
 [tool.scikit-build]
 wheel.install-dir = "helicopter"
 cmake.targets = ["helicopter_cpp"]
+
 editable.mode = "inplace"

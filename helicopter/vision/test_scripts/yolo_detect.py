@@ -1,10 +1,9 @@
 import cv2
 import numpy as np
-from tqdm import tqdm
 
 from ultralytics import YOLO
 
-from helicopter.utils import Profiler
+from helicopter.utils import Profiler, Quitter, KeyListener
 from helicopter.vision import D435i
 from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor
 
@@ -21,7 +20,7 @@ def draw_subpixel_circle(center, _radius, _shift=4):
     return (cx_rounded, cy_rounded), radius_rounded
 
 
-def get_refined_keypoints_fast(ir_frame, _boxes, margin=2):
+def get_refined_keypoints(ir_frame, _boxes, margin=2):
     if len(_boxes) == 0:
         return []
 
@@ -151,18 +150,23 @@ if __name__ == '__main__':
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(),
                            conf=0.65)
+    listener = KeyListener()
+    quitter = Quitter(listener=listener)
 
     try:
         camera.start()
-        pbar = tqdm(desc='Collecting Frames')
         detected_images = []
         frame_count = 0
-        while frame_count < 250:
+        quitter.start()
+        print("Starting detection")
+        while frame_count < 250 and not quitter.quit:
+            quitter.process()
+            if quitter.quit:
+                break
+
             frames = camera.pipeline.wait_for_frames()
             depth_image, ts_depth, ir_image, ts_ir, laser_state = camera.process_frames(frames)
             frame_count += 1
-            pbar.update(1)
-
             if ir_image is not None:
                 profiler.start('E2E')
                 profiler.start("Inference")
@@ -172,7 +176,7 @@ if __name__ == '__main__':
                 profiler.end("Inference")
 
                 profiler.start('Keypoints')
-                circles = get_refined_keypoints_fast(ir_image, boxes, margin=2)
+                circles = get_refined_keypoints(ir_image, boxes, margin=2)
                 a = cv2.cvtColor(ir_image, cv2.COLOR_GRAY2RGB)
                 a = cv2.drawKeypoints(ir_image, circles, a, color=(0, 0, 255), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
                 detected_images.append(a)
@@ -185,7 +189,9 @@ if __name__ == '__main__':
                 profiler.end("E2E")
     finally:
         camera.stop()
+        quitter.stop()
 
+    print(f"Frame count: {frame_count}")
     print(profiler)
 
     output_path = "detections.mp4"

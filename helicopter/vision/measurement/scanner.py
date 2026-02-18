@@ -7,9 +7,8 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 from scipy.spatial.transform import Rotation
-from tqdm import tqdm
 
-from helicopter.utils import PointQueue, Profiler
+from helicopter.utils import PointQueue, Profiler, KeyListener, Quitter
 from helicopter.vision import D435i
 from helicopter.vision import ErrorStateSquareRootUnscentedKalmanFilter as UKF
 from helicopter.vision.point_detection import PointHandler
@@ -57,6 +56,9 @@ class Scanner:
         self.vision_queue = queue.Queue(maxsize=1)
         self.imu_queue = queue.Queue(maxsize=25)
 
+        listener = KeyListener()
+        self.quitter = Quitter(listener=listener)
+
         self.cleaned_up = False
 
     def init_jax(self):
@@ -98,7 +100,7 @@ class Scanner:
         gyro_queue = PointQueue(75, np.array([0, 0, 0.0]))
 
         orientation_iters = 750
-        pbar = tqdm(total=orientation_iters, desc="Initializing sensor orientation. Do not move camera")
+        print("Initializing sensor orientation. Do not move camera")
         counter = 0
         while counter < orientation_iters:
             imu_frames = self.device.imu_pipeline.wait_for_frames()
@@ -107,7 +109,6 @@ class Scanner:
                 accel_data, ts_accel, gyro_data, ts_gyro = imu_data
                 accel_queue.enqueue(accel_data)
                 gyro_queue.enqueue(gyro_data)
-                pbar.update(1)
                 counter += 1
 
         v_B = accel_queue.mean()
@@ -189,16 +190,19 @@ class Scanner:
 
         self.started_running = True
         self.is_running = True
+
+        print("Starting scan")
+        self.quitter.start()
         self.imu_thread.start()
         self.vision_thread.start()
 
-        pbar = tqdm(desc=f"Starting measurement lasting {self.measurement_time} seconds")
         self.start_time = time.time()
         while self.is_running:
-            pbar.update(1)
             elapsed_time = time.time() - self.start_time
-            if elapsed_time > self.measurement_time:
+            self.quitter.process()
+            if elapsed_time > self.measurement_time or self.quitter.quit:
                 self.is_running = False
+                break
 
             try:
                 vision_data = self.vision_queue.get(timeout=0.1)
@@ -292,7 +296,6 @@ class Scanner:
 
             self.logger.log_state(timestamp=vision_time, event='vision', state_vector=nominal_state)
             self.profiler.end("E2E")
-        pbar.close()
 
     def cleanup(self):
         print("Cleaning up sensor")
@@ -314,6 +317,7 @@ class Scanner:
 
 
         self.device.stop()
+        self.quitter.stop()
         self.cleaned_up = True
 
     def scan(self):
