@@ -1,15 +1,14 @@
 import csv
 from pathlib import Path
+from collections import deque
 
 import numpy as np
-import quaternion
 
 
 class StateLogger:
     def __init__(self, save_dir="../../../notebooks/logs"):
         self.save_dir = Path(save_dir)
-        self.warmup_data = []
-        self.data = []
+        self.data = deque()
         self.headers = [
             'timestamp', 'event',
             'qx', 'qy', 'qz', 'qw',
@@ -19,12 +18,12 @@ class StateLogger:
             'b_gx', 'b_gy', 'b_gz'
         ]
 
-        self.imu_data = []
+        self.imu_data = deque()
         self.imu_headers = ['timestamp',
                             'ax', 'ay', 'az',
                             'gx', 'gy', 'gz',]
 
-    def log_state(self, timestamp: float, event: str, state_vector: np.ndarray, warmup: bool = False):
+    def log_state(self, timestamp: float, event: str, state_vector: np.ndarray):
         s = state_vector.flatten()
 
         row = [
@@ -36,10 +35,8 @@ class StateLogger:
             f"{s[10]:.8f}", f"{s[11]:.8f}", f"{s[12]:.8f}",
             f"{s[13]:.8f}", f"{s[14]:.8f}", f"{s[15]:.8f}"
         ]
-        if warmup:
-            self.warmup_data.append(row)
-        else:
-            self.data.append(row)
+
+        self.data.append(row)
 
     def log_imu(self, timestamp: float, accel: np.ndarray, gyro: np.ndarray):
         row = [
@@ -62,7 +59,7 @@ class StateLogger:
         log_path = self.save_dir / "log.csv"
         imu_path = self.save_dir / "imu_log.csv"
 
-        self.write_file(log_path, self.headers, self.data)
-        self.write_file(imu_path, self.imu_headers, self.imu_data)
+        self.write_file(log_path, self.headers, list(self.data))
+        self.write_file(imu_path, self.imu_headers, list(self.imu_data))
 
         print("Logs saved.")

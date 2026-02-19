@@ -2,6 +2,7 @@ import logging
 import time
 import threading
 from collections import deque
+import queue
 
 import numpy as np
 import jax
@@ -53,8 +54,8 @@ class Scanner:
         self.last_fused_time = 0.0
         self.first_imu_frame = True
 
-        self.vision_queue = deque(maxlen=1)
-        self.imu_queue = deque(maxlen=25)
+        self.vision_queue = queue.Queue(maxsize=5)
+        self.imu_queue = deque(maxlen=100)
 
         listener = KeyListener()
         self.quitter = Quitter(listener=listener)
@@ -96,8 +97,8 @@ class Scanner:
         print("JAX Compilation complete")
 
     def initialize_orientation(self):
-        accel_queue = PointQueue(600, np.array([0, 0, 0.0]))
-        gyro_queue = PointQueue(50, np.array([0, 0, 0.0]))
+        accel_queue = PointQueue(500, np.array([0, 0, 0.0]))
+        gyro_queue = PointQueue(75, np.array([0, 0, 0.0]))
 
         orientation_iters = 750
         print("Initializing sensor orientation. Do not move camera")
@@ -145,10 +146,7 @@ class Scanner:
     def imu_loop(self):
         is_first_frame = True
         while self.is_running:
-            try:
-                imu_frames = self.device.imu_pipeline.wait_for_frames(timeout_ms=10)
-            except RuntimeError:
-                continue
+            imu_frames = self.device.imu_pipeline.wait_for_frames()
 
             imu_data = self.device.process_imu_frames(imu_frames)
 
@@ -169,29 +167,47 @@ class Scanner:
 
     def vision_loop(self):
         while self.is_running:
-            try:
-                frames = self.device.pipeline.wait_for_frames(timeout_ms=20)
-            except RuntimeError:
-                continue
+            frames = self.device.pipeline.wait_for_frames()
 
             depth_image, ts_depth, ir_image, ts_ir, laser_state = self.device.process_frames(frames)
 
             if ir_image is not None:
-                self.vision_queue.append((ts_ir, ir_image, depth_image))
+                try:
+                    self.vision_queue.put((ts_depth, ir_image, depth_image), block=False)
+                except queue.Full:
+                    self.vision_queue.get_nowait()
+                    self.vision_queue.put((ts_depth, ir_image, depth_image), block=False)
 
     def loop(self):
         self.device.time_queue.clear()
 
+        print("Flushing hardware buffers...")
+
+        while True:
+            try:
+                if not self.device.imu_pipeline.poll_for_frames():
+                    break
+            except RuntimeError:
+                break
+
+        while True:
+            try:
+                if not self.device.pipeline.poll_for_frames():
+                    break
+            except RuntimeError:
+                break
+
+        print("Starting scan...")
+        elapsed_time = 0.0
+        self.start_time = time.time()
+
         self.started_running = True
         self.is_running = True
 
-        print("Starting scan...")
         self.quitter.start()
         self.imu_thread.start()
         self.vision_thread.start()
 
-        elapsed_time = 0.0
-        self.start_time = time.time()
         while self.is_running:
             elapsed_time = time.time() - self.start_time
             self.quitter.process()
@@ -200,8 +216,9 @@ class Scanner:
                 break
 
             try:
-                vision_time, ir_frame, depth_frame = self.vision_queue.popleft()
-            except IndexError:
+                vision_time, ir_frame, depth_frame = self.vision_queue.get(timeout=0.05)
+            except queue.Empty:
+                time.sleep(0.001)
                 continue
 
             self.profiler.start("E2E")
