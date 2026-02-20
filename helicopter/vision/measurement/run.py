@@ -70,8 +70,8 @@ if __name__ == '__main__':
         'd_theta': 0.05 * (np.pi / 180.0),
         'dp': 1e-5,
         'dv': 1e-4,
-        'dba': 5e-6,
-        'dbg': 5e-6,
+        'dba': 1e-5,
+        'dbg': 1e-5,
     }
     S = initialize_S_matrix(initial_sigmas)
 
@@ -98,7 +98,7 @@ if __name__ == '__main__':
             marker_tolerance=0.01,
             marker_size=0.003,
             marker_size_tolerance=0.75,
-            distance_threshold=0.5
+            distance_threshold=0.4
         ),
         queue_len=75)
 

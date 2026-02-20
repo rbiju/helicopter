@@ -197,7 +197,7 @@ class Scanner:
             except RuntimeError:
                 break
 
-        print("Starting scan...")
+        print(f"Scanning... (press '{self.quitter.quit_key}' to exit)")
         elapsed_time = 0.0
         self.start_time = time.time()
 

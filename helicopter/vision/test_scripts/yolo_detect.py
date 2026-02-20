@@ -101,7 +101,7 @@ def get_points_coords(depth_frame, keypoints, intrinsics) -> np.ndarray:
         else:
             depth = d_mean
 
-        if depth > 0.5 or depth <= 0:
+        if depth > 0.4 or depth <= 0:
             continue
 
         valid_depths.append(depth)
@@ -145,11 +145,11 @@ if __name__ == '__main__':
     profiler = Profiler()
     camera = D435i(projector_power=360.,
                    autoexpose=False,
-                   exposure_time=1800)
+                   exposure_time=1750)
     model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(),
-                           conf=0.65)
+                           conf=0.75)
     listener = KeyListener()
     quitter = Quitter(listener=listener)
 
@@ -159,7 +159,7 @@ if __name__ == '__main__':
         frame_count = 0
         quitter.start()
         print("Starting detection")
-        while frame_count < 250 and not quitter.quit:
+        while frame_count < 500 and not quitter.quit:
             quitter.process()
             if quitter.quit:
                 break
