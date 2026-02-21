@@ -70,6 +70,17 @@ def transition_fn(error_state, dt, nominal_state, propagated_nominal, accel, gyr
 
 @jit
 def measurement_fn(error_state, ref_point, nominal_state):
+    """
+    Calculates where a reference point should be measured based on the current camera state
+    ex: q = (1, 0, 0, 0), t = (3, 0, 0). A reference point at (10, 0, 0) should be seen at (7, 0, 0)
+    Args:
+        error_state: Latest error from the UKF
+        ref_point: Anchor point from point handler
+        nominal_state: Latest nominal state
+
+    Returns:
+        3-vec that can be directly subtracted from the measurement
+    """
     full_state_hypothesis = compose_fn(nominal_state, error_state)
 
     q = Rotation.from_quat(full_state_hypothesis[IDX_Q])

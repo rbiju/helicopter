@@ -113,7 +113,7 @@ class PointHandler:
         keypoints = self.detector.detect(ir_frame)
         marker_coords = self.detector.get_points_coords(depth_frame, keypoints, intrinsics)
 
-        if len(marker_coords) <= 3:
+        if len(marker_coords) <= 0:
             print('Not enough points')
             return None
 
