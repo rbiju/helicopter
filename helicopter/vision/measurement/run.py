@@ -57,7 +57,7 @@ def initialize_R_matrix(std_devs: dict) -> np.ndarray:
 if __name__ == '__main__':
     N = 15
     q_sigmas = {
-        "gyro": 0.05 * (np.pi / 180.0),
+        "gyro": 0.28 * (np.pi / 180.0),
         "pos": 1e-5,
         "vel": 1e-3,
         "bias_acc": 1e-7,
@@ -76,18 +76,18 @@ if __name__ == '__main__':
     S = initialize_S_matrix(initial_sigmas)
 
     visual_sigmas = {
-        'dp_x': 5e-3,
-        'dp_y': 5e-3,
-        'dp_z': 5e-3,
+        'dp_x': 1e-2,
+        'dp_y': 1e-2,
+        'dp_z': 1e-2,
     }
     R = initialize_R_matrix(visual_sigmas)
     x = jnp.zeros(N)
     ukf = UKF(x=x, S=S, Q=Q, R=R, alpha=0.1, beta=2.0, kappa=-12)
 
     device = D435i(enable_motion=True, video_rate=60,
-                   projector_power=360., autoexpose=False, exposure_time=2200,
-                   ema_accel=0.75,
-                   ema_gyro=0.75,)
+                   projector_power=360., autoexpose=False, exposure_time=1800,
+                   ema_accel=0.9,
+                   ema_gyro=0.9,)
 
     point_handler = PointHandler(
         detector=YOLOPointDetector(

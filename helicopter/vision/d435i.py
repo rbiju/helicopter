@@ -48,8 +48,7 @@ class D435i:
             print('Emitter always on enabled')
             depth_sensor.set_option(rs.option.emitter_always_on, 1)
 
-        depth_sensor.set_option(rs.option.frames_queue_size, 5)
-        depth_sensor.set_option(rs.option.global_time_enabled, 0)
+        depth_sensor.set_option(rs.option.frames_queue_size, 16)
 
         self.enable_motion = enable_motion
         if enable_motion:
@@ -176,17 +175,22 @@ class D435i:
         motion_sensor = device.first_motion_sensor()
 
         motion_sensor.set_option(rs.option.enable_motion_correction, 1)
-        motion_sensor.set_option(rs.option.frames_queue_size, 1)
-        motion_sensor.set_option(rs.option.global_time_enabled, 0)
-        motion_sensor.set_option(rs.option.gyro_sensitivity, 0)
+        motion_sensor.set_option(rs.option.frames_queue_size, 12)
+        motion_sensor.set_option(rs.option.gyro_sensitivity, 4)
 
         return pipeline, config
 
     def start(self):
         if self.enable_motion:
-            self.imu_pipeline.start(self.imu_config)
+            imu_profile = self.imu_pipeline.start(self.imu_config)
+            device = imu_profile.get_device()
+            motion_sensor = device.first_motion_sensor()
+            motion_sensor.set_option(rs.option.global_time_enabled, 0)
 
-        self.pipeline.start(self.config)
+        profile = self.pipeline.start(self.config)
+        device = profile.get_device()
+        depth_sensor = device.first_depth_sensor()
+        depth_sensor.set_option(rs.option.global_time_enabled, 0)
 
     def process_frames(self, frames: rs.composite_frame):
         frames = self.align.process(frames)
@@ -199,13 +203,13 @@ class D435i:
         if depth_frame:
             depth_image = np.asanyarray(depth_frame.get_data()).copy()
             depth_image = depth_image * self.depth_scale
-            ts_depth = depth_frame.get_timestamp() / 1000.
+            ts_depth = float(depth_frame.get_timestamp()) / 1000.
         else:
             depth_image = None
             ts_depth = None
         if ir_frame:
             ir_image = np.asanyarray(ir_frame.get_data()).copy()
-            ts_ir = ir_frame.get_timestamp() / 1000.
+            ts_ir = float(ir_frame.get_timestamp()) / 1000.
         else:
             ir_image = None
             ts_ir = None
@@ -224,11 +228,11 @@ class D435i:
                 # coordinate transform so +Z is pointing up and +X is pointing out of the camera
                 # to match helicopter dynamics simulation
                 accel_data = np.array([accel_data.z, -accel_data.x, -accel_data.y]).copy()
-                ts_accel = frame.get_timestamp() / 1000.
+                ts_accel = float(frame.get_timestamp()) / 1000.
             elif frame.get_profile().stream_type() == rs.stream.gyro:
                 gyro_data = frame.as_motion_frame().get_motion_data()
                 gyro_data = np.array([gyro_data.z, -gyro_data.x, -gyro_data.y]).copy()
-                ts_gyro = frame.get_timestamp() / 1000.
+                ts_gyro = float(frame.get_timestamp()) / 1000.
 
         self.time_queue.append(ts_gyro)
 

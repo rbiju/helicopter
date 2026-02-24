@@ -181,22 +181,6 @@ class Scanner:
     def loop(self):
         self.device.time_queue.clear()
 
-        print("Flushing hardware buffers...")
-
-        while True:
-            try:
-                if not self.device.imu_pipeline.poll_for_frames():
-                    break
-            except RuntimeError:
-                break
-
-        while True:
-            try:
-                if not self.device.pipeline.poll_for_frames():
-                    break
-            except RuntimeError:
-                break
-
         print(f"Scanning... (press '{self.quitter.quit_key}' to exit)")
         elapsed_time = 0.0
         self.start_time = time.time()
@@ -217,6 +201,7 @@ class Scanner:
 
             try:
                 vision_time, ir_frame, depth_frame = self.vision_queue.get(timeout=0.05)
+                vision_time = float(vision_time)
             except queue.Empty:
                 time.sleep(0.001)
                 continue
@@ -234,7 +219,7 @@ class Scanner:
             while len(self.imu_queue) > 0:
                 try:
                     imu_data = self.imu_queue.popleft()
-                    imu_t = imu_data[0]
+                    imu_t = float(imu_data[0])
                 except IndexError:
                     break
 

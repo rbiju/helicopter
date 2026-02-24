@@ -47,7 +47,7 @@ def propagate(s, dt, accel, gyro, g_world):
     dq = Rotation.from_rotvec(gyro_corrected * dt)
     q_new = q_prev * dq
 
-    a_world = q_prev.apply(acc_corrected) - g_world
+    a_world = q_new.apply(acc_corrected) - g_world
 
     v_new = v_prev + a_world * dt
     p_new = p_prev + v_prev * dt + 0.5 * a_world * dt**2
