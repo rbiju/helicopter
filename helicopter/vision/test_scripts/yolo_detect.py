@@ -101,7 +101,7 @@ def get_points_coords(depth_frame, keypoints, intrinsics) -> np.ndarray:
         else:
             depth = d_mean
 
-        if depth > 0.4 or depth <= 0:
+        if depth > 0.5 or depth <= 0:
             continue
 
         valid_depths.append(depth)
@@ -113,7 +113,6 @@ def get_points_coords(depth_frame, keypoints, intrinsics) -> np.ndarray:
 
     depths = np.array(valid_depths)
     uvs = np.array(valid_uvs)
-    radii = np.array(valid_radii)
 
     fx, fy = intrinsics.fx, intrinsics.fy
     ppx, ppy = intrinsics.ppx, intrinsics.ppy
@@ -121,20 +120,6 @@ def get_points_coords(depth_frame, keypoints, intrinsics) -> np.ndarray:
     z_cam = depths
     x_cam = (uvs[:, 0] - ppx) * z_cam / fx
     y_cam = (uvs[:, 1] - ppy) * z_cam / fy
-
-    physical_diameters = (radii * 2 * z_cam) / fx
-
-    size_error = np.abs(physical_diameters - 0.003)
-    tolerance = 0.003 * 0.5
-
-    valid_mask = size_error <= tolerance
-
-    if not np.any(valid_mask):
-        return np.empty((0, 3))
-
-    x_cam = x_cam[valid_mask]
-    y_cam = y_cam[valid_mask]
-    z_cam = z_cam[valid_mask]
 
     final_points = np.column_stack((z_cam, -x_cam, -y_cam))
 
@@ -145,11 +130,11 @@ if __name__ == '__main__':
     profiler = Profiler()
     camera = D435i(projector_power=360.,
                    autoexpose=False,
-                   exposure_time=1800)
+                   exposure_time=2000)
     model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(),
-                           conf=0.65)
+                           conf=0.8)
     listener = KeyListener()
     quitter = Quitter(listener=listener)
 

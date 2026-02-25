@@ -176,7 +176,7 @@ class D435i:
 
         motion_sensor.set_option(rs.option.enable_motion_correction, 1)
         motion_sensor.set_option(rs.option.frames_queue_size, 12)
-        motion_sensor.set_option(rs.option.gyro_sensitivity, 4)
+        motion_sensor.set_option(rs.option.gyro_sensitivity, 0)
 
         return pipeline, config
 

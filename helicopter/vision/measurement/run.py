@@ -14,11 +14,11 @@ from helicopter.vision.measurement.scanner import Scanner, CameraStateHandler, P
 def initialize_Q_matrix(dt: float, std_devs: dict) -> np.ndarray:
     I = np.eye(3)
 
-    Q_dtheta = (std_devs['gyro'] ** 2) * I * dt
+    Q_dtheta = (std_devs['gyro'] ** 2) * I * (dt ** 2)
 
     Q_dp = (std_devs['pos'] ** 2) * I * dt
 
-    Q_dv = (std_devs['vel'] ** 2) * I * dt
+    Q_dv = (std_devs['vel'] ** 2) * I * (dt ** 2)
 
     Q_dba = (std_devs['bias_acc'] ** 2) * I * dt
     Q_dbg = (std_devs['bias_gyro'] ** 2) * I * dt
@@ -57,9 +57,9 @@ def initialize_R_matrix(std_devs: dict) -> np.ndarray:
 if __name__ == '__main__':
     N = 15
     q_sigmas = {
-        "gyro": 0.28 * (np.pi / 180.0),
-        "pos": 1e-5,
-        "vel": 1e-3,
+        "gyro": 0.45 * (np.pi / 180.0),
+        "pos": 2e-6,
+        "vel": 3e-2,
         "bias_acc": 1e-7,
         "bias_gyro": 1e-7
     }
@@ -67,8 +67,8 @@ if __name__ == '__main__':
     Q = initialize_Q_matrix(dt=1 / 200, std_devs=q_sigmas)
 
     initial_sigmas = {
-        'd_theta': 0.05 * (np.pi / 180.0),
-        'dp': 1e-5,
+        'd_theta': 0.15 * (np.pi / 180.0),
+        'dp': 1e-6,
         'dv': 1e-4,
         'dba': 1e-5,
         'dbg': 1e-5,
@@ -76,9 +76,9 @@ if __name__ == '__main__':
     S = initialize_S_matrix(initial_sigmas)
 
     visual_sigmas = {
-        'dp_x': 1e-2,
-        'dp_y': 1e-2,
-        'dp_z': 1e-2,
+        'dp_x': 5e-3,
+        'dp_y': 5e-3,
+        'dp_z': 5e-3,
     }
     R = initialize_R_matrix(visual_sigmas)
     x = jnp.zeros(N)
@@ -86,15 +86,15 @@ if __name__ == '__main__':
 
     device = D435i(enable_motion=True, video_rate=60,
                    projector_power=360., autoexpose=False, exposure_time=1800,
-                   ema_accel=0.9,
-                   ema_gyro=0.9,)
+                   ema_accel=0.75,
+                   ema_gyro=0.75,)
 
     point_handler = PointHandler(
         detector=YOLOPointDetector(
             model=HelicopterYOLO(preprocessor=GPUImagePreprocessor(imgsz=device.IR_RESOLUTION),
                                  model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                             task='detect'),
-                                 conf=0.65),
+                                 conf=0.75),
             marker_tolerance=0.01,
             marker_size=0.003,
             marker_size_tolerance=0.75,
