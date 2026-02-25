@@ -4,6 +4,7 @@ from typing import Sequence
 import cv2
 import numpy as np
 
+import pyrealsense2 as rs
 from helicopter.vision.point_detection import HelicopterYOLO
 
 
@@ -79,16 +80,12 @@ class PointDetector(ABC):
         depths = np.array(valid_depths)
         centers = np.array(valid_centers)
 
-        fx, fy = intrinsics.fx, intrinsics.fy
-        ppx, ppy = intrinsics.ppx, intrinsics.ppy
+        points = []
+        for center, depth in zip(centers, depths):
+            point = rs.rs2_deproject_pixel_to_point(intrinsics, pixel=[center[0], center[1]], depth=depth)
+            points.append(np.array([point[2], -point[0], -point[1]]))
 
-        z_cam = depths
-        x_cam = (centers[:, 0] - ppx) * z_cam / fx
-        y_cam = (centers[:, 1] - ppy) * z_cam / fy
-
-        final_points = np.column_stack((z_cam, -x_cam, -y_cam))
-
-        return final_points
+        return np.vstack(points)
 
 
 class BlobPointDetector(PointDetector):

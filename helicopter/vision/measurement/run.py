@@ -82,7 +82,7 @@ if __name__ == '__main__':
     }
     R = initialize_R_matrix(visual_sigmas)
     x = jnp.zeros(N)
-    ukf = UKF(x=x, S=S, Q=Q, R=R, alpha=0.1, beta=2.0, kappa=-12)
+    ukf = UKF(x=x, S=S, Q=Q, R=R, alpha=1.0, beta=2.0, kappa=0.0)
 
     device = D435i(enable_motion=True, video_rate=60,
                    projector_power=360., autoexpose=False, exposure_time=1800,
