@@ -1,3 +1,8 @@
+"""
+I should probably cite this amazing article which helped a ton with learning how to work with quaternions:
+https://hal.archives-ouvertes.fr/hal-01122406/document
+
+"""
 import jax.numpy as jnp
 from jax import jit
 from jax.scipy.spatial.transform import Rotation
@@ -44,10 +49,11 @@ def propagate(s, dt, accel, gyro, g_world):
     gyro_corrected = gyro - bg_prev
     acc_corrected = accel - ba_prev
 
-    dq = Rotation.from_rotvec(gyro_corrected * dt)
+    # Very useful: https://ashwinnarayan.com/post/how-to-integrate-quaternions/
+    dq = Rotation.from_rotvec(gyro_corrected / 2.0 * dt)
     q_new = q_prev * dq
 
-    a_world = q_prev.apply(acc_corrected) - g_world
+    a_world = q_new.apply(acc_corrected) - g_world
 
     v_new = v_prev + a_world * dt
     p_new = p_prev + v_prev * dt + 0.5 * a_world * dt**2

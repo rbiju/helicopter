@@ -28,10 +28,3 @@ class CameraStateHandler:
         self.velocity = nominal_state[7:10]
         self.accelerometer_bias = nominal_state[10:13]
         self.gyro_bias = nominal_state[13:16]
-
-    def zero(self):
-        q = self.quaternion.as_quat(canonical=True)
-        q[2] = 0.0
-        self.quaternion = Rotation.from_quat(q)
-        self.position = np.array([0.0, 0.0, 0.0])
-        self.velocity = np.array([0.0, 0.0, 0.0])
