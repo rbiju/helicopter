@@ -1,5 +1,6 @@
 """
-I should probably cite this amazing article which helped a ton with learning how to work with quaternions:
+I should probably cite this amazing article which helped a ton
+with learning how to work with quaternions and Error State Kalman Filters:
 https://hal.archives-ouvertes.fr/hal-01122406/document
 
 """

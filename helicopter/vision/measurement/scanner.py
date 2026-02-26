@@ -98,7 +98,7 @@ class Scanner:
 
     def initialize_orientation(self):
         accel_queue = PointQueue(1000, np.array([0, 0, 0.0]))
-        gyro_queue = PointQueue(1000, np.array([0, 0, 0.0]))
+        gyro_queue = PointQueue(100, np.array([0, 0, 0.0]))
 
         orientation_iters = 1000
         print("Initializing sensor orientation. Do not move camera")
@@ -210,10 +210,6 @@ class Scanner:
             self.profiler.start("Measure_Points")
             measured_out = self.point_handler.get_measured_points(ir_frame, depth_frame, self.device.intrinsics)
             self.profiler.end("Measure_Points")
-            if measured_out is None:
-                continue
-            else:
-                measured_points, keypoints = measured_out
 
             self.profiler.start('IMU_Integration')
             while len(self.imu_queue) > 0:
@@ -262,6 +258,11 @@ class Scanner:
                 self.logger.log_state(timestamp=imu_t, event='imu', state_vector=propagated_nominal)
                 self.camera_state_handler.set_state_from_nominal(propagated_nominal)
             self.profiler.end('IMU_Integration')
+
+            if measured_out is None:
+                continue
+            else:
+                measured_points, keypoints = measured_out
 
             camera_pos = self.camera_state_handler.position
             camera_quat = self.camera_state_handler.quaternion

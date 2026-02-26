@@ -8,18 +8,6 @@ from helicopter.vision import D435i
 from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor
 
 
-def draw_subpixel_circle(center, _radius, _shift=4):
-    factor = 1 << _shift
-
-    _cx, _cy = center
-
-    cx_rounded = round(_cx * factor)
-    cy_rounded = round(_cy * factor)
-    radius_rounded = round(_radius * factor)
-
-    return (cx_rounded, cy_rounded), radius_rounded
-
-
 def get_refined_keypoints(ir_frame, _boxes, margin=2):
     if len(_boxes) == 0:
         return []
@@ -130,7 +118,7 @@ if __name__ == '__main__':
     profiler = Profiler()
     camera = D435i(projector_power=360.,
                    autoexpose=False,
-                   exposure_time=2000)
+                   exposure_time=1800)
     model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(),
