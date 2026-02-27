@@ -10,12 +10,16 @@ from helicopter.vision.d435i import D435i
 
 if __name__ == '__main__':
     camera = D435i(projector_power=360.,
-                   toggle_projector=False,
                    autoexpose=False,
-                   exposure_time=2400)
+                   exposure_time=1800)
 
+    print('Starting data collection in 3 seconds...')
+    time.sleep(3)
+
+    print('Collecting data')
+    camera.start()
     images = []
-    for i in tqdm(range(10)):
+    for i in tqdm(range(15)):
         frames = camera.pipeline.wait_for_frames()
         depth_image, ts_depth, ir_image, ts_ir, laser_state = camera.process_frames(frames)
 

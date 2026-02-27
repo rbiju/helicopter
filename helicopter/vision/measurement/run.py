@@ -14,7 +14,7 @@ from helicopter.vision.measurement.scanner import Scanner, CameraStateHandler, P
 def initialize_Q_matrix(dt: float, std_devs: dict) -> np.ndarray:
     I = np.eye(3)
 
-    Q_dtheta = (std_devs['gyro'] ** 2) * I * dt
+    Q_dtheta = np.diag(np.pow(std_devs['gyro'], 2)) * I * dt
 
     Q_dp = (std_devs['pos'] ** 2) * I * dt
 
@@ -27,8 +27,7 @@ def initialize_Q_matrix(dt: float, std_devs: dict) -> np.ndarray:
 
 
 def initialize_S_matrix(std_devs: dict) -> jax.Array:
-    var_dtheta = std_devs['d_theta'] ** 2
-    P_dtheta = np.eye(3) * var_dtheta
+    P_dtheta = np.diag(np.pow(std_devs['d_theta'], 2))
 
     var_dp = std_devs['dp'] ** 2
     P_dp = np.eye(3) * var_dp
@@ -57,7 +56,7 @@ def initialize_R_matrix(std_devs: dict) -> np.ndarray:
 if __name__ == '__main__':
     N = 15
     q_sigmas = {
-        "gyro": 0.3 * (np.pi / 180.0),
+        "gyro": np.array([0.15, 0.25, 0.25]) * np.pi / 180,
         "pos": 1e-6,
         "vel": 6e-2,
         "bias_acc": 1e-7,
@@ -67,7 +66,7 @@ if __name__ == '__main__':
     Q = initialize_Q_matrix(dt=1 / 200, std_devs=q_sigmas)
 
     initial_sigmas = {
-        'd_theta': 0.05 * (np.pi / 180.0),
+        'd_theta': np.array([0.05, 0.05, 1e-4]) * np.pi / 180,
         'dp': 1e-4,
         'dv': 1e-3,
         'dba': 1e-5,
@@ -76,9 +75,9 @@ if __name__ == '__main__':
     S = initialize_S_matrix(initial_sigmas)
 
     visual_sigmas = {
-        'dp_x': 5e-3,
-        'dp_y': 5e-3,
-        'dp_z': 5e-3,
+        'dp_x': 7.5e-3,
+        'dp_y': 7.5e-3,
+        'dp_z': 7.5e-3,
     }
     R = initialize_R_matrix(visual_sigmas)
     x = jnp.zeros(N)
@@ -94,7 +93,7 @@ if __name__ == '__main__':
             model=HelicopterYOLO(preprocessor=GPUImagePreprocessor(imgsz=device.IR_RESOLUTION),
                                  model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                             task='detect'),
-                                 conf=0.8),
+                                 conf=0.75),
             marker_tolerance=0.01,
             marker_size=0.003,
             marker_size_tolerance=0.75,

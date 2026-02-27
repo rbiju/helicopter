@@ -105,7 +105,7 @@ class Scanner:
         counter = 0
         while counter < orientation_iters:
             imu_frames = self.device.imu_pipeline.wait_for_frames()
-            imu_data = self.device.process_imu_frames(imu_frames, ema_gyro=0.01)
+            imu_data = self.device.process_imu_frames(imu_frames, ema_gyro=0.05)
             if imu_data is not None:
                 accel_data, ts_accel, gyro_data, ts_gyro = imu_data
                 accel_queue.enqueue(accel_data)
@@ -260,6 +260,7 @@ class Scanner:
             self.profiler.end('IMU_Integration')
 
             if measured_out is None:
+                print(f'No points detected @ t={vision_time}')
                 continue
             else:
                 measured_points, keypoints = measured_out

@@ -39,14 +39,14 @@ def get_refined_keypoints(ir_frame, _boxes, margin=2):
 
         _radius = np.sqrt(M["m00"] / 255.0 / np.pi)
 
-        keypoints.append(cv2.KeyPoint(x=float(cx), y=float(cy), size=float(_radius * 2)))
+        keypoints.append(cv2.KeyPoint(x=float(cx), y=float(cy), size=float(_radius)))
 
     return keypoints
 
 
-def get_points_coords(depth_frame, keypoints, intrinsics) -> np.ndarray:
+def get_points_coords(depth_frame, keypoints, intrinsics):
     if not keypoints:
-        return np.empty((0, 3))
+        return None
 
     h, w = depth_frame.shape
 
@@ -54,6 +54,8 @@ def get_points_coords(depth_frame, keypoints, intrinsics) -> np.ndarray:
     valid_uvs = []
     valid_radii = []
 
+    valid_kps = []
+    invalid_kps = []
     for kp in keypoints:
         cx, cy = kp.pt
         radius = kp.size / 2
@@ -61,6 +63,7 @@ def get_points_coords(depth_frame, keypoints, intrinsics) -> np.ndarray:
         ix, iy = int(cx), int(cy)
 
         if ix < 0 or ix >= w or iy < 0 or iy >= h:
+            invalid_kps.append(kp)
             continue
 
         safe_r = int(radius * 0.8)
@@ -74,30 +77,30 @@ def get_points_coords(depth_frame, keypoints, intrinsics) -> np.ndarray:
 
         valid_pixels = roi[roi > 0]
 
-        if len(valid_pixels) < 3:
+        if len(valid_pixels) < roi.size * 0.7:
+            invalid_kps.append(kp)
             continue
 
-        d_mean = np.mean(valid_pixels)
+        depth = np.mean(valid_pixels)
         d_std = np.std(valid_pixels)
 
-        if d_std > 0.01:
-            d_median = np.median(valid_pixels)
-            clean_pixels = valid_pixels[np.abs(valid_pixels - d_median) < 0.02]
-            if len(clean_pixels) == 0:
-                continue
-            depth = np.mean(clean_pixels)
-        else:
-            depth = d_mean
+        if d_std > 0.005:
+            invalid_kps.append(kp)
+            continue
+            # depth = np.median(valid_pixels)
 
         if depth > 0.5 or depth <= 0:
+            invalid_kps.append(kp)
             continue
 
         valid_depths.append(depth)
         valid_uvs.append((cx, cy))
         valid_radii.append(radius)
 
+        valid_kps.append(kp)
+
     if not valid_depths:
-        return np.empty((0, 3))
+        return None
 
     depths = np.array(valid_depths)
     uvs = np.array(valid_uvs)
@@ -111,7 +114,7 @@ def get_points_coords(depth_frame, keypoints, intrinsics) -> np.ndarray:
 
     final_points = np.column_stack((z_cam, -x_cam, -y_cam))
 
-    return final_points
+    return final_points, valid_kps, invalid_kps
 
 
 if __name__ == '__main__':
@@ -119,10 +122,10 @@ if __name__ == '__main__':
     camera = D435i(projector_power=360.,
                    autoexpose=False,
                    exposure_time=1800)
-    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
+    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure_20260227/weights/best.engine',
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(),
-                           conf=0.8)
+                           conf=0.7)
     listener = KeyListener()
     quitter = Quitter(listener=listener)
 
@@ -150,9 +153,6 @@ if __name__ == '__main__':
 
                 profiler.start('Keypoints')
                 circles = get_refined_keypoints(ir_image, boxes, margin=2)
-                a = cv2.cvtColor(ir_image, cv2.COLOR_GRAY2RGB)
-                a = cv2.drawKeypoints(ir_image, circles, a, color=(0, 0, 255), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
-                detected_images.append(a)
                 profiler.end("Keypoints")
                 profiler.end("Detect")
 
@@ -160,6 +160,16 @@ if __name__ == '__main__':
                 points = get_points_coords(depth_image, circles, camera.intrinsics)
                 profiler.end("Deproject")
                 profiler.end("E2E")
+
+                if points is None:
+                    continue
+                else:
+                    points, valid, invalid = points
+
+                a = cv2.cvtColor(ir_image, cv2.COLOR_GRAY2RGB)
+                a = cv2.drawKeypoints(ir_image, invalid, a, color=(0, 0, 255), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
+                a = cv2.drawKeypoints(a, valid, a, color=(0, 255, 0), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
+                detected_images.append(a)
     finally:
         camera.stop()
         quitter.stop()

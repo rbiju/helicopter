@@ -52,20 +52,14 @@ class PointDetector(ABC):
 
             valid_pixels = roi[roi > 0]
 
-            if len(valid_pixels) < 3:
+            if len(valid_pixels) < roi.size * 0.7:
                 continue
 
-            d_mean = np.mean(valid_pixels)
+            depth = np.mean(valid_pixels)
             d_std = np.std(valid_pixels)
 
-            if d_std > 0.01:
-                d_median = np.median(valid_pixels)
-                clean_pixels = valid_pixels[np.abs(valid_pixels - d_median) < 0.02]
-                if len(clean_pixels) == 0:
-                    continue
-                depth = np.mean(clean_pixels)
-            else:
-                depth = d_mean
+            if d_std > 0.005:
+                continue
 
             if depth > self.distance_threshold or depth <= 0:
                 continue
@@ -172,7 +166,7 @@ class YOLOPointDetector(PointDetector):
 
             _radius = np.sqrt(M["m00"] / 255.0 / np.pi)
 
-            keypoints.append(cv2.KeyPoint(x=float(cx), y=float(cy), size=float(_radius * 2)))
+            keypoints.append(cv2.KeyPoint(x=float(cx), y=float(cy), size=float(_radius)))
 
         return keypoints
 
