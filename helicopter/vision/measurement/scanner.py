@@ -98,14 +98,14 @@ class Scanner:
 
     def initialize_orientation(self):
         accel_queue = PointQueue(1500)
-        gyro_queue = PointQueue(100)
+        gyro_queue = PointQueue(1500)
 
         orientation_iters = 1500
         print("Initializing sensor orientation. Do not move camera")
         counter = 0
         while counter < orientation_iters:
             imu_frames = self.device.imu_pipeline.wait_for_frames()
-            imu_data = self.device.process_imu_frames(imu_frames, ema_gyro=0.05)
+            imu_data = self.device.process_imu_frames(imu_frames, ema_gyro=0.05, ema_accel=1.0)
             if imu_data is not None:
                 accel_data, ts_accel, gyro_data, ts_gyro = imu_data
                 accel_queue.enqueue(accel_data)
@@ -134,7 +134,7 @@ class Scanner:
         expected_gravity_body = quat.inv().apply(self.camera_state_handler.g)
         self.camera_state_handler.accelerometer_bias = v_B - expected_gravity_body
 
-        self.camera_state_handler.gyro_bias = gyro_queue.mean()
+        self.camera_state_handler.gyro_bias = gyro_queue.windowed_mean(window_type='hamming')
         self.camera_state_handler.quaternion = quat
 
         print(f" \nOrientation initialized, \n"

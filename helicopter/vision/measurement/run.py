@@ -14,11 +14,11 @@ from helicopter.vision.measurement.scanner import Scanner, CameraStateHandler, P
 def initialize_Q_matrix(dt: float, std_devs: dict) -> np.ndarray:
     I = np.eye(3)
 
-    Q_dtheta = np.diag(np.pow(std_devs['gyro'], 2)) * I * dt
+    Q_dtheta = np.diag(np.pow(std_devs['gyro'], 2)) * I * (dt ** 2)
 
     Q_dp = (std_devs['pos'] ** 2) * I * dt
 
-    Q_dv = (std_devs['vel'] ** 2) * I * dt
+    Q_dv = (std_devs['vel'] ** 2) * I * (dt ** 2)
 
     Q_dba = (std_devs['bias_acc'] ** 2) * I * dt
     Q_dbg = (std_devs['bias_gyro'] ** 2) * I * dt
@@ -56,7 +56,7 @@ def initialize_R_matrix(std_devs: dict) -> np.ndarray:
 if __name__ == '__main__':
     N = 15
     q_sigmas = {
-        "gyro": np.array([0.3, 0.3, 0.3]) * np.pi / 180,
+        "gyro": np.array([0.5, 0.5, 0.5]) * np.pi / 180,
         "pos": 1e-6,
         "vel": 6e-2,
         "bias_acc": 1e-7,

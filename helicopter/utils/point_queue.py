@@ -33,6 +33,27 @@ class PointQueue:
     def mean(self) -> np.ndarray:
         return np.nanmean(self.rec_queue, axis=0)
 
+    def windowed_mean(self, window_type: str = 'hamming'):
+        data = self.to_array()
+
+        clean_data = data[~np.isnan(data).any(axis=1)]
+        n = len(clean_data)
+
+        if n < 2:
+            return np.zeros(3)
+
+        if window_type == 'hamming':
+            window = np.hamming(n)
+        elif window_type == 'hann':
+            window = np.hanning(n)
+        else:
+            raise NotImplementedError
+
+        windowed_data = clean_data * window[:, np.newaxis]
+        windowed_mean = np.sum(windowed_data, axis=0) / np.sum(window)
+
+        return windowed_mean
+
     def __repr__(self):
         return "tail: " + str(self.queue_tail) + "\narray: " + str(self.rec_queue)
 
