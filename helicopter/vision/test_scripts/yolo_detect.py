@@ -125,7 +125,7 @@ if __name__ == '__main__':
     model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure_20260227/weights/best.engine',
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(),
-                           conf=0.7)
+                           conf=0.65)
     listener = KeyListener()
     quitter = Quitter(listener=listener)
 

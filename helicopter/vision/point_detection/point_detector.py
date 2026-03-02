@@ -10,12 +10,8 @@ from helicopter.vision.point_detection import HelicopterYOLO
 
 class PointDetector(ABC):
     def __init__(self, marker_tolerance: float = 0.01,
-                 marker_size: float = 0.003,
-                 marker_size_tolerance: float = 0.5,
                  distance_threshold: float = 0.5, ):
         self.marker_tolerance = marker_tolerance
-        self.marker_size = marker_size
-        self.marker_size_tolerance = marker_size_tolerance
         self.distance_threshold = distance_threshold
 
     @abstractmethod
@@ -84,10 +80,8 @@ class PointDetector(ABC):
 
 class BlobPointDetector(PointDetector):
     def __init__(self, marker_tolerance: float = 0.01,
-                 marker_size: float = 0.003,
-                 marker_size_tolerance: float = 0.3,
                  distance_threshold: float = 0.5):
-        super().__init__(marker_tolerance, marker_size, marker_size_tolerance, distance_threshold)
+        super().__init__(marker_tolerance, distance_threshold)
 
         params = cv2.SimpleBlobDetector.Params()
 
@@ -128,10 +122,8 @@ class YOLOPointDetector(PointDetector):
     def __init__(self,
                  model: HelicopterYOLO,
                  marker_tolerance: float = 0.01,
-                 marker_size: float = 0.003,
-                 marker_size_tolerance: float = 0.3,
                  distance_threshold: float = 0.5):
-        super().__init__(marker_tolerance, marker_size, marker_size_tolerance, distance_threshold)
+        super().__init__(marker_tolerance, distance_threshold)
         self.model = model
 
     @staticmethod

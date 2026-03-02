@@ -41,7 +41,10 @@ class PointHandler:
 
     def add_point(self, point: np.ndarray) -> None:
         self.point_map = np.vstack((self.point_map, point))
-        self.points[self.next_id] = PointQueue(maxlen=self.maxlen, init_value=point)
+
+        pq = PointQueue(self.maxlen)
+        pq.enqueue(point)
+        self.points[self.next_id] = pq
 
     @property
     def points_coords(self):

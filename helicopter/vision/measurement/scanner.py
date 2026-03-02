@@ -97,10 +97,10 @@ class Scanner:
         print("JAX Compilation complete")
 
     def initialize_orientation(self):
-        accel_queue = PointQueue(1000, np.array([0, 0, 0.0]))
-        gyro_queue = PointQueue(100, np.array([0, 0, 0.0]))
+        accel_queue = PointQueue(1500)
+        gyro_queue = PointQueue(100)
 
-        orientation_iters = 1000
+        orientation_iters = 1500
         print("Initializing sensor orientation. Do not move camera")
         counter = 0
         while counter < orientation_iters:

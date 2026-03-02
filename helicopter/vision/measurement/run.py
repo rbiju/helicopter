@@ -56,7 +56,7 @@ def initialize_R_matrix(std_devs: dict) -> np.ndarray:
 if __name__ == '__main__':
     N = 15
     q_sigmas = {
-        "gyro": np.array([0.15, 0.25, 0.25]) * np.pi / 180,
+        "gyro": np.array([0.3, 0.3, 0.3]) * np.pi / 180,
         "pos": 1e-6,
         "vel": 6e-2,
         "bias_acc": 1e-7,
@@ -66,7 +66,7 @@ if __name__ == '__main__':
     Q = initialize_Q_matrix(dt=1 / 200, std_devs=q_sigmas)
 
     initial_sigmas = {
-        'd_theta': np.array([0.05, 0.05, 1e-4]) * np.pi / 180,
+        'd_theta': np.array([0.05, 0.05, 0.05]) * np.pi / 180,
         'dp': 1e-4,
         'dv': 1e-3,
         'dba': 1e-5,
@@ -75,9 +75,9 @@ if __name__ == '__main__':
     S = initialize_S_matrix(initial_sigmas)
 
     visual_sigmas = {
-        'dp_x': 7.5e-3,
-        'dp_y': 7.5e-3,
-        'dp_z': 7.5e-3,
+        'dp_x': 3e-3,
+        'dp_y': 3e-3,
+        'dp_z': 3e-3,
     }
     R = initialize_R_matrix(visual_sigmas)
     x = jnp.zeros(N)
@@ -86,7 +86,7 @@ if __name__ == '__main__':
     device = D435i(enable_motion=True, video_rate=60,
                    projector_power=360., autoexpose=False, exposure_time=1800,
                    ema_accel=0.75,
-                   ema_gyro=0.75,)
+                   ema_gyro=0.25)
 
     point_handler = PointHandler(
         detector=YOLOPointDetector(
@@ -94,9 +94,7 @@ if __name__ == '__main__':
                                  model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                             task='detect'),
                                  conf=0.75),
-            marker_tolerance=0.01,
-            marker_size=0.003,
-            marker_size_tolerance=0.75,
+            marker_tolerance=0.0075,
             distance_threshold=0.5
         ),
         queue_len=75)
@@ -105,7 +103,7 @@ if __name__ == '__main__':
                       point_handler=point_handler,
                       camera_state_handler=CameraStateHandler(),
                       ukf=ukf,
-                      measurement_time=30.0)
+                      measurement_time=15.0)
 
     scanner.scan()
 

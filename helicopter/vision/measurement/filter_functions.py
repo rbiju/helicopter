@@ -51,7 +51,7 @@ def propagate(s, dt, accel, gyro, g_world):
     acc_corrected = accel - ba_prev
 
     # Very useful: https://ashwinnarayan.com/post/how-to-integrate-quaternions/
-    dq = Rotation.from_rotvec(gyro_corrected / 2.0 * dt)
+    dq = Rotation.from_rotvec(gyro_corrected * dt)
     q_new = q_prev * dq
 
     a_world = q_new.apply(acc_corrected) - g_world

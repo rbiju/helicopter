@@ -1,13 +1,14 @@
+"""
+From here: https://stackoverflow.com/questions/42771110/fastest-way-to-left-cycle-a-numpy-array-like-pop-push-for-a-queue
+"""
 import numpy as np
 
 
 class PointQueue:
-    def __init__(self, maxlen: int, init_value: np.ndarray):
+    def __init__(self, maxlen: int):
         self.rec_queue: np.ndarray = np.full((maxlen, 3), np.nan)
         self.max_length: int = maxlen
         self.queue_tail: int = maxlen - 1
-
-        self.enqueue(init_value)
 
     def to_array(self) -> np.ndarray:
         head = (self.queue_tail + 1) % self.max_length
