@@ -84,7 +84,7 @@ def get_points_coords(depth_frame, keypoints, intrinsics):
         depth = np.mean(valid_pixels)
         d_std = np.std(valid_pixels)
 
-        if d_std > 0.005:
+        if d_std > 0.003:
             invalid_kps.append(kp)
             continue
             # depth = np.median(valid_pixels)
@@ -125,7 +125,7 @@ if __name__ == '__main__':
     model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure_20260227/weights/best.engine',
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(),
-                           conf=0.65)
+                           conf=0.7)
     listener = KeyListener()
     quitter = Quitter(listener=listener)
 

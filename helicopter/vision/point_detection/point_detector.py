@@ -54,7 +54,8 @@ class PointDetector(ABC):
             depth = np.mean(valid_pixels)
             d_std = np.std(valid_pixels)
 
-            if d_std > 0.005:
+            # Corresponds to marker size
+            if d_std > 0.003:
                 continue
 
             if depth > self.distance_threshold or depth <= 0:

@@ -261,6 +261,11 @@ class Scanner:
 
             if measured_out is None:
                 print(f'No points detected @ t={vision_time}')
+
+                nominal_state = jnp.array(self.camera_state_handler.nominal_state)
+                nominal_state = np.array(compose_fn(nominal_state, self.ukf.x))
+                self.ukf = self.ukf.reset()
+                self.camera_state_handler.set_state_from_nominal(nominal_state)
                 continue
             else:
                 measured_points, keypoints = measured_out

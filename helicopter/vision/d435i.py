@@ -56,8 +56,6 @@ class D435i:
 
         self.pipeline, self.config, self.intrinsics = self.get_camera_pipeline(serial, enable_rgb)
 
-        self.hdr_merge = rs.hdr_merge()
-
         self.align = rs.align(rs.stream.infrared)
 
         self.ema_accel = ema_accel
@@ -197,7 +195,6 @@ class D435i:
 
         depth_frame = frames.get_depth_frame()
         laser_state = (depth_frame.get_frame_metadata(rs.frame_metadata_value.frame_laser_power_mode) == 1)
-        depth_frame = self.hdr_merge.process(depth_frame)
         ir_frame = frames.get_infrared_frame(1)
 
         if depth_frame:
