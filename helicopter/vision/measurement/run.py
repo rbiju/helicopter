@@ -56,9 +56,9 @@ def initialize_R_matrix(std_devs: dict) -> np.ndarray:
 if __name__ == '__main__':
     N = 15
     q_sigmas = {
-        "gyro": np.array([1.0, 1.0, 1.0]) * np.pi / 180,
+        "gyro": np.array([1.5, 1.5, 1.5]) * np.pi / 180,
         "pos": 1e-6,
-        "vel": 6e-2,
+        "vel": 7.5e-2,
         "bias_acc": 1e-7,
         "bias_gyro": 1e-7
     }
@@ -75,9 +75,9 @@ if __name__ == '__main__':
     S = initialize_S_matrix(initial_sigmas)
 
     visual_sigmas = {
-        'dp_x': 1e-2,
-        'dp_y': 1e-2,
-        'dp_z': 1e-2,
+        'dp_x': 5e-3,
+        'dp_y': 5e-3,
+        'dp_z': 5e-3,
     }
     R = initialize_R_matrix(visual_sigmas)
     x = jnp.zeros(N)
