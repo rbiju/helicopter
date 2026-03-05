@@ -127,3 +127,4 @@ class PointHandler:
 
     def save(self):
         np.save(self.save_dir / 'measured_points.npy', self.points_coords)
+        np.save(self.save_dir / 'point_map.npy', self.point_map)

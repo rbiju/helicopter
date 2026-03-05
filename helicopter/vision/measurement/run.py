@@ -66,7 +66,7 @@ if __name__ == '__main__':
     Q = initialize_Q_matrix(dt=1 / 200, std_devs=q_sigmas)
 
     initial_sigmas = {
-        'd_theta': np.array([0.05, 0.05, 0.01]) * np.pi / 180,
+        'd_theta': np.array([0.2, 0.2, 0.2]) * np.pi / 180,
         'dp': 1e-4,
         'dv': 1e-3,
         'dba': 1e-5,
@@ -75,9 +75,9 @@ if __name__ == '__main__':
     S = initialize_S_matrix(initial_sigmas)
 
     visual_sigmas = {
-        'dp_x': 5e-3,
-        'dp_y': 5e-3,
-        'dp_z': 5e-3,
+        'dp_x': 1e-2,
+        'dp_y': 1e-2,
+        'dp_z': 1e-2,
     }
     R = initialize_R_matrix(visual_sigmas)
     x = jnp.zeros(N)
@@ -93,8 +93,8 @@ if __name__ == '__main__':
             model=HelicopterYOLO(preprocessor=GPUImagePreprocessor(imgsz=device.IR_RESOLUTION),
                                  model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',
                                             task='detect'),
-                                 conf=0.65),
-            marker_tolerance=0.01,
+                                 conf=0.7),
+            marker_tolerance=0.008,
             distance_threshold=0.5
         ),
         queue_len=75)
