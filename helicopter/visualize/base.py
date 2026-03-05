@@ -3,7 +3,8 @@ import viser
 
 class Visualizer:
     def __init__(self):
-        self.server = viser.ViserServer()
+        self.server = viser.ViserServer(port=6060)
+        self.server.gui.configure_theme(dark_mode=True, show_logo=False)
 
         self.start = False
         self.stop = False
@@ -16,9 +17,13 @@ class Visualizer:
 
         self.origin = self.server.scene.add_frame('/origin',
                                                   wxyz=(1.0, 0.0, 0.0, 0.0),
-                                                  position=(0.0, 0.0, 0.0))
+                                                  position=(0.0, 0.0, 0.0),
+                                                  visible=False)
     def set_start_flag(self):
         self.start = True
 
     def set_stop_flag(self):
         self.stop = True
+
+    def shutdown(self):
+        self.server.stop()
