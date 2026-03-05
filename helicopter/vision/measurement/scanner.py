@@ -14,6 +14,8 @@ from helicopter.vision import D435i
 from helicopter.vision import ErrorStateSquareRootUnscentedKalmanFilter as UKF
 from helicopter.vision.point_detection import PointHandler
 
+from helicopter.visualize import MeasurementVisualizer
+
 from .logger import StateLogger
 from .camera_state_handler import CameraStateHandler
 
@@ -59,6 +61,8 @@ class Scanner:
 
         listener = KeyListener()
         self.quitter = Quitter(listener=listener)
+
+        self.visualizer = MeasurementVisualizer()
 
         self.cleaned_up = False
 
@@ -178,11 +182,12 @@ class Scanner:
                     self.vision_queue.get_nowait()
                     self.vision_queue.put((ts_depth, ir_image, depth_image), block=False)
 
-    def loop(self):
+    def loop(self, headless=True):
         self.device.time_queue.clear()
 
         print(f"Scanning... (press '{self.quitter.quit_key}' to exit)")
         elapsed_time = 0.0
+        viz_count = 0
         self.start_time = time.time()
 
         self.started_running = True
@@ -195,7 +200,7 @@ class Scanner:
         while self.is_running:
             elapsed_time = time.time() - self.start_time
             self.quitter.process()
-            if elapsed_time > self.measurement_time or self.quitter.quit:
+            if elapsed_time > self.measurement_time or self.quitter.quit or self.visualizer.stop:
                 self.is_running = False
                 break
 
@@ -303,6 +308,15 @@ class Scanner:
             self.point_handler.append_points(measured_points_wf, reference_idx)
 
             self.logger.log_state(timestamp=vision_time, event='vision', state_vector=nominal_state)
+
+            if not headless:
+                if viz_count % 2 == 0:
+                    self.profiler.start('Visualize')
+                    self.visualizer.update_camera(self.camera_state_handler.quaternion, self.camera_state_handler.position)
+                    self.visualizer.add_points(self.point_handler.point_map)
+                    self.profiler.end('Visualize')
+                viz_count += 1
+
             self.profiler.end("E2E")
 
         return elapsed_time
@@ -327,18 +341,44 @@ class Scanner:
 
 
         self.device.stop()
+        self.visualizer.shutdown()
         self.quitter.stop()
         self.cleaned_up = True
 
-    def scan(self):
+    def _routine(self, headless=True):
         try:
             self.device.start()
             with jax.log_compiles():
                 self.initialize_orientation()
-                elapsed_time = self.loop()
+                elapsed_time = self.loop(headless=headless)
 
             print(f"Measurement finished in {elapsed_time:.3f} seconds")
 
         finally:
             if not self.cleaned_up:
                 self.cleanup()
+
+    def scan(self):
+        ui_enabled = input("Scan initiated. Enable UI? y/n: ")
+
+        if ui_enabled.lower() == 'y':
+            print("UI enabled.")
+
+            try:
+                timer = time.time()
+                timeout = 0
+                while not self.visualizer.start:
+                    if timeout > 15.0:
+                        print(f"Server received no interaction in {timeout} seconds. Shutting down")
+                        raise RuntimeError
+                    time.sleep(0.001)
+                    timeout = time.time() - timer
+            except RuntimeError:
+                self.cleanup()
+                return
+
+            self._routine(headless=False)
+
+        else:
+            print('Starting scan in headless mode')
+            self._routine()
