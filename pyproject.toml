@@ -14,7 +14,9 @@ dependencies = [
     "jax",
     "ultralytics-opencv-headless",
     "opencv-python-headless",
-    "matplotlib"]
+    "matplotlib",
+    "viser",
+    "pyserial"]
 
 [tool.scikit-build]
 wheel.install-dir = "helicopter"

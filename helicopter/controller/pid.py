@@ -13,7 +13,9 @@ class PIDController(FlightController):
     def __init__(self, craft: Aircraft,
                  gains: PIDGains,
                  pv: str,
-                 lambd: float = 0.9,):
+                 lambd: float = 0.9,
+                 max_value: float = 1.0,
+                 min_value: float = -1.0):
         super().__init__(craft=craft)
         if not hasattr(craft, pv):
             raise AttributeError(f"Craft {craft} has no attribute {pv}")
@@ -26,6 +28,9 @@ class PIDController(FlightController):
         self.gains = gains
 
         self.lambd = lambd
+
+        self.max_value = max_value
+        self.min_value = min_value
 
     def proportional(self, error: float) -> float:
         return self.gains.k_p * error
@@ -41,8 +46,7 @@ class PIDController(FlightController):
     def xnor(a, b):
         return (a and b) or (not a and not b)
 
-    def control(self, dt) -> float:
-        measurement: float = getattr(self.craft, self.pv)
+    def control(self, dt, measurement: float) -> float:
         error = self.setpoint - measurement
 
         error = self.lambd * error + (1 - self.lambd) * self.prev_error
@@ -50,7 +54,7 @@ class PIDController(FlightController):
         out = self.proportional(error) + self.integral(error, dt) + self.derivative(error, dt)
 
         if abs(out) > 1.0:
-            out = max(min(out, 1.0), -1.0)
+            out = max(min(out, self.max_value), self.min_value)
             clamped = True
         else:
             clamped = False

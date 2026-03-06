@@ -12,12 +12,12 @@ from scipy.spatial.transform import Rotation
 from helicopter.utils import PointQueue, Profiler, KeyListener, Quitter
 from helicopter.vision import D435i
 from helicopter.vision import ErrorStateSquareRootUnscentedKalmanFilter as UKF
-from helicopter.vision.point_detection import PointHandler
 
 from helicopter.visualize import MeasurementVisualizer
 
-from .logger import StateLogger
+from .logger import MeasurementStateLogger
 from .camera_state_handler import CameraStateHandler
+from .point_handler import MeasurementPointHandler
 
 from .filter_functions import compose_fn, propagate, transition_fn, measurement_fn
 
@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.WARNING)
 class Scanner:
     def __init__(self,
                  device: D435i,
-                 point_handler: PointHandler,
+                 point_handler: MeasurementPointHandler,
                  camera_state_handler: CameraStateHandler,
                  ukf: UKF,
                  measurement_time: float = 5.0):
@@ -51,7 +51,7 @@ class Scanner:
         self.vision_thread = threading.Thread(target=self.vision_loop, daemon=True)
         self.lock = threading.Lock()
 
-        self.logger = StateLogger()
+        self.logger = MeasurementStateLogger()
 
         self.last_fused_time = 0.0
         self.first_imu_frame = True

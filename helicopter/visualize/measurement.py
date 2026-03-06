@@ -1,10 +1,7 @@
-from pathlib import Path
-
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-import trimesh
-
+from helicopter.utils import D435iModel
 from .base import Visualizer
 
 
@@ -28,27 +25,9 @@ class MeasurementVisualizer(Visualizer):
             section_color=(0, 255, 0)
         )
 
-        obj_path = Path(__file__).parent.parent.parent / 'assets/objects/camera/camera.obj'
-        camera_mesh = trimesh.load_mesh(obj_path)
-        centroid = camera_mesh.centroid
-        camera_mesh.apply_translation(-centroid)
-        camera_mesh.apply_scale(0.001)
+        camera_mesh = D435iModel().mesh()
 
-        rotA = Rotation.from_rotvec(np.array([0.0, 0.0, np.pi / 2]))
-        rotB = Rotation.from_rotvec(np.array([np.pi / 2, 0.0, 0.0]))
-        matrix = Rotation.as_matrix(rotA * rotB)
-        transform = np.zeros((4, 4))
-        transform[:3, :3] = matrix
-        transform[3, 3] = 1.0
-
-        camera_mesh.apply_transform(transform)
-
-        self.camera_handle = self.server.scene.add_mesh_trimesh(
-            "/camera",
-            mesh=camera_mesh,
-            wxyz=(1.0, 0.0, 0.0, 0.0),
-            position=(0.0, 0.0, 0.0),
-        )
+        self.camera_handle = self.add_mesh(camera_mesh, '/camera')
 
         self.point_idxs = []
 

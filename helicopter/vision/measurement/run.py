@@ -8,7 +8,7 @@ from helicopter.vision import D435i
 from helicopter.vision import ErrorStateSquareRootUnscentedKalmanFilter as UKF
 from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor
 from helicopter.vision.point_detection import YOLOPointDetector
-from helicopter.vision.measurement.scanner import Scanner, CameraStateHandler, PointHandler
+from helicopter.vision.measurement.scanner import Scanner, CameraStateHandler, MeasurementPointHandler
 
 
 def initialize_Q_matrix(dt: float, std_devs: dict) -> np.ndarray:
@@ -88,7 +88,7 @@ if __name__ == '__main__':
                    ema_accel=0.1,
                    ema_gyro=0.1)
 
-    point_handler = PointHandler(
+    point_handler = MeasurementPointHandler(
         detector=YOLOPointDetector(
             model=HelicopterYOLO(preprocessor=GPUImagePreprocessor(imgsz=device.IR_RESOLUTION),
                                  model=YOLO('/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine',

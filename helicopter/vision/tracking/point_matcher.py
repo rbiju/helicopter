@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import math
+from pathlib import Path
 
 import numpy as np
 from scipy.spatial import KDTree
@@ -8,9 +9,11 @@ from .kabsch import Kabsch
 
 
 class PointMatcher(ABC):
-    def __init__(self, reference_points: np.ndarray):
-        self.reference_points = reference_points
-        self.reference_distance_matrix = self.get_distance_matrix(reference_points)
+    def __init__(self, reference_points_path: str = 'assets/points_clouds/green_syma.npy'):
+        reference_points_path = Path(__file__).parents[3] / reference_points_path
+        self.reference_points = np.load(str(reference_points_path))
+
+        self.reference_distance_matrix = self.get_distance_matrix(self.reference_points)
         self.sorted_reference_distance_matrix = np.sort(self.reference_distance_matrix, axis=-1)
 
         self.kabsch = Kabsch()
@@ -30,8 +33,8 @@ class PointMatcher(ABC):
 
 
 class TrianglePointMatcher(PointMatcher):
-    def __init__(self, reference_points, n: int):
-        super().__init__(reference_points)
+    def __init__(self, n: int, reference_points_path: str = 'assets/points_clouds/green_syma.npy'):
+        super().__init__(reference_points_path)
         lookup, data = self.compute_triangle_lookup_reference(self.reference_points, self.reference_distance_matrix)
 
         self.lookup = lookup
@@ -39,7 +42,8 @@ class TrianglePointMatcher(PointMatcher):
 
         self.n = n
 
-    def compute_triangle_lookup_reference(self, points, distance_matrix):
+    @staticmethod
+    def compute_triangle_lookup_reference(points, distance_matrix):
         lookup = {}
         data = np.empty((points.shape[0] ** 3, 3))
 

@@ -5,7 +5,7 @@ from collections import deque
 import numpy as np
 
 
-class StateLogger:
+class MeasurementStateLogger:
     def __init__(self, save_dir="../../../notebooks/logs"):
         self.save_dir = Path(save_dir)
         self.data = deque()

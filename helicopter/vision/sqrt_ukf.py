@@ -154,7 +154,6 @@ class ErrorStateSquareRootUnscentedKalmanFilter:
 
         S_new, _ = lax.scan(scan_downdate, self.S, U.T)
 
-        # 7. Return new filter instance
         return self.tree_unflatten(
             {'n_dim': self.n_dim, 'c': self.c},
             (x_new, S_new, self.Q_upper, self.R_upper, self.Wm, self.Wc)

@@ -1,3 +1,6 @@
+import numpy as np
+
+import trimesh
 import viser
 
 
@@ -19,6 +22,18 @@ class Visualizer:
                                                   wxyz=(1.0, 0.0, 0.0, 0.0),
                                                   position=(0.0, 0.0, 0.0),
                                                   visible=False)
+
+    def add_mesh(self, mesh: trimesh.Trimesh, name: str,
+                 orientation: np.ndarray = np.array([1.0, 0, 0, 0]),
+                 position: np.ndarray = np.array([0.0, 0.0, 0.0])):
+        mesh_handle = self.server.scene.add_mesh_trimesh(
+            name=name,
+            mesh=mesh,
+            wxyz=orientation,
+            position=position,
+        )
+        return mesh_handle
+
     def set_start_flag(self):
         self.start = True
 

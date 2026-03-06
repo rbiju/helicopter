@@ -62,3 +62,21 @@ class Quitter(KeyConsumer):
                     print("Quit key detected")
         except queue.Empty:
             pass
+
+
+class ManualRemoteController(KeyConsumer):
+    def __init__(self, listener: KeyListener):
+        super().__init__(listener)
+
+        self.throttle = 0
+        self.pitch = 63
+        self.yaw = 63
+        self.trim = 63
+
+    def process(self):
+        try:
+            while True:
+                key = self._listener.queue.get_nowait()
+                print(f'Key {key} detected')
+        except queue.Empty:
+            pass

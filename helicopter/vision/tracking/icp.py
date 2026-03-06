@@ -1,12 +1,10 @@
 import numpy as np
-import quaternionic
 
 from .kabsch import Kabsch
 
 
 class ICP:
-    def __init__(self, reference_points: np.ndarray, distance_threshold: float = 1e-1, etol: float = 5e-3):
-        self.reference_points = reference_points
+    def __init__(self, distance_threshold: float = 1e-1, etol: float = 5e-3):
         self.distance_threshold = distance_threshold
         self.etol = etol
         self.kabsch = Kabsch()
@@ -37,8 +35,8 @@ class ICP:
             reference_subset = reference_points[reference_idxs]
             sample_subset = sample_points[sample_idxs]
 
-            q, t = self.kabsch._kabsch(reference_subset, sample_subset)
-            transformed_ref = (q * quaternionic.array.from_vector_part(reference_subset) * q.inverse).imag + t
+            q, t = self.kabsch.kabsch(reference_subset, sample_subset)
+            transformed_ref = q.apply(reference_subset) + t
 
             diff = transformed_ref[:, None, :] - sample_subset[None, :, :]
             diff = np.linalg.norm(diff, axis=-1)

@@ -1,6 +1,5 @@
 import numpy as np
-import quaternionic
-
+from scipy.spatial.transform import Rotation
 
 class Kabsch:
     @staticmethod
@@ -14,9 +13,9 @@ class Kabsch:
         rotation = vh.T @ u.T
         translation = q.mean(axis=0) - rotation @ p.mean(axis=0)
 
-        return quaternionic.array.from_rotation_matrix(rotation), translation
+        return Rotation.from_matrix(rotation), translation
 
     # noinspection PyTypeHints
     @staticmethod
-    def apply(quat: quaternionic.array, translation: np.ndarray, points: np.ndarray):
-        return quat.rotate(points) + translation
+    def apply(quat: Rotation, translation: np.ndarray, points: np.ndarray):
+        return quat.apply(points) + translation
