@@ -51,7 +51,7 @@ class SimulationAnimator:
         ax.set_zlabel('Z')
 
         ax.plot(df['x'], df['y'], df['z'], 'b--', linewidth=0.5, alpha=0.5)
-        ax.scatter(setpoint[0], setpoint[1], setpoint[2], color='r', marker='o')
+        ax.scatter(setpoint[0], setpoint[1], setpoint[2], color='r', marker='*')
 
         generator = self.arrow_generator(df)
         first_frame = self.parse_frame_data(next(generator))
