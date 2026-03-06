@@ -16,8 +16,9 @@ the helicopter in the direction of its nose. The real cleverness, however, is in
 Through a sort of franken-swashplate, the precession-induced torques from a gyro bar mounted to the top
 rotor are able to change the pitch of the top blades, resulting in a stabilizing effect that massively
 simplifies the control of the helicopter. Flying it is essentially like operating a 3D 
-[turtle](https://en.wikipedia.org/wiki/Turtle_graphics), which brings us to this project. With luck, I'll have this thing zipping around the apartment
-knocking into things and generally causing a ruckus.
+[turtle](https://en.wikipedia.org/wiki/Turtle_graphics). Perhaps most importantly of all, the
+communication protocol has been reverse engineered [here](https://github.com/gmontamat/s107g-arduino?tab=readme-ov-file),
+which brings us to this project.
 
 Retroactively, I realize this is a study in the myriad applications of singular value decomposition, 
 so I will provide a counter for convenience (SVD Count: 0)
