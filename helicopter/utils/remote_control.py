@@ -1,8 +1,6 @@
 import serial
 import struct
 
-from .command import Command
-
 READY_ACK = 129
 
 class SymaRemoteControl:
@@ -16,11 +14,10 @@ class SymaRemoteControl:
         data = self.arduino.readline()
         return data
 
-    def send_command(self, command: Command):
+    def send_command(self, commands: list[int]):
         read_data = self.arduino.read(1)
         if read_data:
             read_data = struct.unpack('B', read_data)[0]
         if read_data == READY_ACK:
-            cmd = command.format()
-            for c in cmd:
-                self.arduino.write(c.to_bytes(length=1, byteorder='big'))
+            for command in commands:
+                self.arduino.write(command.to_bytes(length=1, byteorder='big'))

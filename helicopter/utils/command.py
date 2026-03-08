@@ -7,6 +7,7 @@ class Command:
     pitch: float
     yaw: float
     trim: float
+    channel: int = 128
 
     def __post_init__(self):
         if not self.valid_range(self.throttle):
@@ -29,7 +30,8 @@ class Command:
         return int(value * (max_value - zero_value)) + zero_value
 
     def format(self) -> list[int]:
-        return [self.convert_to_int(self.throttle, zero_value=0),
-                self.convert_to_int(self.pitch),
+        return [self.channel,
                 self.convert_to_int(self.yaw),
+                self.convert_to_int(self.pitch),
+                self.convert_to_int(self.throttle, zero_value=0),
                 self.convert_to_int(self.trim)]

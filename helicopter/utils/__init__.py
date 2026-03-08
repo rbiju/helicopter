@@ -1,6 +1,6 @@
 from .point_queue import PointQueue
 from .profiler import Profiler
-from .keyboard import KeyListener, Quitter, ManualRemoteController
+from .keyboard import KeyListener, Quitter, ManualController
 from .models import D435iModel, HelicopterModel
-from .comms import SymaRemoteControl
+from .remote_control import SymaRemoteControl
 from .command import Command
