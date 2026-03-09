@@ -190,6 +190,8 @@ class Helicopter:
 
         tau_net = tau_actuator - tau_torsional_spring - tau_damping
 
+        # Euler's equations
+        # https://ocw.mit.edu/courses/16-07-dynamics-fall-2009/5e1d8699338146e5127080b880b906d6_MIT16_07F09_Lec28.pdf eqn (5)
         omega_cross_I_omega = np.cross(omega_body, self.I_tensor @ omega_body)
         dsdt[self.OMEGA_IDX] = self.I_inv @ (tau_net - omega_cross_I_omega)
 
