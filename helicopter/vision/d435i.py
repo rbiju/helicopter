@@ -13,6 +13,7 @@ class D435i:
                  video_resolution: tuple[int, int] = (480, 640),
                  enable_rgb: bool = False,
                  enable_motion: bool = False,
+                 global_time: bool = False,
                  projector_power: float = 150.,
                  toggle_projector: bool = False,
                  autoexpose: bool = True,
@@ -39,6 +40,8 @@ class D435i:
         self.depth_scale = depth_sensor.get_depth_scale()
         self.set_exposure(depth_sensor, autoexposure=autoexpose, exposure_time=exposure_time)
         self.set_projector_power(depth_sensor, projector_power)
+
+        self.global_time = global_time
 
         if toggle_projector:
             print("Laser projector toggle enabled")
@@ -183,12 +186,19 @@ class D435i:
             imu_profile = self.imu_pipeline.start(self.imu_config)
             device = imu_profile.get_device()
             motion_sensor = device.first_motion_sensor()
-            motion_sensor.set_option(rs.option.global_time_enabled, 0)
+            if self.global_time:
+                motion_sensor.set_option(rs.option.global_time_enabled, 1)
+            else:
+                motion_sensor.set_option(rs.option.global_time_enabled, 0)
 
         profile = self.pipeline.start(self.config)
         device = profile.get_device()
         depth_sensor = device.first_depth_sensor()
-        depth_sensor.set_option(rs.option.global_time_enabled, 0)
+
+        if self.global_time:
+            depth_sensor.set_option(rs.option.global_time_enabled, 1)
+        else:
+            depth_sensor.set_option(rs.option.global_time_enabled, 0)
 
     def process_frames(self, frames: rs.composite_frame):
         frames = self.align.process(frames)

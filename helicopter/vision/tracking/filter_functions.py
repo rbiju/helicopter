@@ -93,8 +93,11 @@ def propagate(s, dt, throttle, pitch, yaw, trim):
 
     omega_new = omega_old + d_omega * dt
 
+    # Battery
+    battery_new = battery - (throttle * (360. / dt))
+
     # New State
-    s_new = jnp.concatenate([quat_new.as_quat(canonical=True), pos_new, vel_new, omega_new])
+    s_new = jnp.concatenate([quat_new.as_quat(canonical=True), pos_new, vel_new, omega_new, battery_new])
 
     return s_new
 

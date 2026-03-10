@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 from scipy.spatial import KDTree
+from scipy.spatial.transform import Rotation
 
 from .kabsch import Kabsch
 
@@ -87,12 +88,12 @@ class TrianglePointMatcher(PointMatcher):
 
         return correspondences
 
-    def get_alignment(self, sample_points: np.ndarray):
+    def get_alignment(self, sample_points: np.ndarray) -> tuple[Rotation, np.ndarray]:
         triangles, samples_lookup = self.compute_triangle_lookup_sample(sample_points)
         correspondences = self.get_top_n_triangle_correspondences(triangles, self.lookup, samples_lookup)
 
         alignment_error = np.inf
-        best_alignment = None
+        best_alignment = (Rotation(np.array([0, 0, 0, 1.0])), np.array([0, 0, 0.0]))
         for correspondence in correspondences:
             ref_subset = self.reference_points[list(correspondence.keys())]
             sample_subset = sample_points[list(correspondence.values())]

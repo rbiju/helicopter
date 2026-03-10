@@ -1,35 +1,48 @@
-from abc import ABC
-from collections import deque
+from multiprocessing.managers import BaseManager
+
 import numpy as np
+from scipy.spatial.transform import Rotation
+
+from helicopter.flight_states import flight_state_registry
+
+IDX_Q = slice(0, 4)
+IDX_P = slice(4, 7)
+IDX_O = slice(7, 10)
+IDX_V = slice(10, 13)
+IDX_BATTERY = slice(13, 14)
 
 
-# TODO: add orientation getters here
-class Aircraft(ABC):
-    def __init__(self, mass: float, dt: float = 1 / 60, max_len: int = 4):
-        self.mass = mass
-        self.dt = dt
+class Aircraft:
+    def __init__(self):
+        self.quaternion = Rotation.from_quat(np.array([0.0, 0.0, 0.0, 1.0]))
+        self.position = np.array([0.0, 0.0, 0.0])
+        self.velocity = np.array([0.0, 0.0, 0.0])
+        self.angular_velocity = np.array([0.0, 0.0, 0.0])
+        self.battery = np.array([1.0])
 
-        self.max_len = max_len
-        self._positions = deque(self.max_len * [np.array([0., 0., 0.])], maxlen=self.max_len)
-        self.positions = None
+        self.flight_state = flight_state_registry.get_class('Idle')()
 
-        self.stack_positions()
+    def get_state_vector(self):
+        return np.concatenate([self.quaternion.as_quat(canonical=True), self.position, self.angular_velocity, self.velocity, self.battery])
 
-    def stack_positions(self):
-        self.positions = np.stack(self._positions)
+    def set_state_vector(self, state_vector: np.ndarray):
+        self.quaternion = Rotation.from_quat(state_vector[IDX_Q])
+        self.position = state_vector[IDX_P]
+        self.angular_velocity = state_vector[IDX_O]
+        self.velocity = state_vector[IDX_P]
+        self.battery = state_vector[IDX_BATTERY]
 
-    def update(self, position: np.ndarray):
-        self._positions.append(position)
-        self.stack_positions()
+    def set_flight_state(self, state: str):
+        self.flight_state = flight_state_registry.get_class(state)()
 
-    @property
-    def position(self):
-        return self._positions[-1]
+    def set_quaternion(self, quaternion: Rotation):
+        self.quaternion = Rotation.as_quat(quaternion, canonical=True)
 
-    @property
-    def velocity(self):
-        return np.diff(self.positions, n=1, axis=0).mean(axis=0) / self.dt
+    def set_position(self, position: np.ndarray):
+        self.position = position
 
-    @property
-    def acceleration(self):
-        return (np.diff(self.positions, n=2, axis=0)).mean(axis=0) / (self.dt ** 2)
+
+class AircraftManager(BaseManager):
+    pass
+
+AircraftManager.register('Aircraft', Aircraft)

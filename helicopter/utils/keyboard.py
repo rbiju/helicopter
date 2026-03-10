@@ -77,6 +77,8 @@ class ManualController(KeyConsumer):
         self.yaw = 63
         self.trim = 63
 
+        self.quit = False
+
     @staticmethod
     def clip(value: int):
         return min(max(value, 0), 127)
@@ -90,17 +92,21 @@ class ManualController(KeyConsumer):
                 elif key == 's':
                     self.throttle = self.clip(self.throttle - 5)
                 elif key == 'up':
-                    self.pitch = self.clip(self.pitch + 5)
-                elif key == 'down':
                     self.pitch = self.clip(self.pitch - 5)
+                elif key == 'down':
+                    self.pitch = self.clip(self.pitch + 5)
                 elif key == 'right':
-                    self.yaw = self.clip(self.yaw + 5)
-                elif key == 'left':
                     self.yaw = self.clip(self.yaw - 5)
+                elif key == 'left':
+                    self.yaw = self.clip(self.yaw + 5)
                 elif key == 'd':
-                    self.trim = self.clip(self.trim + 1)
-                elif key == 'a':
                     self.trim = self.clip(self.trim - 1)
+                elif key == 'a':
+                    self.trim = self.clip(self.trim + 1)
+                elif key == 'q':
+                    self.quit = True
+                elif key == 'r':
+                    self.reset()
                 print(f"c:{self.channel} - t:{self.throttle} - p:{self.pitch} - y:{self.yaw} - tr:{self.trim}")
         except queue.Empty:
             pass

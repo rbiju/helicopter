@@ -1,1 +1,1 @@
-from .base import Aircraft
+from .base import Aircraft, AircraftManager

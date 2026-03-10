@@ -16,6 +16,8 @@ if __name__ == '__main__':
         while elapsed_time < 120.0:
             elapsed_time = time.time() - start_time
             controller.process()
+            if controller.quit:
+                break
             command = controller.format()
             rc.send_command(command)
 

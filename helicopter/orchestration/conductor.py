@@ -1,45 +1,39 @@
+from helicopter.aircraft import Aircraft
+from helicopter.controller import FlightController
 from helicopter.utils import Profiler, SymaRemoteControl
 from helicopter.vision import ErrorStateSquareRootUnscentedKalmanFilter, D435i
-from helicopter.visualize import Visualizer
+from helicopter.flight_states import Done
+
+from .oracle import Oracle
 
 
 class FlightConductor:
-    def __init__(self, aircraft: "Aircraft",
-                 tracker: "Tracker",
-                 controller: "Controller",
-                 flight_plan: "FlightPlan",
-                 board_handler: "BoardHandler",
+    def __init__(self, aircraft: Aircraft,
+                 controller: FlightController,
+                 oracle: Oracle,
                  remote: "SymaRemoteControl",
                  ukf: ErrorStateSquareRootUnscentedKalmanFilter,
                  camera: D435i,
-                 visualizer: Visualizer,
                  profiler: Profiler) -> None:
         """
 
         Args:
             aircraft: State handler, owns the integrated aircraft state, and the physical model?
-            tracker: Owns the visual tracking logic
             controller: The Brain
-            flight_plan: Contains timestamped waypoints
-            board_handler: Owns the board layout, finding aruco markers and populating the visualizer
+            oracle: Glues together and manages flight plans
             remote: Owns communication with the aircraft
             ukf: Fuses control inputs and vision for state estimation
             profiler:
         """
         self.aircraft = aircraft
-        self.tracker = tracker
         self.controller = controller
-        self.flight_plan = flight_plan
-        self.board_handler = board_handler
+        self.oracle = oracle
         self.remote = remote
         self.ukf = ukf
 
         self.camera = camera
 
         self.profiler = profiler
-
-        self.visualizer = visualizer
-
 
     def homing_sequence(self):
         """
@@ -59,5 +53,17 @@ class FlightConductor:
         4. Use predicted location as starting point for ICP, feed visual update to KF
         5. Tick to next waypoint based on the time
 
+        while aircraft.state != FlightEnded:
+            r, t, battery = aircraft.get_current_orientation()
+            self.oracle.update(r, t, battery)
+
+            flightplan = self.oracle.get_active_flightplan()
+            waypoint = flightplan.waypoint
+
+            // Could either make the waypoint mode (static, follow) live in the flightplan or in the controller
+            control_signal = self.controller.get_control_signal(flightplan.waypoint, r, t)
+
         """
-        pass
+        while not isinstance(self.aircraft.flight_state, Done):
+            break
+

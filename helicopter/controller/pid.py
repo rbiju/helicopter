@@ -1,6 +1,9 @@
 from typing import NamedTuple
 
-from .base import FlightController, Aircraft
+import numpy as np
+from scipy.spatial.transform import Rotation
+
+from .base import FlightController
 
 
 class PIDGains(NamedTuple):
@@ -9,18 +12,12 @@ class PIDGains(NamedTuple):
     k_d: float
 
 
-class PIDController(FlightController):
-    def __init__(self, craft: Aircraft,
-                 gains: PIDGains,
-                 pv: str,
+class PIDController:
+    def __init__(self, gains: PIDGains,
                  lambd: float = 0.9,
                  max_value: float = 1.0,
                  min_value: float = -1.0):
-        super().__init__(craft=craft)
-        if not hasattr(craft, pv):
-            raise AttributeError(f"Craft {craft} has no attribute {pv}")
-        self.pv = pv
-
+        super().__init__()
         self.prev_error = 0.
 
         self.accumulator = 0.
@@ -42,13 +39,15 @@ class PIDController(FlightController):
     def derivative(self, error: float, dt) -> float:
         return self.gains.k_d * (error - self.prev_error) / dt
 
+    def reset(self):
+        self.accumulator = 0.
+        self.prev_error = 0.
+
     @staticmethod
     def xnor(a, b):
         return (a and b) or (not a and not b)
 
-    def control(self, dt, measurement: float) -> float:
-        error = self.setpoint - measurement
-
+    def control(self, dt, error: float) -> float:
         error = self.lambd * error + (1 - self.lambd) * self.prev_error
 
         out = self.proportional(error) + self.integral(error, dt) + self.derivative(error, dt)
@@ -70,3 +69,50 @@ class PIDController(FlightController):
         self.prev_error = error
 
         return out
+
+
+class HelicopterPIDController(FlightController):
+    def __init__(self, throttle: PIDController, pitch: PIDController, yaw: PIDController):
+        super().__init__()
+        self.throttle = throttle
+        self.pitch = pitch
+        self.yaw = yaw
+
+        self.controllers = [self.throttle, self.pitch, self.yaw]
+
+        self.last_time = 0.0
+
+    def reset(self):
+        for controller in self.controllers:
+            controller.reset()
+
+    @staticmethod
+    def compute_pid_errors(waypoint: np.ndarray, r: Rotation, t: np.ndarray):
+        position_error = waypoint - t
+        e_throttle = position_error[2]
+
+        yaw_rotvec = Rotation.as_rotvec(r)[2]
+        yaw_rotation = Rotation.from_rotvec(np.array([0.0, 0.0, yaw_rotvec]))
+        position_error_body = yaw_rotation.inv().apply(position_error)
+        e_pitch = position_error_body[0]
+
+        if e_pitch < 0.05:
+            e_yaw = 0.0
+        else:
+            psi_target = np.arctan2(position_error[1], position_error[0])
+            psi_current = yaw_rotvec
+            e_yaw = psi_target - psi_current
+
+        return np.array([e_throttle, e_pitch, e_yaw])
+
+    def control(self, timestamp: float, waypoint: np.ndarray, r: Rotation, t: np.ndarray):
+        errors = self.compute_pid_errors(waypoint, r, t)
+
+        commands = []
+        for i in range(3):
+            command = self.controllers[i].control(errors[i], timestamp - self.last_time)
+            commands.append(command)
+
+        self.last_time = timestamp
+
+        return np.array(commands)
