@@ -1,4 +1,4 @@
-# Discovering a Novel Way to Annoy my Wife by Learning A Little Control Theory
+# Learning a Little Control Theory to Annoy/Impress my Partner
 
 ## Some Background
 
