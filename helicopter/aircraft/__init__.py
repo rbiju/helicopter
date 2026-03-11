@@ -1,1 +1,1 @@
-from .base import Aircraft, AircraftManager
+from .base import Aircraft, AircraftManager, FlightStates

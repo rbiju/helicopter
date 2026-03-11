@@ -1,19 +1,18 @@
+import time
+
 from helicopter.aircraft import Aircraft
 from helicopter.controller import FlightController
 from helicopter.utils import Profiler, SymaRemoteControl
-from helicopter.vision import ErrorStateSquareRootUnscentedKalmanFilter, D435i
-from helicopter.flight_states import Done
 
 from .oracle import Oracle
+from .flightplan import TakeOffFlightPlan, HoverFlightPlan
 
 
 class FlightConductor:
     def __init__(self, aircraft: Aircraft,
                  controller: FlightController,
                  oracle: Oracle,
-                 remote: "SymaRemoteControl",
-                 ukf: ErrorStateSquareRootUnscentedKalmanFilter,
-                 camera: D435i,
+                 remote: SymaRemoteControl,
                  profiler: Profiler) -> None:
         """
 
@@ -35,11 +34,14 @@ class FlightConductor:
 
         self.profiler = profiler
 
+        self.hover_oracle = Oracle(flight_plan_sequence=[TakeOffFlightPlan(takeoff_height=0.2),
+                                                         HoverFlightPlan(hover_time=10.0)])
+
     def homing_sequence(self):
         """
-        1. Scan for the aruco markers, populate the visualizer
-        2. Initialize the camera position with the triangle point matcher, use averaged points.
+        1. Initialize the helicopter position with the triangle point matcher, use averaged points.
             Might need to randomly jitter the rotor to make the markers visible.
+        2. Small hover to adjust trim
         """
         pass
 
@@ -64,6 +66,15 @@ class FlightConductor:
             control_signal = self.controller.get_control_signal(flightplan.waypoint, r, t)
 
         """
-        while not isinstance(self.aircraft.flight_state, Done):
-            break
+        flight_start_time = time.time()
+        while not self.aircraft.flight_state == 5:
+            timestamp = time.time() - flight_start_time
+            r, t, battery = self.aircraft.quaternion, self.aircraft.position, self.aircraft.battery
+            self.oracle.update(r, t, battery, timestamp=timestamp)
 
+            flightplan = self.oracle.active_flight_plan
+            errors = flightplan.compute_error(quaternion=r, translation=t)
+            commands = self.controller.control(timestamp, errors)
+
+            formatted_commands = self.controller.format_command(commands, 0.0, 128)
+            self.remote.send_command(formatted_commands)

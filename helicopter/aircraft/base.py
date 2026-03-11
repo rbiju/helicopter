@@ -1,15 +1,25 @@
+from enum import Enum
 from multiprocessing.managers import BaseManager
 
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from helicopter.flight_states import flight_state_registry
 
 IDX_Q = slice(0, 4)
 IDX_P = slice(4, 7)
 IDX_O = slice(7, 10)
 IDX_V = slice(10, 13)
 IDX_BATTERY = slice(13, 14)
+
+
+class FlightStates(Enum):
+    IDLE = 0
+    TAKEOFF = 1
+    WAYPOINT_FOLLOW = 2
+    HOVER = 3
+    LANDING = 4
+    DONE = 5
+    KILL_POWER = 6
 
 
 class Aircraft:
@@ -20,7 +30,7 @@ class Aircraft:
         self.angular_velocity = np.array([0.0, 0.0, 0.0])
         self.battery = np.array([1.0])
 
-        self.flight_state = flight_state_registry.get_class('Idle')()
+        self.flight_state = FlightStates.IDLE
 
     def get_state_vector(self):
         return np.concatenate([self.quaternion.as_quat(canonical=True), self.position, self.angular_velocity, self.velocity, self.battery])
@@ -32,8 +42,8 @@ class Aircraft:
         self.velocity = state_vector[IDX_P]
         self.battery = state_vector[IDX_BATTERY]
 
-    def set_flight_state(self, state: str):
-        self.flight_state = flight_state_registry.get_class(state)()
+    def set_flight_state(self, state: FlightStates):
+        self.flight_state = state
 
     def set_quaternion(self, quaternion: Rotation):
         self.quaternion = Rotation.as_quat(quaternion, canonical=True)

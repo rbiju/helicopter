@@ -3,6 +3,7 @@ from typing import NamedTuple
 import numpy as np
 from scipy.spatial.transform import Rotation
 
+from helicopter.utils import Command
 from .base import FlightController
 
 
@@ -78,6 +79,8 @@ class HelicopterPIDController(FlightController):
         self.pitch = pitch
         self.yaw = yaw
 
+        self.trim = PIDController(gains=PIDGains(k_p = 0.1, k_i = 0.0, k_d = 0.0))
+
         self.controllers = [self.throttle, self.pitch, self.yaw]
 
         self.last_time = 0.0
@@ -105,9 +108,7 @@ class HelicopterPIDController(FlightController):
 
         return np.array([e_throttle, e_pitch, e_yaw])
 
-    def control(self, timestamp: float, waypoint: np.ndarray, r: Rotation, t: np.ndarray):
-        errors = self.compute_pid_errors(waypoint, r, t)
-
+    def control(self, timestamp: float, errors: np.ndarray):
         commands = []
         for i in range(3):
             command = self.controllers[i].control(errors[i], timestamp - self.last_time)
@@ -116,3 +117,11 @@ class HelicopterPIDController(FlightController):
         self.last_time = timestamp
 
         return np.array(commands)
+
+    @staticmethod
+    def format_command(command, trim, channel=128):
+        return Command(throttle=command[0],
+                       pitch=command[1],
+                       yaw=command[2],
+                       trim=trim,
+                       channel=channel).format()

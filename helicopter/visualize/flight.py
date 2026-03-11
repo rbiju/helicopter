@@ -25,16 +25,16 @@ class FlightVisualizer(Visualizer):
             section_color=(0, 255, 0)
         )
 
-        camera_mesh = HelicopterModel().mesh()
-        self.helicopter_handle = self.add_mesh(camera_mesh, '/camera')
+        helicopter_mesh = HelicopterModel().mesh()
+        self.helicopter_handle = self.add_mesh(helicopter_mesh, '/camera')
 
         self.point_idxs = []
 
         self.last_position = np.array([0.0, 0.0, 0.0])
 
     def update_camera(self, quat: Rotation, translation: np.ndarray):
-        self.camera_handle.wxyz = quat.as_quat(canonical=True, scalar_first=True)
-        self.camera_handle.position = translation
+        self.helicopter_handle.wxyz = quat.as_quat(canonical=True, scalar_first=True)
+        self.helicopter_handle.position = translation
 
         if np.linalg.norm(translation - self.last_position) > 0.005:
             line = np.vstack([self.last_position, translation])
@@ -45,17 +45,3 @@ class FlightVisualizer(Visualizer):
                 colors=(255, 255, 255),
                 line_width=2.0,
             )
-
-    def add_points(self, points: np.ndarray):
-        # Safe because points are never deleted from the PointHandler
-        for idx in range(len(points)):
-            if idx not in self.point_idxs:
-                self.point_idxs.append(idx)
-
-                self.server.scene.add_point_cloud(
-                    name=f"/points/{idx}",
-                    points=np.expand_dims(points[idx], 0),
-                    colors=(255, 0, 0),
-                    point_size=0.002,
-                    point_shape="circle",
-                )

@@ -27,7 +27,7 @@ class Command:
 
     @staticmethod
     def convert_to_int(value: float, max_value: int = 127, zero_value: int = 63) -> int:
-        return int(value * (max_value - zero_value)) + zero_value
+        return max(int(value * (max_value - zero_value)) + zero_value, 0)
 
     def format(self) -> list[int]:
         return [self.channel,
