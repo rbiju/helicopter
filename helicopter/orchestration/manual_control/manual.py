@@ -13,7 +13,7 @@ if __name__ == '__main__':
 
         elapsed_time = 0
         start_time = time.time()
-        while elapsed_time < 120.0:
+        while True:
             elapsed_time = time.time() - start_time
             controller.process()
             if controller.quit:

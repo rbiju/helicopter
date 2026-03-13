@@ -1,0 +1,100 @@
+from abc import ABC, abstractmethod
+
+import numpy as np
+from scipy.spatial.transform import Rotation
+
+import trimesh
+
+
+class ARUCOMarkerModel(ABC):
+    def __init__(self):
+        pass
+
+    @property
+    @abstractmethod
+    def id(self) -> int:
+        raise NotImplementedError
+
+    @abstractmethod
+    def mesh(self) -> trimesh.Trimesh:
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def marker_offset(self) -> np.ndarray:
+        raise NotImplementedError
+
+    @property
+    def marker_rotation(self) -> Rotation:
+        return Rotation.from_quat(np.array([0, 0, 0, 1.0]))
+
+class ARUCOModelRegistry:
+    def __init__(self):
+        self._classes = {}
+
+    def register(self):
+        def decorator(cls):
+            if not issubclass(cls, ARUCOMarkerModel):
+                raise ValueError("Only ARUCOMarkerModel objects should be registered here.")
+            key = cls.id
+            if key in self._classes:
+                raise ValueError(f"Model with id '{key}' already registered.")
+            self._classes[key] = cls
+            return cls
+
+        return decorator
+
+    def get_class(self, key):
+        return self._classes.get(key)
+
+    def list_registered_classes(self):
+        return list(self._classes.keys())
+
+
+aruco_registry = ARUCOModelRegistry()
+
+
+@aruco_registry.register()
+class GameTableModelLongSide(ARUCOMarkerModel):
+    def __init__(self):
+        super().__init__()
+
+    @property
+    def id(self) -> int:
+        return 0
+
+    def mesh(self) -> trimesh.Trimesh:
+        obj_path: str = 'assets/objects/table/table.obj'
+
+        mesh = trimesh.load_mesh(obj_path)
+        return mesh
+
+    def marker_offset(self) -> np.ndarray:
+        return np.array([-0.355, 0.6085, 0.025])
+
+
+@aruco_registry.register()
+class GameTableModelShortSide(ARUCOMarkerModel):
+    def __init__(self):
+        super().__init__()
+
+    @property
+    def id(self) -> int:
+        return 1
+
+    def mesh(self) -> trimesh.Trimesh:
+        obj_path: str = 'assets/objects/table/table.obj'
+
+        mesh = trimesh.load_mesh(obj_path)
+
+        rotation = Rotation.from_rotvec(np.array([0.0, 0.0, np.pi / 2]))
+        transform = np.zeros((4, 4))
+        transform[:3, :3] = Rotation.as_matrix(rotation)
+        transform[3, 3] = 1.0
+
+        mesh.apply_transform(transform)
+
+        return mesh
+
+    def marker_offset(self) -> np.ndarray:
+        return np.array([-0.6085, -0.355, 0.025])

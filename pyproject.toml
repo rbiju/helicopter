@@ -16,7 +16,9 @@ dependencies = [
     "opencv-python-headless",
     "matplotlib",
     "viser",
-    "pyserial"]
+    "pyserial",
+    "hydra-core",
+    "click"]
 
 [tool.scikit-build]
 wheel.install-dir = "helicopter"

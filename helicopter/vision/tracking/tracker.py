@@ -2,11 +2,14 @@ import queue
 import threading
 import time
 
+from helicopter.configuration import HydraConfigurable
 from helicopter.aircraft import Aircraft, AircraftManager
 from helicopter.vision import D435i
+
 from .point_handler import TrackingPointHandler
 
 
+@HydraConfigurable
 class Tracker:
     def __init__(self, aircraft: AircraftManager, point_handler: TrackingPointHandler, camera: D435i):
         self.aircraft_manager = aircraft

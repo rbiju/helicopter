@@ -1,6 +1,7 @@
 import time
 
-from helicopter.aircraft import Aircraft
+from helicopter.configuration import HydraConfigurable
+from helicopter.aircraft import Aircraft, AircraftManager
 from helicopter.controller import FlightController
 from helicopter.utils import Profiler, SymaRemoteControl
 
@@ -8,8 +9,9 @@ from .oracle import Oracle
 from .flightplan import TakeOffFlightPlan, HoverFlightPlan
 
 
+@HydraConfigurable
 class FlightConductor:
-    def __init__(self, aircraft: Aircraft,
+    def __init__(self, aircraft: AircraftManager,
                  controller: FlightController,
                  oracle: Oracle,
                  remote: SymaRemoteControl,
@@ -28,9 +30,6 @@ class FlightConductor:
         self.controller = controller
         self.oracle = oracle
         self.remote = remote
-        self.ukf = ukf
-
-        self.camera = camera
 
         self.profiler = profiler
 
@@ -41,7 +40,6 @@ class FlightConductor:
         """
         1. Initialize the helicopter position with the triangle point matcher, use averaged points.
             Might need to randomly jitter the rotor to make the markers visible.
-        2. Small hover to adjust trim
         """
         pass
 
