@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation
+import jax.numpy as jnp
+from jax.scipy.spatial.transform import Rotation as jaxRotation
 
 import pyrealsense2
 
@@ -99,10 +101,29 @@ class TrackingPointHandler:
 
         return marker_coords, keypoints
 
+    def pad_points(self, points):
+        max_size = len(self.matcher.reference_points)
+        current_size = points.shape[0]
+
+        pad_length = max_size - current_size
+        pad_array = np.full((pad_length, 3), np.inf, dtype=points.dtype)
+
+        padded_points = np.vstack([points, pad_array])
+
+        return padded_points
+
     def get_point_correspondence(self, q_init: Rotation,
                                  t_init: np.ndarray,
-                                 measured_points: np.ndarray) -> tuple[list[int], list[int]]:
-        q, t = self.icp.iterate(q_init, t_init.copy(), measured_points, self.matcher.reference_points)
+                                 measured_points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        q_jax = jaxRotation.from_quat(jnp.array(q_init.as_quat(canonical=True)))
+        min_idxs, valid_mask = self.icp.iterate(q_jax,
+                                                t_init.copy(),
+                                                self.pad_points(measured_points),
+                                                self.matcher.reference_points)
+        min_idxs = np.asarray(min_idxs)
+        valid_mask = np.asarray(valid_mask)
 
-        transformed_reference = self.icp.kabsch.apply(q, t, self.matcher.reference_points)
-        return self.icp.get_correspondence(transformed_reference, measured_points)
+        sample_idxs = np.arange(len(measured_points))[valid_mask]
+        reference_idxs = min_idxs[valid_mask]
+
+        return sample_idxs, reference_idxs

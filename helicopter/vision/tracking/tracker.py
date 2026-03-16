@@ -168,13 +168,16 @@ class Tracker:
             if measured_out is not None:
                 measured_points, keypoints = measured_out
             else:
-                nominal_state = jnp.array(self.aircraft.get_state_vector())
-                nominal_state = np.array(compose_fn(nominal_state, self.ukf.x))
+                with self.lock:
+                    current_nominal_state = jnp.array(self.aircraft.get_state_vector())
+
+                nominal_state = np.array(compose_fn(current_nominal_state, self.ukf.x))
                 self.ukf = self.ukf.reset()
-                self.aircraft.set_state_vector(nominal_state)
+
+                with self.lock:
+                    self.aircraft.set_state_vector(nominal_state)
                 continue
 
-            # Perform ICP + UKF Update here
             self.profiler.start('Match_Points')
             with self.lock:
                 q = self.aircraft.quaternion
@@ -198,7 +201,6 @@ class Tracker:
 
             self.ukf = self.ukf.reset()
 
-            self.aircraft.set_state_vector(nominal_state)
+            with self.lock:
+                self.aircraft.set_state_vector(nominal_state)
             self.profiler.end('UKF_Update')
-
-

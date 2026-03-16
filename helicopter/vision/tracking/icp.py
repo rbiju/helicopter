@@ -1,47 +1,89 @@
-import numpy as np
+import jax
+import jax.numpy as jnp
+from jax.scipy.spatial.transform import Rotation
+from functools import partial
 
-from .kabsch import Kabsch
+
+class Kabsch:
+    @partial(jax.jit, static_argnums=(0,))
+    def kabsch(self, P, Q, weights=None):
+        if weights is None:
+            weights = jnp.ones(P.shape[0])
+
+        weights = jnp.expand_dims(weights, axis=-1)
+        W_sum = jnp.sum(weights)
+
+        centroid_P = jnp.sum(P * weights, axis=0) / jnp.maximum(W_sum, 1e-8)
+        centroid_Q = jnp.sum(Q * weights, axis=0) / jnp.maximum(W_sum, 1e-8)
+
+        P_centered = (P - centroid_P) * jnp.sqrt(weights)
+        Q_centered = (Q - centroid_Q) * jnp.sqrt(weights)
+
+        H = P_centered.T @ Q_centered
+        U, _, Vt = jnp.linalg.svd(H)
+
+        d = jnp.sign(jnp.linalg.det(Vt.T @ U.T))
+        diag_matrix = jnp.diag(jnp.array([1.0, 1.0, d]))
+
+        R = Vt.T @ diag_matrix @ U.T
+        t = centroid_Q - R @ centroid_P
+
+        return Rotation.from_matrix(R), t
+
+    @partial(jax.jit, static_argnums=(0,))
+    def apply(self, R: Rotation, t, points):
+        return R.apply(points) + t
 
 
 class ICP:
     def __init__(self, distance_threshold: float = 1e-1, etol: float = 5e-3, max_iterations: int = 10):
         self.distance_threshold = distance_threshold
         self.etol = etol
-        self.kabsch = Kabsch()
         self.max_iterations = max_iterations
+        self.kabsch = Kabsch()
 
+    @partial(jax.jit, static_argnums=(0,))
     def get_correspondence(self, reference_points, sample_points):
-        distances = sample_points[:, None, np.newaxis] - reference_points[None, :, np.newaxis]
-        distances = np.linalg.norm(distances, axis=-1)
+        diff = sample_points[:, None, :] - reference_points[None, :, :]
+        distances = jnp.linalg.norm(diff, axis=-1)
 
-        min_distances = np.min(distances, axis=1)
-        min_idxs = np.argmin(distances, axis=1)
+        min_distances = jnp.min(distances, axis=1)
+        min_idxs = jnp.argmin(distances, axis=1)
 
-        reference_idxs = [idx for idx, dist in zip(min_idxs, min_distances) if dist < self.distance_threshold]
-        sample_idxs = [i for i, (idx, dist) in enumerate(zip(min_idxs, min_distances)) if dist < self.distance_threshold]
+        valid_mask = min_distances < self.distance_threshold
 
-        return reference_idxs, sample_idxs
+        return min_idxs, valid_mask
 
-    def iterate(self, q_old, t_old, sample_points, reference_points):
-        reference_points = self.kabsch.apply(q_old, t_old, reference_points)
+    @partial(jax.jit, static_argnums=(0,))
+    def iterate(self, q_old: Rotation, t_old, sample_points, reference_points):
+        transformed_reference_points = self.kabsch.apply(q_old, t_old, reference_points)
 
-        q = None
-        t = None
+        def cond_fn(state):
+            error, iter_count, q, t = state
+            return jnp.logical_and(error > self.etol, iter_count < self.max_iterations)
 
-        error = np.inf
-        iter_count = 0
-        while error > self.etol and iter_count < self.max_iterations:
-            reference_idxs, sample_idxs = self.get_correspondence(reference_points, sample_points)
+        def body_fn(state):
+            error, iter_count, q, t = state
 
-            reference_subset = reference_points[reference_idxs]
-            sample_subset = sample_points[sample_idxs]
+            min_idxs, valid_mask = self.get_correspondence(transformed_reference_points, sample_points)
+            matched_reference = transformed_reference_points[min_idxs]
 
-            q, t = self.kabsch.kabsch(reference_subset, sample_subset)
-            transformed_ref = q.apply(reference_subset) + t
+            q_new, t_new = self.kabsch.kabsch(matched_reference, sample_points, weights=valid_mask)
 
-            diff = transformed_ref[:, None, :] - sample_subset[None, :, :]
-            diff = np.linalg.norm(diff, axis=-1)
-            error = np.trace(diff)
-            iter_count += 1
+            transformed_ref = self.kabsch.apply(q_new, t_new, matched_reference)
 
-        return q, t
+            diff = jnp.linalg.norm(transformed_ref - sample_points, axis=-1)
+            error_new = jnp.sum(diff * valid_mask)
+
+            return error_new, iter_count + 1, q_new, t_new
+
+        init_state = (jnp.array(jnp.inf), jnp.int32(0), q_old, t_old)
+
+        final_error, final_iter, q_final, t_final = jax.lax.while_loop(cond_fun=cond_fn,
+                                                                       body_fun=body_fn,
+                                                                       init_val=init_state)
+
+        final_transformed_refs = q_final.apply(reference_points) + t_final
+        final_min_idxs, final_valid_mask = self.get_correspondence(final_transformed_refs, sample_points)
+
+        return final_min_idxs, final_valid_mask
