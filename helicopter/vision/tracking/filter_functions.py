@@ -7,6 +7,7 @@ IDX_P = slice(4, 7)
 IDX_O = slice(7, 10)
 IDX_V = slice(10, 13)
 IDX_BATTERY = slice(13, 14)
+IDX_TRIM = slice(14, 15)
 
 MASS = 0.040
 G_WORLD = jnp.array([0, 0, -9.8066])
@@ -14,14 +15,14 @@ I_TENSOR = jnp.diag(jnp.array([2e-4, 2e-4, 1e-4]))
 I_INVERSE = jnp.diag(1 / (I_TENSOR.diagonal()))
 DRAG = jnp.array([0.1,  0.4, 0.25])
 
-MAX_THRUST = 0.80
-MAX_TAIL_THRUST = 0.125
+MAX_THRUST = jnp.array([0.0, 0.0, 0.80])
+MAX_TAIL_THRUST = jnp.array([0.0, 0.0, 0.125])
 
 TAIL_MOMENT_ARM = 0.12
 
 YAW_TIME_CONSTANT = 0.03
 
-GYRO_SPRING_CONSTANT = jnp.array([0.1, 0.1, 0.0])
+GYRO_SPRING_CONSTANT = jnp.array([0.01, 0.01, 0.0])
 ANGULAR_DRAG = jnp.array([0.05, 0.025, 1e-4])
 CORIOLIS_CONSTANT = 0.06
 
@@ -50,7 +51,7 @@ def decompose_fn(old_state, new_state):
 
 
 @jit
-def propagate(s, dt, throttle, pitch, yaw, trim):
+def propagate(s, dt, commands):
     # Position in world frame
     # Velocity in body frame
 
@@ -59,10 +60,13 @@ def propagate(s, dt, throttle, pitch, yaw, trim):
     omega_old = s[IDX_O]
     quat_old = Rotation.from_quat(s[IDX_Q])
     battery = s[IDX_BATTERY]
+    trim_old = s[IDX_TRIM]
+
+    thrust, pitch, yaw = commands
 
     # Quaternion
     dq = Rotation.from_rotvec(omega_old * dt)
-    quat_new = dq * quat_old
+    quat_new = quat_old * dq
 
     # Position
     vel_rotated = quat_old.apply(vel_old)
@@ -70,7 +74,7 @@ def propagate(s, dt, throttle, pitch, yaw, trim):
 
     # Velocity
     gravity = quat_new.inv().apply(G_WORLD)
-    thrust = throttle * MAX_THRUST * battery + pitch * MAX_TAIL_THRUST * battery
+    thrust = thrust * MAX_THRUST * battery + pitch * MAX_TAIL_THRUST * battery
     drag = DRAG * vel_old
     F_net = gravity + thrust - drag
     acc_coriolis = jnp.cross(omega_old, vel_old)
@@ -79,8 +83,8 @@ def propagate(s, dt, throttle, pitch, yaw, trim):
 
     # Angular Velocity
     tau_roll = acc_coriolis[1] * MASS * CORIOLIS_CONSTANT
-    tau_actuator_pitch = MAX_TAIL_THRUST * pitch * battery * TAIL_MOMENT_ARM
-    tau_actuator_yaw = (I_TENSOR[2, 2] / YAW_TIME_CONSTANT) * (yaw + trim) * battery
+    tau_actuator_pitch = MAX_TAIL_THRUST[2] * pitch * battery * TAIL_MOMENT_ARM
+    tau_actuator_yaw = (I_TENSOR[2, 2] / YAW_TIME_CONSTANT) * jnp.clip(yaw + trim_old, -1.0, 1.0) * battery
     tau_actuator = jnp.array([tau_roll, tau_actuator_pitch, tau_actuator_yaw])
 
     tau_gyro = GYRO_SPRING_CONSTANT * quat_old.as_euler(seq=['X', 'Y', 'Z'], degrees=False)
@@ -94,10 +98,10 @@ def propagate(s, dt, throttle, pitch, yaw, trim):
     omega_new = omega_old + d_omega * dt
 
     # Battery
-    battery_new = battery - (throttle * (360. / dt))
+    battery_new = battery - (thrust * (dt / 360.))
 
     # New State
-    s_new = jnp.concatenate([quat_new.as_quat(canonical=True), pos_new, vel_new, omega_new, battery_new])
+    s_new = jnp.concatenate([quat_new.as_quat(canonical=True), pos_new, omega_new, vel_new, battery_new])
 
     return s_new
 

@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from scipy.spatial.transform import Rotation
 
 import pyrealsense2
 
@@ -14,7 +15,8 @@ class TrackingPointHandler:
     def __init__(self,
                  detector: PointDetector,
                  matcher: TrianglePointMatcher,
-                 max_queue_size: int = 50) -> None:
+                 max_queue_size: int = 50,
+                 max_icp_iters: int = 10) -> None:
         self.detector = detector
         self.matcher = matcher
         self.icp = ICP()
@@ -23,6 +25,8 @@ class TrackingPointHandler:
         self.maxlen = max_queue_size
 
         self._next_id : int = 0
+
+        self.max_icp_iters = max_icp_iters
 
     @property
     def next_id(self) -> int:
@@ -94,3 +98,11 @@ class TrackingPointHandler:
             return None
 
         return marker_coords, keypoints
+
+    def get_point_correspondence(self, q_init: Rotation,
+                                 t_init: np.ndarray,
+                                 measured_points: np.ndarray) -> tuple[list[int], list[int]]:
+        q, t = self.icp.iterate(q_init, t_init.copy(), measured_points, self.matcher.reference_points)
+
+        transformed_reference = self.icp.kabsch.apply(q, t, self.matcher.reference_points)
+        return self.icp.get_correspondence(transformed_reference, measured_points)

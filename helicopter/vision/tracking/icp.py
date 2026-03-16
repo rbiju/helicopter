@@ -4,10 +4,11 @@ from .kabsch import Kabsch
 
 
 class ICP:
-    def __init__(self, distance_threshold: float = 1e-1, etol: float = 5e-3):
+    def __init__(self, distance_threshold: float = 1e-1, etol: float = 5e-3, max_iterations: int = 10):
         self.distance_threshold = distance_threshold
         self.etol = etol
         self.kabsch = Kabsch()
+        self.max_iterations = max_iterations
 
     def get_correspondence(self, reference_points, sample_points):
         distances = sample_points[:, None, np.newaxis] - reference_points[None, :, np.newaxis]
@@ -21,15 +22,15 @@ class ICP:
 
         return reference_idxs, sample_idxs
 
-    def iterate(self, q_old, t_old, sample_points):
-        reference_points = self.kabsch.apply(q_old, t_old, sample_points)
+    def iterate(self, q_old, t_old, sample_points, reference_points):
+        reference_points = self.kabsch.apply(q_old, t_old, reference_points)
 
         q = None
         t = None
 
         error = np.inf
         iter_count = 0
-        while error > self.etol and iter_count < 4:
+        while error > self.etol and iter_count < self.max_iterations:
             reference_idxs, sample_idxs = self.get_correspondence(reference_points, sample_points)
 
             reference_subset = reference_points[reference_idxs]

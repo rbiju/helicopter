@@ -2,16 +2,16 @@ from dataclasses import dataclass
 
 
 @dataclass
-class Command:
-    throttle: float
+class SymaCommand:
+    thrust: float
     pitch: float
     yaw: float
-    trim: float
+    trim: float = 0
     channel: int = 128
 
     def __post_init__(self):
-        if not self.valid_range(self.throttle):
-            raise ValueError(f"Invalid throttle value: {self.throttle}")
+        if not self.valid_range(self.thrust):
+            raise ValueError(f"Invalid throttle value: {self.thrust}")
         if not self.valid_range(self.pitch):
             raise ValueError(f"Invalid pitch value: {self.pitch}")
         if not self.valid_range(self.yaw):
@@ -33,5 +33,14 @@ class Command:
         return [self.channel,
                 self.convert_to_int(self.yaw),
                 self.convert_to_int(self.pitch),
-                self.convert_to_int(self.throttle, zero_value=0),
+                self.convert_to_int(self.thrust, zero_value=0),
                 self.convert_to_int(self.trim)]
+
+class SymaCommandFactory:
+    @staticmethod
+    def command(thrust: float,
+                pitch: float,
+                yaw: float,
+                trim: float = 0,
+                channel: int = 128):
+        return SymaCommand(thrust, pitch, yaw, trim, channel)

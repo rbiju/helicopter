@@ -56,4 +56,12 @@ class HelicopterModel(Model):
         mesh.apply_translation(-centroid)
         mesh.apply_scale(0.01)
 
+        rotA = Rotation.from_rotvec(np.array([0.0, 0.0, np.pi / 2]))
+        rotB = Rotation.from_rotvec(np.array([np.pi / 2, 0.0, 0.0]))
+        rotation = rotA * rotB
+
+        transform = self.transformation_matrix(rotation, np.array([0.0, 0.0, 0.0]))
+
+        mesh.apply_transform(transform)
+
         return mesh

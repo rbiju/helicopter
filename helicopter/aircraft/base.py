@@ -24,7 +24,7 @@ class FlightStates(Enum):
 
 class Aircraft:
     def __init__(self):
-        self.quaternion = Rotation.from_quat(np.array([0.0, 0.0, 0.0, 1.0]))
+        self.quaternion: Rotation = Rotation.from_quat(np.array([0.0, 0.0, 0.0, 1.0]))
         self.position = np.array([0.0, 0.0, 0.0])
         self.velocity = np.array([0.0, 0.0, 0.0])
         self.angular_velocity = np.array([0.0, 0.0, 0.0])
@@ -46,7 +46,7 @@ class Aircraft:
         self.flight_state = state
 
     def set_quaternion(self, quaternion: Rotation):
-        self.quaternion = Rotation.as_quat(quaternion, canonical=True)
+        self.quaternion = quaternion
 
     def set_position(self, position: np.ndarray):
         self.position = position

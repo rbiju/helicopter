@@ -1,3 +1,6 @@
+import time
+from multiprocessing.synchronize import Lock
+
 import numpy as np
 from scipy.spatial.transform import Rotation
 
@@ -5,7 +8,7 @@ import cv2
 import pyrealsense2 as rs
 
 from helicopter.configuration import HydraConfigurable
-from helicopter.aircraft import AircraftManager
+from helicopter.aircraft import AircraftManager, Aircraft, FlightStates
 from helicopter.utils import HelicopterModel
 
 from .base import Visualizer
@@ -22,9 +25,10 @@ coordinate_transform = Rotation.from_matrix(CAM_TO_BODY_MATRIX)
 
 @HydraConfigurable
 class FlightVisualizer(Visualizer):
-    def __init__(self, aircraft: AircraftManager):
+    def __init__(self, aircraft: AircraftManager, aircraft_lock: Lock, fps: float = 30.0):
         super().__init__()
         self.aircraft_manager = aircraft
+        self.aircraft_lock = aircraft_lock
 
         self.server.initial_camera.position = (-0.25, -0.5, 0.1)
         self.server.initial_camera.look_at = (0.0, 0.0, 0.0)
@@ -41,6 +45,9 @@ class FlightVisualizer(Visualizer):
             section_thickness=1.0,
             section_color=(0, 255, 0)
         )
+
+        self.land_button = self.server.gui.add_button('Emergency Land')
+        self.land_button.on_click(lambda _: self.emergency_land())
 
         helicopter_mesh = HelicopterModel().mesh()
         self.helicopter_handle = self.add_mesh(helicopter_mesh, '/camera')
@@ -59,6 +66,16 @@ class FlightVisualizer(Visualizer):
         self.camera_quat = None
 
         self.path_counter = 0
+        self.fps = fps
+        self.last_update_time = None
+
+        self.is_running = False
+
+    def emergency_land(self):
+        with self.aircraft_manager as manager:
+            aircraft: Aircraft = manager.Aircraft()
+            with self.aircraft_lock:
+                aircraft.set_flight_state(FlightStates.LANDING)
 
     @staticmethod
     def realsense_to_opencv_intrinsics(rs_intrinsics: rs.intrinsics):
@@ -102,7 +119,7 @@ class FlightVisualizer(Visualizer):
         return np.array([point[2], -point[0], -point[1]])
 
     @staticmethod
-    def get_marker_quaternion(marker_corners, marker_size_meters, camera_matrix, dist_coeffs) -> Rotation | None:
+    def get_marker_quaternion(marker_corners, marker_size_meters, camera_matrix, dist_coeffs) -> tuple[bool, Rotation, np.ndarray]:
         half_size = marker_size_meters / 2.0
         obj_points = np.array([
             [-half_size, half_size, 0],
@@ -122,16 +139,16 @@ class FlightVisualizer(Visualizer):
         )
 
         if not success:
-            return None
+            return False, Rotation.from_rotvec(np.array([0, 0, 0.0])), np.array([0, 0, 0.0])
 
         rvec_flat = rvec.flatten()
 
         rotation = Rotation.from_rotvec(rvec_flat)
         rotation = coordinate_transform * rotation
 
-        return rotation
+        return True, rotation, tvec
 
-    def initialize(self, ir_frame: np.ndarray, depth_frame: np.ndarray, intrinsics: rs.intrinsics, camera_quat: np.ndarray):
+    def initialize(self, ir_frame: np.ndarray, intrinsics: rs.intrinsics, camera_quat: np.ndarray):
         if self.camera_quat is None:
             self.camera_quat = Rotation.from_quat(camera_quat)
 
@@ -141,21 +158,26 @@ class FlightVisualizer(Visualizer):
             if marker_id not in aruco_registry.keys():
                 print(f'Warning: ARUCO marker with id {marker_id} not registered. Skipping.')
                 continue
-            marker_point = self.get_marker_depth(marker_corners, marker_id, depth_frame, intrinsics)
-            corrected_marker_point = self.camera_quat.inv().apply(marker_point)
             mesh_obj: ARUCOMarkerModel = aruco_registry[marker_id]
             mesh = mesh_obj.mesh()
 
-            marker_rotation = self.get_marker_quaternion(marker_corners, self.marker_size, camera_matrix, dist_coeffs)
-            if marker_rotation is None:
+            success, marker_rotation, marker_position = self.get_marker_quaternion(marker_corners,
+                                                                               self.marker_size,
+                                                                               camera_matrix,
+                                                                               dist_coeffs)
+            if not success:
                 print(f"Warning: Failed to solve PnP for marker ID {marker_id}. Skipping.")
                 continue
 
+            corrected_marker_point = self.camera_quat.inv().apply(marker_position)
             total_rotation = self.camera_quat * marker_rotation
             mesh_handle = self.add_mesh(mesh, f'/aruco_mesh/{marker_id}',
                                         position=(corrected_marker_point - mesh_obj.marker_offset),
                                         orientation=total_rotation.as_quat(canonical=True))
             self.models[marker_id] = mesh_handle
+
+        print("Aruco markers initialized")
+
 
     def update_helicopter(self, quat: Rotation, translation: np.ndarray):
         total_rotation = self.camera_quat * quat
@@ -172,3 +194,28 @@ class FlightVisualizer(Visualizer):
                 line_width=2.0,
             )
             self.path_counter += 1
+
+    def loop(self):
+        self.is_running = True
+
+        with self.aircraft_manager as manager:
+            aircraft: Aircraft = manager.Aircraft()
+
+            while self.is_running:
+                if self.last_update_time is None:
+                    self.last_update_time = time.time()
+
+                current_time = time.time()
+                elapsed_time = current_time - self.last_update_time
+                if elapsed_time < (1 / self.fps):
+                    time.sleep(0.001)
+                    continue
+                else:
+                    self.last_update_time = current_time
+                    with self.aircraft_lock:
+                        quat = aircraft.quaternion
+                        translation = aircraft.position
+
+                    render_quat = self.camera_quat.inverse() * quat
+                    self.update_helicopter(render_quat, translation)
+

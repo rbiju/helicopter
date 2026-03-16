@@ -22,6 +22,10 @@ class ARUCOMarkerModel(ABC):
     @property
     @abstractmethod
     def marker_offset(self) -> np.ndarray:
+        """
+        Returns: np array representing marker offset relative to center of model
+
+        """
         raise NotImplementedError
 
     @property
@@ -70,7 +74,7 @@ class GameTableModelLongSide(ARUCOMarkerModel):
         return mesh
 
     def marker_offset(self) -> np.ndarray:
-        return np.array([-0.355, 0.6085, 0.025])
+        return np.array([-0.355, 0.6085, 0.02])
 
 
 @aruco_registry.register()
@@ -97,4 +101,4 @@ class GameTableModelShortSide(ARUCOMarkerModel):
         return mesh
 
     def marker_offset(self) -> np.ndarray:
-        return np.array([-0.6085, -0.355, 0.025])
+        return np.array([-0.6085, -0.355, 0.02])

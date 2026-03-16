@@ -3,7 +3,7 @@ from typing import NamedTuple
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from helicopter.utils import Command
+from helicopter.utils import SymaCommandFactory
 from .base import FlightController
 
 
@@ -73,15 +73,18 @@ class PIDController:
 
 
 class HelicopterPIDController(FlightController):
-    def __init__(self, throttle: PIDController, pitch: PIDController, yaw: PIDController):
+    def __init__(self, thrust: PIDController, pitch: PIDController, yaw: PIDController,
+                 command_factory: SymaCommandFactory = SymaCommandFactory()):
         super().__init__()
-        self.throttle = throttle
+        self.command_factory = None
+        self.thrust = thrust
         self.pitch = pitch
         self.yaw = yaw
 
-        self.trim = PIDController(gains=PIDGains(k_p = 0.1, k_i = 0.0, k_d = 0.0))
+        self.command_factory = command_factory
 
-        self.controllers = [self.throttle, self.pitch, self.yaw]
+        # This order determines the order of the command array
+        self.controllers = [self.thrust, self.pitch, self.yaw]
 
         self.last_time = 0.0
 
@@ -118,10 +121,9 @@ class HelicopterPIDController(FlightController):
 
         return np.array(commands)
 
-    @staticmethod
-    def format_command(command, trim, channel=128):
-        return Command(throttle=command[0],
-                       pitch=command[1],
-                       yaw=command[2],
-                       trim=trim,
-                       channel=channel).format()
+    def format_command(self, command, trim=0, channel=0):
+        return self.command_factory.command(thrust=command[0],
+                                            pitch=command[1],
+                                            yaw=command[2],
+                                            trim=trim,
+                                            channel=channel).format()

@@ -125,6 +125,6 @@ class HoverFlightPlan(ConstantHeadingFlightPlan):
 
     def tick(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
         depleted = False
-        if timestamp > self.hover_time:
+        if (timestamp - self.start_time) > self.hover_time:
             depleted = self._advance_waypoint()
         return depleted

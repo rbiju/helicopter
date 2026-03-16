@@ -1,17 +1,18 @@
 import time
+from multiprocessing.synchronize import Lock
 
 from helicopter.configuration import HydraConfigurable
-from helicopter.aircraft import Aircraft, AircraftManager
+from helicopter.aircraft import Aircraft
 from helicopter.controller import FlightController
 from helicopter.utils import Profiler, SymaRemoteControl
 
 from .oracle import Oracle
-from .flightplan import TakeOffFlightPlan, HoverFlightPlan
 
 
 @HydraConfigurable
 class FlightConductor:
-    def __init__(self, aircraft: AircraftManager,
+    def __init__(self, aircraft: Aircraft,
+                 aircraft_lock: Lock,
                  controller: FlightController,
                  oracle: Oracle,
                  remote: SymaRemoteControl,
@@ -19,28 +20,21 @@ class FlightConductor:
         """
 
         Args:
-            aircraft: State handler, owns the integrated aircraft state, and the physical model?
             controller: The Brain
             oracle: Glues together and manages flight plans
             remote: Owns communication with the aircraft
-            ukf: Fuses control inputs and vision for state estimation
             profiler:
         """
         self.aircraft = aircraft
+        self.aircraft_lock = aircraft_lock
         self.controller = controller
         self.oracle = oracle
         self.remote = remote
 
         self.profiler = profiler
 
-        self.hover_oracle = Oracle(flight_plan_sequence=[TakeOffFlightPlan(takeoff_height=0.2),
-                                                         HoverFlightPlan(hover_time=10.0)])
-
-    def homing_sequence(self):
-        """
-        1. Initialize the helicopter position with the triangle point matcher, use averaged points.
-            Might need to randomly jitter the rotor to make the markers visible.
-        """
+    def initialize(self):
+        # TODO: load waypoints for visualization
         pass
 
     def loop(self):
@@ -65,14 +59,18 @@ class FlightConductor:
 
         """
         flight_start_time = time.time()
-        while not self.aircraft.flight_state == 5:
+
+        while not self.oracle.finished:
+            with self.aircraft_lock:
+                flight_state = self.aircraft.flight_state
+
             timestamp = time.time() - flight_start_time
             r, t, battery = self.aircraft.quaternion, self.aircraft.position, self.aircraft.battery
             self.oracle.update(r, t, battery, timestamp=timestamp)
 
             flightplan = self.oracle.active_flight_plan
             errors = flightplan.compute_error(quaternion=r, translation=t)
-            commands = self.controller.control(timestamp, errors)
+            commands = self.controller.control(timestamp=timestamp, errors=errors)
 
             formatted_commands = self.controller.format_command(commands, 0.0, 128)
             self.remote.send_command(formatted_commands)
