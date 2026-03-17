@@ -40,5 +40,5 @@ class Visualizer:
     def set_stop_flag(self):
         self.stop = True
 
-    def shutdown(self):
+    def cleanup(self):
         self.server.stop()

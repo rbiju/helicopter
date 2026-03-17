@@ -123,7 +123,7 @@ class TrackingPointHandler:
         min_idxs = np.asarray(min_idxs)
         valid_mask = np.asarray(valid_mask)
 
-        sample_idxs = np.arange(len(measured_points))[valid_mask]
+        measure_idxs = np.arange(len(measured_points))[valid_mask]
         reference_idxs = min_idxs[valid_mask]
 
-        return sample_idxs, reference_idxs
+        return measure_idxs, reference_idxs

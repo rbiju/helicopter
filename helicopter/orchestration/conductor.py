@@ -1,5 +1,8 @@
 import time
 from multiprocessing.synchronize import Lock
+from multiprocessing.shared_memory import SharedMemory
+
+import numpy as np
 
 from helicopter.configuration import HydraConfigurable
 from helicopter.aircraft import Aircraft
@@ -12,7 +15,6 @@ from .oracle import Oracle
 @HydraConfigurable
 class FlightConductor:
     def __init__(self, aircraft: Aircraft,
-                 aircraft_lock: Lock,
                  controller: FlightController,
                  oracle: Oracle,
                  remote: SymaRemoteControl,
@@ -26,7 +28,6 @@ class FlightConductor:
             profiler:
         """
         self.aircraft = aircraft
-        self.aircraft_lock = aircraft_lock
         self.controller = controller
         self.oracle = oracle
         self.remote = remote
@@ -37,7 +38,7 @@ class FlightConductor:
         # TODO: load waypoints for visualization
         pass
 
-    def loop(self):
+    def loop(self, command_sm: SharedMemory, lock: Lock):
         """
         While flight path is incomplete:
 
@@ -53,17 +54,10 @@ class FlightConductor:
 
             flightplan = self.oracle.get_active_flightplan()
             waypoint = flightplan.waypoint
-
-            // Could either make the waypoint mode (static, follow) live in the flightplan or in the controller
-            control_signal = self.controller.get_control_signal(flightplan.waypoint, r, t)
-
         """
         flight_start_time = time.time()
 
         while not self.oracle.finished:
-            with self.aircraft_lock:
-                flight_state = self.aircraft.flight_state
-
             timestamp = time.time() - flight_start_time
             r, t, battery = self.aircraft.quaternion, self.aircraft.position, self.aircraft.battery
             self.oracle.update(r, t, battery, timestamp=timestamp)
@@ -73,4 +67,11 @@ class FlightConductor:
             commands = self.controller.control(timestamp=timestamp, errors=errors)
 
             formatted_commands = self.controller.format_command(commands, 0.0, 128)
-            self.remote.send_command(formatted_commands)
+            command_sent = self.remote.send_command(formatted_commands)
+            if command_sent:
+                with lock:
+                    buffer = np.ndarray(commands.shape, dtype=commands.dtype, buffer=command_sm.buf)
+                    buffer[:] = commands[:]
+
+    def cleanup(self):
+        self.remote.shutdown()

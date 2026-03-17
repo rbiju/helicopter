@@ -1,11 +1,13 @@
 from abc import ABC, abstractmethod
 
+import numpy as np
+
 class FlightController(ABC):
     def __init__(self):
         pass
 
     @abstractmethod
-    def control(self, **kwargs) -> float:
+    def control(self, **kwargs) -> np.ndarray:
         # Output signals should always be on [-1, 1] or [0, 1].
         # It is the job of the aircraft to scale it correctly
         raise NotImplementedError

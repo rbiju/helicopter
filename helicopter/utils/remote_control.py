@@ -14,10 +14,19 @@ class SymaRemoteControl:
         data = self.arduino.readline()
         return data
 
-    def send_command(self, commands: list[int]):
+    def send_command(self, commands: list[int]) -> bool:
         read_data = self.arduino.read(1)
         if read_data:
             read_data = struct.unpack('B', read_data)[0]
         if read_data == READY_ACK:
             for command in commands:
                 self.arduino.write(command.to_bytes(length=1, byteorder='big'))
+
+            return True
+        else:
+            return False
+
+    def shutdown(self):
+        commands = [0, 63, 63, 0, 0]
+        for command in commands:
+            self.arduino.write(command.to_bytes(length=1, byteorder='big'))

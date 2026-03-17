@@ -1,12 +1,14 @@
+from collections.abc import MutableMapping
 import queue
 import threading
 import time
-from multiprocessing.synchronize import Event, Lock
+from multiprocessing.synchronize import Lock
 from multiprocessing.shared_memory import SharedMemory
 
 import jax.numpy as jnp
 import numpy as np
 from scipy.spatial.transform import Rotation
+import pyrealsense2 as rs
 
 from helicopter.configuration import HydraConfigurable
 from helicopter.aircraft import Aircraft, FlightStates
@@ -20,13 +22,11 @@ from .filter_functions import propagate, transition_fn, measurement_fn, compose_
 @HydraConfigurable
 class Tracker:
     def __init__(self, aircraft: Aircraft,
-                 lock: Lock,
                  point_handler: TrackingPointHandler,
                  camera: D435i,
                  ukf: ErrorStateSquareRootUnscentedKalmanFilter,
                  simulation_fps: float = 250.):
         self.aircraft = aircraft
-        self.lock = lock
 
         self.point_handler = point_handler
         self.camera = camera
@@ -47,6 +47,19 @@ class Tracker:
         self.first_frame = False
         self.first_frame_time = 0.0
 
+    @staticmethod
+    def pack_intrinsics(intrinsics: rs.intrinsics) -> dict:
+        return {
+            'width': intrinsics.width,
+            'height': intrinsics.height,
+            'ppx': intrinsics.ppx,
+            'ppy': intrinsics.ppy,
+            'fx': intrinsics.fx,
+            'fy': intrinsics.fy,
+            'model': intrinsics.model.value,
+            'coeffs': intrinsics.coeffs
+        }
+
     def vision_loop(self):
         while self.is_running:
             frames = self.camera.pipeline.wait_for_frames()
@@ -61,11 +74,13 @@ class Tracker:
                     self.vision_queue.put((ts_depth, ir_image, depth_image), block=False)
 
 
-    def initialize(self, camera_quat_sm: SharedMemory,
-                 init_image_sm: SharedMemory,
-                 quat_flag: Event,
-                 init_image_flag: Event,
-                 init_flag: Event,):
+    def initialize(self, quat_sm: SharedMemory,
+                   image_sm: SharedMemory,
+                   intrinsics: MutableMapping):
+        self.camera.start()
+
+        intrinsics_dict = self.pack_intrinsics(self.camera.intrinsics)
+        intrinsics.update(intrinsics_dict)
         camera_orientation_iters = 1000
         counter = 0
         accel_queue = PointQueue(maxlen=camera_orientation_iters)
@@ -79,9 +94,8 @@ class Tracker:
 
         self.camera_quat = Rotation.from_rotvec(np.cross(v_B, v_W))
         camera_quat = self.camera_quat.as_quat(canonical=True)
-        buffer = np.ndarray(camera_quat.shape, dtype=camera_quat.dtype, buffer=camera_quat_sm.buf)
+        buffer = np.ndarray(camera_quat.shape, dtype=camera_quat.dtype, buffer=quat_sm.buf)
         buffer[:] = camera_quat[:]
-        quat_flag.set()
 
         self.aircraft.set_flight_state(FlightStates.IDLE)
 
@@ -100,9 +114,8 @@ class Tracker:
                                                                  intrinsics=self.camera.intrinsics)
             if measure_out is not None:
                 if not first_frame_collected:
-                    first_frame_buffer = np.ndarray(ir_image.shape, dtype=ir_image.dtype, buffer=init_image_sm.buf)
+                    first_frame_buffer = np.ndarray(ir_image.shape, dtype=ir_image.dtype, buffer=image_sm.buf)
                     first_frame_buffer[:] = ir_image[:]
-                    init_image_flag.set()
                     first_frame_collected = True
 
                 marker_coords, keypoints = measure_out
@@ -114,13 +127,10 @@ class Tracker:
 
             r, t = self.point_handler.matcher.get_alignment(self.point_handler.init_points_coords)
 
-            with self.lock:
-                self.aircraft.set_quaternion(r)
-                self.aircraft.set_position(t)
+            self.aircraft.set_quaternion(r)
+            self.aircraft.set_position(t)
 
-            init_flag.set()
-
-    def loop(self, command_buffer: SharedMemory):
+    def loop(self, command_buffer: SharedMemory, lock: Lock):
         self.is_running = True
         self.vision_thread.start()
 
@@ -142,11 +152,10 @@ class Tracker:
             while self.last_simulated_time < vision_time:
                 self.last_simulated_time += step_size
 
-                with self.lock:
+                with lock:
                     commands = np.ndarray((4,), dtype=np.int64, buffer=command_buffer.buf).copy()
 
-                with self.lock:
-                    nominal_state = jnp.array(self.aircraft.get_state_vector())
+                nominal_state = jnp.array(self.aircraft.get_state_vector())
 
                 propagated_nominal = propagate(nominal_state, step_size, commands)
 
@@ -165,42 +174,45 @@ class Tracker:
                                                                   intrinsics=self.camera.intrinsics)
             self.profiler.end("Detection")
 
-            if measured_out is not None:
-                measured_points, keypoints = measured_out
-            else:
-                with self.lock:
-                    current_nominal_state = jnp.array(self.aircraft.get_state_vector())
+            if measured_out is None:
+                current_nominal_state = jnp.array(self.aircraft.get_state_vector())
 
                 nominal_state = np.array(compose_fn(current_nominal_state, self.ukf.x))
                 self.ukf = self.ukf.reset()
 
-                with self.lock:
-                    self.aircraft.set_state_vector(nominal_state)
+                self.aircraft.set_state_vector(nominal_state)
                 continue
+            else:
+                measured_points, keypoints = measured_out
 
-            self.profiler.start('Match_Points')
-            with self.lock:
                 q = self.aircraft.quaternion
                 t = self.aircraft.position.copy()
+                nominal_state = jnp.array(self.aircraft.get_state_vector())
 
-            ref_idx, measure_idx = self.point_handler.get_point_correspondence(q, t, measured_points)
-            self.profiler.end('Match_Points')
+                self.profiler.start('Match_Points')
 
-            self.profiler.start('UKF_Update')
-            z_points = measured_points[measure_idx]
-            ref_points = self.point_handler.matcher.reference_points[ref_idx]
+                measure_idx, ref_idx = self.point_handler.get_point_correspondence(q, t, measured_points)
+                self.profiler.end('Match_Points')
 
-            for z_point, ref_point in zip(z_points, ref_points):
-                self.ukf = self.ukf.update(measurement_fn=measurement_fn,
-                                           z_point=z_point,
-                                           ref_point=ref_point,
-                                           nominal_state=nominal_state)
+                self.profiler.start('UKF_Update')
+                z_points = measured_points[measure_idx]
+                ref_points = self.point_handler.matcher.reference_points[ref_idx]
 
-            nominal_state = np.array(compose_fn(nominal_state,
-                                                self.ukf.x))
+                for z_point, ref_point in zip(z_points, ref_points):
+                    self.ukf = self.ukf.update(measurement_fn=measurement_fn,
+                                               z_point=z_point,
+                                               ref_point=ref_point,
+                                               nominal_state=nominal_state)
 
-            self.ukf = self.ukf.reset()
+                nominal_state = np.array(compose_fn(nominal_state,
+                                                    self.ukf.x))
 
-            with self.lock:
+                self.ukf = self.ukf.reset()
+
                 self.aircraft.set_state_vector(nominal_state)
-            self.profiler.end('UKF_Update')
+                self.profiler.end('UKF_Update')
+
+    def cleanup(self):
+        if self.vision_thread.is_alive():
+            self.vision_thread.join(timeout=1.0)
+        self.camera.stop()

@@ -1,5 +1,6 @@
 from enum import Enum
-from multiprocessing.managers import BaseManager
+from multiprocessing.managers import SyncManager
+from threading import Lock
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -32,27 +33,34 @@ class Aircraft:
 
         self.flight_state = FlightStates.IDLE
 
+        self._lock = Lock()
+
     def get_state_vector(self):
-        return np.concatenate([self.quaternion.as_quat(canonical=True), self.position, self.angular_velocity, self.velocity, self.battery])
+        with self._lock:
+            return np.concatenate([self.quaternion.as_quat(canonical=True), self.position, self.angular_velocity, self.velocity, self.battery])
 
     def set_state_vector(self, state_vector: np.ndarray):
-        self.quaternion = Rotation.from_quat(state_vector[IDX_Q])
-        self.position = state_vector[IDX_P]
-        self.angular_velocity = state_vector[IDX_O]
-        self.velocity = state_vector[IDX_P]
-        self.battery = state_vector[IDX_BATTERY]
+        with self._lock:
+            self.quaternion = Rotation.from_quat(state_vector[IDX_Q])
+            self.position = state_vector[IDX_P]
+            self.angular_velocity = state_vector[IDX_O]
+            self.velocity = state_vector[IDX_P]
+            self.battery = state_vector[IDX_BATTERY]
 
     def set_flight_state(self, state: FlightStates):
-        self.flight_state = state
+        with self._lock:
+            self.flight_state = state
 
     def set_quaternion(self, quaternion: Rotation):
-        self.quaternion = quaternion
+        with self._lock:
+            self.quaternion = quaternion
 
     def set_position(self, position: np.ndarray):
-        self.position = position
+        with self._lock:
+            self.position = position
 
 
-class AircraftManager(BaseManager):
+class AircraftManager(SyncManager):
     pass
 
 AircraftManager.register('Aircraft', Aircraft)

@@ -1,5 +1,7 @@
+from collections.abc import MutableMapping
 import time
-from multiprocessing.synchronize import Lock
+from multiprocessing.synchronize import Lock, Event
+from multiprocessing.shared_memory import SharedMemory
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -78,6 +80,21 @@ class FlightVisualizer(Visualizer):
                 aircraft.set_flight_state(FlightStates.LANDING)
 
     @staticmethod
+    def unpack_intrinsics(intrinsics_dict: MutableMapping) -> rs.intrinsics:
+        intrinsics = rs.intrinsics()
+
+        intrinsics.width = intrinsics_dict['width']
+        intrinsics.height = intrinsics_dict['height']
+        intrinsics.ppx = intrinsics_dict['ppx']
+        intrinsics.ppy = intrinsics_dict['ppy']
+        intrinsics.fx = intrinsics_dict['fx']
+        intrinsics.fy = intrinsics_dict['fy']
+        intrinsics.model = rs.distortion(intrinsics_dict['model'])
+        intrinsics.coeffs = intrinsics_dict['coeffs']
+
+        return intrinsics
+
+    @staticmethod
     def realsense_to_opencv_intrinsics(rs_intrinsics: rs.intrinsics):
         fx = rs_intrinsics.fx
         fy = rs_intrinsics.fy
@@ -148,7 +165,12 @@ class FlightVisualizer(Visualizer):
 
         return True, rotation, tvec
 
-    def initialize(self, ir_frame: np.ndarray, intrinsics: rs.intrinsics, camera_quat: np.ndarray):
+    def initialize(self, image_sm: SharedMemory, img_shape: list[int], intrinsics_dict: MutableMapping,
+                   camera_quat_sm: SharedMemory):
+        intrinsics = self.unpack_intrinsics(intrinsics_dict)
+
+        camera_quat = np.ndarray((4,), dtype=np.float64, buffer=camera_quat_sm.buf).copy()
+        ir_frame = np.ndarray(img_shape, dtype=np.float64, buffer=image_sm.buf).copy()
         if self.camera_quat is None:
             self.camera_quat = Rotation.from_quat(camera_quat)
 
@@ -218,4 +240,3 @@ class FlightVisualizer(Visualizer):
 
                     render_quat = self.camera_quat.inverse() * quat
                     self.update_helicopter(render_quat, translation)
-

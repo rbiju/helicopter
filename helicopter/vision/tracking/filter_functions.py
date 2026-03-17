@@ -101,7 +101,7 @@ def propagate(s, dt, commands):
     battery_new = battery - (thrust * (dt / 360.))
 
     # New State
-    s_new = jnp.concatenate([quat_new.as_quat(canonical=True), pos_new, omega_new, vel_new, battery_new])
+    s_new = jnp.concatenate([quat_new.as_quat(canonical=True), pos_new, omega_new, vel_new, battery_new, trim_old])
 
     return s_new
 

@@ -341,7 +341,7 @@ class Scanner:
 
 
         self.device.stop()
-        self.visualizer.shutdown()
+        self.visualizer.cleanup()
         self.quitter.stop()
         self.cleaned_up = True
 
