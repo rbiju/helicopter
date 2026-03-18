@@ -2,7 +2,7 @@ from collections.abc import MutableMapping
 import queue
 import threading
 import time
-from multiprocessing.synchronize import Lock
+from multiprocessing.synchronize import Lock, Event
 from multiprocessing.shared_memory import SharedMemory
 
 import jax.numpy as jnp
@@ -25,6 +25,7 @@ class Tracker:
                  point_handler: TrackingPointHandler,
                  camera: D435i,
                  ukf: ErrorStateSquareRootUnscentedKalmanFilter,
+                 kill_signal: Event,
                  simulation_fps: float = 250.):
         self.aircraft = aircraft
 
@@ -46,6 +47,8 @@ class Tracker:
 
         self.first_frame = False
         self.first_frame_time = 0.0
+
+        self.kill_signal = kill_signal
 
     @staticmethod
     def pack_intrinsics(intrinsics: rs.intrinsics) -> dict:
@@ -95,7 +98,7 @@ class Tracker:
         self.camera_quat = Rotation.from_rotvec(np.cross(v_B, v_W))
         camera_quat = self.camera_quat.as_quat(canonical=True)
         buffer = np.ndarray(camera_quat.shape, dtype=camera_quat.dtype, buffer=quat_sm.buf)
-        buffer[:] = camera_quat[:]
+        np.copyto(buffer, camera_quat)
 
         self.aircraft.set_flight_state(FlightStates.IDLE)
 
@@ -115,7 +118,7 @@ class Tracker:
             if measure_out is not None:
                 if not first_frame_collected:
                     first_frame_buffer = np.ndarray(ir_image.shape, dtype=ir_image.dtype, buffer=image_sm.buf)
-                    first_frame_buffer[:] = ir_image[:]
+                    np.copyto(first_frame_buffer, ir_image)
                     first_frame_collected = True
 
                 marker_coords, keypoints = measure_out
@@ -135,6 +138,9 @@ class Tracker:
         self.vision_thread.start()
 
         while self.is_running:
+            if self.kill_signal.is_set():
+                raise RuntimeError('Tracker detected kill signal. Shutting down.')
+
             try:
                 vision_time, ir_frame, depth_frame = self.vision_queue.get(timeout=0.05)
                 vision_time = float(vision_time)
@@ -152,8 +158,10 @@ class Tracker:
             while self.last_simulated_time < vision_time:
                 self.last_simulated_time += step_size
 
+                commands = np.empty((4,), dtype=np.float64)
+                commands_buffer = np.ndarray((4,), dtype=np.float64, buffer=command_buffer.buf)
                 with lock:
-                    commands = np.ndarray((4,), dtype=np.int64, buffer=command_buffer.buf).copy()
+                    np.copyto(commands, commands_buffer)
 
                 nominal_state = jnp.array(self.aircraft.get_state_vector())
 
@@ -184,6 +192,8 @@ class Tracker:
                 continue
             else:
                 measured_points, keypoints = measured_out
+                # noinspection PyTypeChecker
+                measured_points: np.ndarray = self.camera_quat.apply(measured_points)
 
                 q = self.aircraft.quaternion
                 t = self.aircraft.position.copy()
@@ -213,6 +223,8 @@ class Tracker:
                 self.profiler.end('UKF_Update')
 
     def cleanup(self):
+        self.is_running = False
+
         if self.vision_thread.is_alive():
             self.vision_thread.join(timeout=1.0)
         self.camera.stop()

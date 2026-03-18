@@ -18,7 +18,7 @@ from .base import Task
 
 
 @dataclass
-class MPCContext:
+class MPContext:
     aircraft_proxy: Aircraft
     configuration_path: str
     start_event: Event
@@ -30,31 +30,36 @@ class MPCContext:
     vision_ready: Event
     intrinsics_dict: MutableMapping
     shared_memory_lock: Lock
+    kill_signal: Event
 
 
-def control_wrapper(ctx: MPCContext, ready_event: Event):
+def control_wrapper(ctx: MPContext, ready_event: Event):
     config = LocalHydraConfiguration(file_path=ctx.configuration_path)
     # noinspection PyUnresolvedReferences
     conductor = FlightConductor.from_hydra_configuration(config, find_key=True)
 
     # noinspection PyCallingNonCallable
-    conductor: FlightConductor = conductor(ctx.aircraft_proxy)
+    conductor: FlightConductor = conductor(aircraft=ctx.aircraft_proxy,
+                                           kill_signal=ctx.kill_signal)
 
     try:
         conductor.initialize()
         ready_event.set()
         ctx.start_event.wait()
+        conductor.loop(command_sm=ctx.command_sm,
+                       lock=ctx.shared_memory_lock)
     finally:
         ctx.shutdown_event.set()
         conductor.cleanup()
 
 
-def vision_wrapper(ctx: MPCContext, ready_event: Event):
+def vision_wrapper(ctx: MPContext, ready_event: Event):
     config = LocalHydraConfiguration(file_path=ctx.configuration_path)
     # noinspection PyUnresolvedReferences
     tracker = Tracker.from_hydra_configuration(config, find_key=True)
     # noinspection PyCallingNonCallable
-    tracker: Tracker = tracker(ctx.aircraft_proxy)
+    tracker: Tracker = tracker(aircraft=ctx.aircraft_proxy,
+                               kill_signal=ctx.kill_signal)
 
     try:
         tracker.initialize(image_sm=ctx.image_sm,
@@ -62,6 +67,8 @@ def vision_wrapper(ctx: MPCContext, ready_event: Event):
                            intrinsics=ctx.intrinsics_dict)
         ready_event.set()
         ctx.start_event.wait()
+        tracker.loop(command_buffer=ctx.command_sm,
+                     lock=ctx.shared_memory_lock)
     finally:
         ctx.shutdown_event.set()
         tracker.cleanup()
@@ -71,12 +78,13 @@ def vision_wrapper(ctx: MPCContext, ready_event: Event):
         time.sleep(0.1)
 
 
-def render_wrapper(ctx: MPCContext, ready_event: Event):
+def render_wrapper(ctx: MPContext, ready_event: Event):
     config = LocalHydraConfiguration(file_path=ctx.configuration_path)
     # noinspection PyUnresolvedReferences
     visualizer = FlightVisualizer.from_hydra_configuration(config, find_key=True)
     # noinspection PyCallingNonCallable
-    visualizer: FlightVisualizer = visualizer(ctx.aircraft_proxy)
+    visualizer: FlightVisualizer = visualizer(aircraft=ctx.aircraft_proxy,
+                                              kill_signal=ctx.kill_signal)
 
     ctx.vision_ready.wait()
 
@@ -84,6 +92,7 @@ def render_wrapper(ctx: MPCContext, ready_event: Event):
         visualizer.initialize(ctx.image_sm, ctx.image_dimension, ctx.intrinsics_dict, ctx.quat_sm)
         ready_event.set()
         ctx.start_event.wait()
+        visualizer.loop()
     finally:
         ctx.shutdown_event.set()
         visualizer.cleanup()
@@ -122,17 +131,24 @@ class Fly(Task):
                 image_sm = smm.SharedMemory(size=image_dummy.nbytes)
                 quat_dummy = np.zeros(4, dtype=np.float64)
                 quat_sm = smm.SharedMemory(size=quat_dummy.nbytes)
+                dummy_command = np.zeros(4, dtype=np.float64)
+                command_sm = smm.SharedMemory(size=dummy_command.nbytes)
+                memory_lock = mp.Lock()
+                kill_signal = mp.Event()
                 shared_intrinsics_dict = manager.dict()
 
-                ctx = MPCContext(aircraft_proxy=shared_aircraft,
-                                 configuration_path=configuration_path,
-                                 start_event=start_event,
-                                 shutdown_event=shutdown_event,
-                                 image_sm=image_sm,
-                                 quat_sm=quat_sm,
-                                 image_dimension=self.image_dimension,
-                                 vision_ready=vision_ready,
-                                 intrinsics_dict=shared_intrinsics_dict)
+                ctx = MPContext(aircraft_proxy=shared_aircraft,
+                                configuration_path=configuration_path,
+                                start_event=start_event,
+                                shutdown_event=shutdown_event,
+                                image_sm=image_sm,
+                                quat_sm=quat_sm,
+                                command_sm=command_sm,
+                                image_dimension=self.image_dimension,
+                                vision_ready=vision_ready,
+                                intrinsics_dict=shared_intrinsics_dict,
+                                shared_memory_lock=memory_lock,
+                                kill_signal=kill_signal)
 
 
                 control_process = mp.Process(target=control_wrapper,
@@ -157,9 +173,7 @@ class Fly(Task):
                         time.sleep(1)
 
                 except KeyboardInterrupt:
-
                     shutdown_event.set()
-
                     control_process.join(timeout=5)
                     vision_process.join(timeout=5)
                     render_process.join(timeout=5)

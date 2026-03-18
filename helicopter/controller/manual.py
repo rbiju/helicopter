@@ -58,11 +58,16 @@ class KeyboardRemote(KeyConsumer):
 class ManualFlightController(FlightController):
     def __init__(self, command_factory: SymaCommandFactory = SymaCommandFactory()):
         super().__init__()
-        listener = KeyListener()
-        self.remote = KeyboardRemote(listener=listener)
+        self.listener = KeyListener()
+        self.remote = KeyboardRemote(listener=self.listener)
         self.command_factory = command_factory
 
+        self.listener.start()
+
     def control(self):
+        if self.remote.quit:
+            self.killed = True
+
         return np.array([self.remote.thrust, self.remote.pitch, self.remote.yaw])
 
     def format_command(self, command, trim=0, channel=0):
@@ -71,3 +76,6 @@ class ManualFlightController(FlightController):
                                             yaw=command[2],
                                             trim=trim,
                                             channel=channel).format()
+
+    def shutdown(self):
+        self.listener.stop()

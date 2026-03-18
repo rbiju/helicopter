@@ -10,7 +10,7 @@ import cv2
 import pyrealsense2 as rs
 
 from helicopter.configuration import HydraConfigurable
-from helicopter.aircraft import AircraftManager, Aircraft, FlightStates
+from helicopter.aircraft import Aircraft, FlightStates
 from helicopter.utils import HelicopterModel
 
 from .base import Visualizer
@@ -27,10 +27,11 @@ coordinate_transform = Rotation.from_matrix(CAM_TO_BODY_MATRIX)
 
 @HydraConfigurable
 class FlightVisualizer(Visualizer):
-    def __init__(self, aircraft: AircraftManager, aircraft_lock: Lock, fps: float = 30.0):
+    def __init__(self, aircraft: Aircraft,
+                 kill_signal: Event,
+                 fps: float = 30.0):
         super().__init__()
-        self.aircraft_manager = aircraft
-        self.aircraft_lock = aircraft_lock
+        self.aircraft = aircraft
 
         self.server.initial_camera.position = (-0.25, -0.5, 0.1)
         self.server.initial_camera.look_at = (0.0, 0.0, 0.0)
@@ -48,8 +49,8 @@ class FlightVisualizer(Visualizer):
             section_color=(0, 255, 0)
         )
 
-        self.land_button = self.server.gui.add_button('Emergency Land')
-        self.land_button.on_click(lambda _: self.emergency_land())
+        self.land_button = self.server.gui.add_button('Kill Flight')
+        self.land_button.on_click(lambda _: self.kill_flight())
 
         helicopter_mesh = HelicopterModel().mesh()
         self.helicopter_handle = self.add_mesh(helicopter_mesh, '/camera')
@@ -72,12 +73,10 @@ class FlightVisualizer(Visualizer):
         self.last_update_time = None
 
         self.is_running = False
+        self.kill_signal = kill_signal
 
-    def emergency_land(self):
-        with self.aircraft_manager as manager:
-            aircraft: Aircraft = manager.Aircraft()
-            with self.aircraft_lock:
-                aircraft.set_flight_state(FlightStates.LANDING)
+    def kill_flight(self):
+        self.kill_signal.set()
 
     @staticmethod
     def unpack_intrinsics(intrinsics_dict: MutableMapping) -> rs.intrinsics:
@@ -166,12 +165,21 @@ class FlightVisualizer(Visualizer):
         return True, rotation, tvec
 
     def initialize(self, image_sm: SharedMemory, img_shape: list[int], intrinsics_dict: MutableMapping,
-                   camera_quat_sm: SharedMemory):
-        intrinsics = self.unpack_intrinsics(intrinsics_dict)
+                   camera_quat_sm: SharedMemory, lock: Lock):
+        local_intrinsics_dict = dict(intrinsics_dict)
+        intrinsics = self.unpack_intrinsics(local_intrinsics_dict)
 
-        camera_quat = np.ndarray((4,), dtype=np.float64, buffer=camera_quat_sm.buf).copy()
-        ir_frame = np.ndarray(img_shape, dtype=np.float64, buffer=image_sm.buf).copy()
+        ir_frame = np.empty(img_shape, dtype=np.int8)
+        ir_buffer = np.ndarray((4,), dtype=np.int8, buffer=image_sm.buf)
+        with lock:
+            np.copyto(ir_frame, ir_buffer)
+
         if self.camera_quat is None:
+            camera_quat = np.empty((4,), dtype=np.float64)
+            camera_quat_buffer = np.ndarray((4,), dtype=np.float64, buffer=camera_quat_sm.buf)
+            with lock:
+                np.copyto(camera_quat, camera_quat_buffer)
+
             self.camera_quat = Rotation.from_quat(camera_quat)
 
         camera_matrix, dist_coeffs = self.realsense_to_opencv_intrinsics(intrinsics)
@@ -219,24 +227,26 @@ class FlightVisualizer(Visualizer):
 
     def loop(self):
         self.is_running = True
+        while self.is_running:
+            if self.kill_signal.is_set():
+                raise RuntimeError('Visualizer detected kill signal. Shutting down.')
 
-        with self.aircraft_manager as manager:
-            aircraft: Aircraft = manager.Aircraft()
+            if self.last_update_time is None:
+                self.last_update_time = time.time()
 
-            while self.is_running:
-                if self.last_update_time is None:
-                    self.last_update_time = time.time()
+            current_time = time.time()
+            elapsed_time = current_time - self.last_update_time
+            if elapsed_time < (1 / self.fps):
+                time.sleep(0.001)
+                continue
+            else:
+                self.last_update_time = current_time
+                quat = self.aircraft.quaternion
+                translation = self.aircraft.position
 
-                current_time = time.time()
-                elapsed_time = current_time - self.last_update_time
-                if elapsed_time < (1 / self.fps):
-                    time.sleep(0.001)
-                    continue
-                else:
-                    self.last_update_time = current_time
-                    with self.aircraft_lock:
-                        quat = aircraft.quaternion
-                        translation = aircraft.position
+                render_quat = self.camera_quat.inverse() * quat
+                self.update_helicopter(render_quat, translation)
 
-                    render_quat = self.camera_quat.inverse() * quat
-                    self.update_helicopter(render_quat, translation)
+    def cleanup(self):
+        self.is_running = False
+        self.server.stop()

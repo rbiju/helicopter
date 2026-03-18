@@ -27,6 +27,9 @@ class Oracle:
         else:
             return FlightStates.DONE
 
+    def kill_flight(self):
+        self.finished = True
+
     def tick(self, r: Rotation, t: np.ndarray, timestamp: float):
         self.active_idx += 1
 
@@ -35,11 +38,10 @@ class Oracle:
 
         self.active_flight_plan.activate(r, t, timestamp)
 
-    def update(self, r: Rotation, t: np.ndarray, b: np.ndarray, timestamp: float):
-        if b < 0.10:
-            print("Battery depleted to 10%, recharge")
-            self.finished = True
-
+    def update(self, r: Rotation, t: np.ndarray, timestamp: float):
         depleted = self.active_flight_plan.tick(quaternion=r, translation=t, timestamp=timestamp)
         if depleted:
             self.tick(r, t, timestamp)
+
+    def add_flight_plan(self, flight_plan: FlightPlan):
+        self.flight_plan_sequence.append(flight_plan)

@@ -128,3 +128,26 @@ class HoverFlightPlan(ConstantHeadingFlightPlan):
         if (timestamp - self.start_time) > self.hover_time:
             depleted = self._advance_waypoint()
         return depleted
+
+
+class ManualFlightPlan(FlightPlan):
+    def __init__(self, flight_time: float = 120.0):
+        super().__init__()
+        self.start_time = 0
+        self.hover_time = flight_time
+
+    @property
+    def flight_state(self) -> FlightStates:
+        return FlightStates.MANUAL
+
+    def compute_error(self, r: Rotation, t: np.ndarray):
+        return np.array([0.0, 0.0, 0.0])
+
+    def activate(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
+        self.activated = True
+
+    def tick(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
+        depleted = False
+        if (timestamp - self.start_time) > self.hover_time:
+            depleted = True
+        return depleted

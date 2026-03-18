@@ -30,3 +30,5 @@ class SymaRemoteControl:
         commands = [0, 63, 63, 0, 0]
         for command in commands:
             self.arduino.write(command.to_bytes(length=1, byteorder='big'))
+
+        self.arduino.close()

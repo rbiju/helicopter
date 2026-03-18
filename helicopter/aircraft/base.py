@@ -19,8 +19,9 @@ class FlightStates(Enum):
     WAYPOINT_FOLLOW = 2
     HOVER = 3
     LANDING = 4
-    DONE = 5
-    KILL_POWER = 6
+    MANUAL = 5
+    DONE = 6
+    KILL_POWER = 7
 
 
 class Aircraft:

@@ -64,19 +64,19 @@ def merge_yolo_datasets(source_dirs, output_dir, split_ratio=0.8):
 
 if __name__ == "__main__":
     inputs = [
-        "/home/ray/datasets/helicopter/point_detection/night",
-        "/home/ray/datasets/helicopter/point_detection/day",
-        "/home/ray/datasets/helicopter/point_detection/night_noise",
-        "/home/ray/datasets/helicopter/point_detection/day2",
-        "/home/ray/datasets/helicopter/point_detection/day3",
-        "/home/ray/datasets/helicopter/point_detection/day4",
-        "/home/ray/datasets/helicopter/point_detection/day5",
-        "/home/ray/datasets/helicopter/point_detection/day6",
-        "/home/ray/datasets/helicopter/point_detection/day7",
-        "/home/ray/datasets/helicopter/point_detection/day8",
-        "/home/ray/datasets/helicopter/point_detection/day9"
+        "/home/ray/datasets/helicopter/point_detection/measure/night",
+        "/home/ray/datasets/helicopter/point_detection/measure/day",
+        "/home/ray/datasets/helicopter/point_detection/measure/night_noise",
+        "/home/ray/datasets/helicopter/point_detection/measure/day2",
+        "/home/ray/datasets/helicopter/point_detection/measure/day3",
+        "/home/ray/datasets/helicopter/point_detection/measure/day4",
+        "/home/ray/datasets/helicopter/point_detection/measure/day5",
+        "/home/ray/datasets/helicopter/point_detection/measure/day6",
+        "/home/ray/datasets/helicopter/point_detection/measure/day7",
+        "/home/ray/datasets/helicopter/point_detection/measure/day8",
+        "/home/ray/datasets/helicopter/point_detection/measure/day9"
     ]
 
-    output = "/home/ray/datasets/helicopter/point_detection/master"
+    output = "/home/ray/datasets/helicopter/point_detection/measure/master"
 
     merge_yolo_datasets(inputs, output, split_ratio=0.9)

@@ -4,7 +4,7 @@ import numpy as np
 
 class FlightController(ABC):
     def __init__(self):
-        pass
+        self.killed = False
 
     @abstractmethod
     def control(self, **kwargs) -> np.ndarray:
@@ -16,3 +16,6 @@ class FlightController(ABC):
     @abstractmethod
     def format_command(command, trim=0, channel=0) -> list[int]:
         raise NotImplementedError
+
+    def shutdown(self):
+        pass
