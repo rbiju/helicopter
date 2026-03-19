@@ -10,7 +10,7 @@ class D435i:
     def __init__(self, accel_rate: int = 250,
                  gyro_rate: int = 200,
                  video_rate: int = 60,
-                 video_resolution: tuple[int, int] = (480, 640),
+                 video_resolution: tuple[int, int] | list[int] = (480, 640),
                  enable_rgb: bool = False,
                  enable_motion: bool = False,
                  global_time: bool = False,
@@ -24,6 +24,10 @@ class D435i:
         self.GYRO_RATE = gyro_rate
 
         # IR is always enabled
+        if isinstance(video_resolution, list):
+            if not len(video_resolution) == 2:
+                raise ValueError("Video resolution must be a tuple of two integers.")
+            video_resolution = (int(video_resolution[0]), int(video_resolution[1]))
         self.IR_RESOLUTION = video_resolution
         self.IR_RATE = video_rate
         self.DEPTH_RESOLUTION = video_resolution
