@@ -3,6 +3,9 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 class FlightController(ABC):
+    N: int = 3
+    dtype = np.float64
+
     def __init__(self):
         self.killed = False
 

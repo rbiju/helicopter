@@ -1,20 +1,20 @@
 import time
-from multiprocessing.synchronize import Lock, Event
 from multiprocessing.shared_memory import SharedMemory
+from multiprocessing.synchronize import Lock, Event
 
 import numpy as np
 
 from helicopter.configuration import HydraConfigurable
 from helicopter.aircraft import Aircraft
 from helicopter.controller import FlightController
-from helicopter.utils import Profiler, SymaRemoteControl
+from helicopter.utils import Profiler, SymaRemoteControl, CommandBufferConstants
 
 from .oracle import Oracle
 
 
 @HydraConfigurable
 class FlightConductor:
-    def __init__(self, aircraft: Aircraft,
+    def __init__(self, aircraft_sm: SharedMemory,
                  controller: FlightController,
                  oracle: Oracle,
                  remote: SymaRemoteControl,
@@ -26,7 +26,10 @@ class FlightConductor:
             oracle: Glues together and manages flight plans
             remote: Owns communication with the aircraft
         """
-        self.aircraft = aircraft
+        self.aircraft_buffer = np.ndarray(shape=(Aircraft.N,),
+                                          dtype=Aircraft.dtype,
+                                          buffer=aircraft_sm.buf)
+
         self.controller = controller
         self.oracle = oracle
         self.remote = remote
@@ -39,7 +42,7 @@ class FlightConductor:
         # TODO: load waypoints for visualization
         pass
 
-    def loop(self, command_sm: SharedMemory, lock: Lock):
+    def loop(self, command_sm: SharedMemory, lock: Lock, aircraft_lock: Lock):
         """
         While flight path is incomplete:
 
@@ -57,13 +60,17 @@ class FlightConductor:
             waypoint = flightplan.waypoint
         """
         flight_start_time = time.time()
+        command_buffer = np.ndarray(shape=(CommandBufferConstants.N,),
+                                    dtype=CommandBufferConstants.dtype,
+                                    buffer=command_sm.buf)
 
         while not self.oracle.finished:
             if self.kill_signal.is_set():
                 raise RuntimeError('Conductor detected kill signal. Shutting down')
 
             timestamp = time.time() - flight_start_time
-            r, t, battery = self.aircraft.quaternion, self.aircraft.position, self.aircraft.battery
+            aircraft = Aircraft.from_shared_memory_buffer(self.aircraft_buffer, aircraft_lock)
+            r, t = aircraft.quaternion, aircraft.position
             self.oracle.update(r, t, timestamp=timestamp)
 
             flightplan = self.oracle.active_flight_plan
@@ -76,9 +83,8 @@ class FlightConductor:
             formatted_commands = self.controller.format_command(commands, 0.0, 128)
             command_sent = self.remote.send_command(formatted_commands)
             if command_sent:
-                buffer = np.ndarray(commands.shape, dtype=commands.dtype, buffer=command_sm.buf)
                 with lock:
-                    np.copyto(buffer, command_sm)
+                    np.copyto(command_buffer, commands)
 
     def cleanup(self):
         self.controller.shutdown()

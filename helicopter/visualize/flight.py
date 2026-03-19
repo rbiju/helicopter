@@ -10,7 +10,7 @@ import cv2
 import pyrealsense2 as rs
 
 from helicopter.configuration import HydraConfigurable
-from helicopter.aircraft import Aircraft, FlightStates
+from helicopter.aircraft import Aircraft
 from helicopter.utils import HelicopterModel
 
 from .base import Visualizer
@@ -27,11 +27,13 @@ coordinate_transform = Rotation.from_matrix(CAM_TO_BODY_MATRIX)
 
 @HydraConfigurable
 class FlightVisualizer(Visualizer):
-    def __init__(self, aircraft: Aircraft,
+    def __init__(self, aircraft_sm: SharedMemory,
                  kill_signal: Event,
                  fps: float = 30.0):
         super().__init__()
-        self.aircraft = aircraft
+        self.aircraft_buffer = np.ndarray(shape=(Aircraft.N,),
+                                          dtype=Aircraft.dtype,
+                                          buffer=aircraft_sm.buf)
 
         self.server.initial_camera.position = (-0.25, -0.5, 0.1)
         self.server.initial_camera.look_at = (0.0, 0.0, 0.0)
@@ -225,7 +227,7 @@ class FlightVisualizer(Visualizer):
             )
             self.path_counter += 1
 
-    def loop(self):
+    def loop(self, aircraft_lock: Lock):
         self.is_running = True
         while self.is_running:
             if self.kill_signal.is_set():
@@ -241,8 +243,9 @@ class FlightVisualizer(Visualizer):
                 continue
             else:
                 self.last_update_time = current_time
-                quat = self.aircraft.quaternion
-                translation = self.aircraft.position
+                aircraft = Aircraft.from_shared_memory_buffer(self.aircraft_buffer, aircraft_lock)
+                quat = aircraft.quaternion
+                translation = aircraft.position
 
                 render_quat = self.camera_quat.inverse() * quat
                 self.update_helicopter(render_quat, translation)

@@ -1,4 +1,3 @@
-import queue
 import numpy as np
 
 from helicopter.utils import KeyListener, KeyConsumer, SymaCommandFactory
@@ -18,8 +17,11 @@ class KeyboardRemote(KeyConsumer):
         self.quit = False
 
     @staticmethod
-    def clip(value: float):
-        return min(max(value, 1.0), -1.0)
+    def clip(value: float, thrust: bool = False):
+        if not thrust:
+            return min(max(value, -1.0), 1.0)
+        else:
+            return min(max(value, 0.0), 1.0)
 
     def reset(self):
         self.thrust = 0.0
@@ -27,32 +29,29 @@ class KeyboardRemote(KeyConsumer):
         self.yaw = 0.0
 
     def process(self):
-        try:
-            while True:
-                key = self._listener.queue.get_nowait()
-                if key == 'w':
-                    self.thrust = self.clip(self.thrust + 0.05)
-                elif key == 's':
-                    self.thrust = self.clip(self.thrust - 0.05)
-                elif key == 'up':
-                    self.pitch = self.clip(self.pitch - 0.05)
-                elif key == 'down':
-                    self.pitch = self.clip(self.pitch + 0.05)
-                elif key == 'right':
-                    self.yaw = self.clip(self.yaw - 0.05)
-                elif key == 'left':
-                    self.yaw = self.clip(self.yaw + 0.05)
-                elif key == 'd':
-                    self.trim = self.clip(self.trim - 0.05)
-                elif key == 'a':
-                    self.trim = self.clip(self.trim + 0.05)
-                elif key == 'q':
-                    self.quit = True
-                elif key == 'r':
-                    self.reset()
-                print(f"c:{self.channel} - t:{self.thrust} - p:{self.pitch} - y:{self.yaw} - tr:{self.trim}")
-        except queue.Empty:
-            pass
+        while not self._listener.queue.empty():
+            key = self._listener.queue.get()
+            if key == 'w':
+                self.thrust = self.clip(self.thrust + 0.05, thrust=True)
+            elif key == 's':
+                self.thrust = self.clip(self.thrust - 0.05, thrust=True)
+            elif key == 'up':
+                self.pitch = self.clip(self.pitch - 0.05)
+            elif key == 'down':
+                self.pitch = self.clip(self.pitch + 0.05)
+            elif key == 'right':
+                self.yaw = self.clip(self.yaw - 0.05)
+            elif key == 'left':
+                self.yaw = self.clip(self.yaw + 0.05)
+            elif key == 'd':
+                self.trim = self.clip(self.trim - 0.05)
+            elif key == 'a':
+                self.trim = self.clip(self.trim + 0.05)
+            elif key == 'q':
+                self.quit = True
+            elif key == 'r':
+                self.reset()
+            print(f"c:{self.channel} - t:{self.thrust} - p:{self.pitch} - y:{self.yaw} - tr:{self.trim}")
 
 
 class ManualFlightController(FlightController):

@@ -113,7 +113,7 @@ class HelicopterPIDController(FlightController):
 
     def control(self, timestamp: float, errors: np.ndarray) -> np.ndarray:
         commands = []
-        for i in range(3):
+        for i in range(len(self.controllers)):
             command = self.controllers[i].control(errors[i], timestamp - self.last_time)
             commands.append(command)
 
