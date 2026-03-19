@@ -34,6 +34,7 @@ class FlightVisualizer(Visualizer):
         self.aircraft_buffer = np.ndarray(shape=(Aircraft.N,),
                                           dtype=Aircraft.dtype,
                                           buffer=aircraft_sm.buf)
+        self.aircraft = None
 
         self.server.initial_camera.position = (-0.25, -0.5, 0.1)
         self.server.initial_camera.look_at = (0.0, 0.0, 0.0)
@@ -167,7 +168,10 @@ class FlightVisualizer(Visualizer):
         return True, rotation, tvec
 
     def initialize(self, image_sm: SharedMemory, img_shape: list[int], intrinsics_dict: MutableMapping,
-                   camera_quat_sm: SharedMemory, lock: Lock):
+                   camera_quat_sm: SharedMemory, lock: Lock, aircraft_lock: Lock):
+        if self.aircraft is None:
+            self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
+
         local_intrinsics_dict = dict(intrinsics_dict)
         intrinsics = self.unpack_intrinsics(local_intrinsics_dict)
 
@@ -203,7 +207,7 @@ class FlightVisualizer(Visualizer):
                     print(f"Warning: Failed to solve PnP for marker ID {marker_id_int}. Skipping.")
                     continue
 
-                corrected_marker_point = self.camera_quat.inv().apply(marker_position)
+                corrected_marker_point = self.camera_quat.apply(marker_position)
                 total_rotation = self.camera_quat * marker_rotation
                 mesh_handle = self.add_mesh(mesh, f'/aruco_mesh/{marker_id_int}',
                                             position=(corrected_marker_point - mesh_obj.marker_offset),
@@ -211,6 +215,8 @@ class FlightVisualizer(Visualizer):
                 self.models[marker_id_int] = mesh_handle
 
         print("Aruco markers initialized")
+
+        self.update_helicopter(self.aircraft.quaternion, self.aircraft.position)
 
 
     def update_helicopter(self, quat: Rotation, translation: np.ndarray):
@@ -229,7 +235,7 @@ class FlightVisualizer(Visualizer):
             )
             self.path_counter += 1
 
-    def loop(self, aircraft_lock: Lock):
+    def loop(self):
         self.is_running = True
         while self.is_running:
             if self.kill_signal.is_set():
@@ -245,11 +251,10 @@ class FlightVisualizer(Visualizer):
                 continue
             else:
                 self.last_update_time = current_time
-                aircraft = Aircraft.from_shared_memory_buffer(self.aircraft_buffer, aircraft_lock)
-                quat = aircraft.quaternion
-                translation = aircraft.position
+                quat = self.aircraft.quaternion
+                translation = self.aircraft.position
 
-                render_quat = self.camera_quat.inv() * quat
+                render_quat = self.camera_quat * quat
                 self.update_helicopter(render_quat, translation)
 
     def cleanup(self):

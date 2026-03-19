@@ -30,6 +30,7 @@ class Tracker:
         self.aircraft_buffer = np.ndarray(shape=(Aircraft.N,),
                                           dtype=Aircraft.dtype,
                                           buffer=aircraft_sm.buf)
+        self.aircraft = None
 
         self.point_handler = point_handler
         self.camera = camera
@@ -81,7 +82,8 @@ class Tracker:
 
     def initialize(self, quat_sm: SharedMemory,
                    image_sm: SharedMemory,
-                   intrinsics: MutableMapping):
+                   intrinsics: MutableMapping,
+                   aircraft_lock: Lock):
         self.camera.start()
 
         intrinsics_dict = self.pack_intrinsics(self.camera.intrinsics)
@@ -130,14 +132,13 @@ class Tracker:
 
             r, t = self.point_handler.matcher.get_alignment(self.point_handler.init_points_coords)
 
-            init_aircraft = Aircraft()
-            init_aircraft.set_quaternion(r)
-            init_aircraft.set_position(t)
-            initial_state = init_aircraft.get_state_vector()
+            if self.aircraft is None:
+                self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
 
-            np.copyto(self.aircraft_buffer, initial_state)
+            self.aircraft.quaternion = r
+            self.aircraft.position = t
 
-    def loop(self, command_sm: SharedMemory, lock: Lock, aircraft_lock: Lock):
+    def loop(self, command_sm: SharedMemory, lock: Lock):
         command_buffer = np.ndarray(shape=(CommandBufferConstants.N,),
                                     dtype=CommandBufferConstants.dtype,
                                     buffer=command_sm.buf)
@@ -169,8 +170,7 @@ class Tracker:
                 with lock:
                     np.copyto(commands, command_buffer)
 
-                aircraft = Aircraft.from_shared_memory_buffer(self.aircraft_buffer, aircraft_lock)
-                nominal_state = jnp.array(aircraft.get_state_vector())
+                nominal_state = jnp.array(self.aircraft.get_state_vector())
 
                 propagated_nominal = propagate(nominal_state, step_size, commands)
 
@@ -182,8 +182,7 @@ class Tracker:
                                             commands=commands)
                 self.profiler.end("UKF_Predict")
 
-                with aircraft_lock:
-                    np.copyto(self.aircraft_buffer, propagated_nominal)
+                self.aircraft.set_state_vector(np.asarray(propagated_nominal))
 
             self.profiler.end('Simulation')
 
@@ -194,24 +193,21 @@ class Tracker:
             self.profiler.end("Detection")
 
             if measured_out is None:
-                aircraft = Aircraft.from_shared_memory_buffer(self.aircraft_buffer, aircraft_lock)
-                current_nominal_state = jnp.array(aircraft.get_state_vector())
+                current_nominal_state = jnp.array(self.aircraft.get_state_vector())
 
-                nominal_state = np.array(compose_fn(current_nominal_state, self.ukf.x))
+                nominal_state = np.asarray(compose_fn(current_nominal_state, self.ukf.x))
                 self.ukf = self.ukf.reset()
 
-                with aircraft_lock:
-                    np.copyto(self.aircraft_buffer, nominal_state)
+                self.aircraft.set_state_vector(nominal_state)
                 continue
             else:
                 measured_points, keypoints = measured_out
                 # noinspection PyTypeChecker
                 measured_points: np.ndarray = self.camera_quat.apply(measured_points)
 
-                aircraft = Aircraft.from_shared_memory_buffer(self.aircraft_buffer, aircraft_lock)
-                q = aircraft.quaternion
-                t = aircraft.position.copy()
-                nominal_state = jnp.array(aircraft.get_state_vector())
+                q = self.aircraft.quaternion
+                t = self.aircraft.position.copy()
+                nominal_state = jnp.array(self.aircraft.get_state_vector())
 
                 self.profiler.start('Match_Points')
 
@@ -228,13 +224,12 @@ class Tracker:
                                                ref_point=ref_point,
                                                nominal_state=nominal_state)
 
-                nominal_state = np.array(compose_fn(nominal_state,
-                                                    self.ukf.x))
+                nominal_state = np.asarray(compose_fn(nominal_state,
+                                                      self.ukf.x))
 
                 self.ukf = self.ukf.reset()
 
-                with aircraft_lock:
-                    np.copyto(self.aircraft_buffer, nominal_state)
+                self.aircraft.set_state_vector(nominal_state)
                 self.profiler.end('UKF_Update')
 
     def cleanup(self):

@@ -1,7 +1,6 @@
 from enum import Enum
-from multiprocessing.managers import SyncManager
-from multiprocessing.shared_memory import SharedMemory
-from multiprocessing.synchronize import Lock
+import threading
+from multiprocessing.synchronize import Lock as ProcessLock
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -27,60 +26,91 @@ class FlightStates(Enum):
 
 
 class Aircraft:
-    N: int = 16
+    N: int = 15
     dtype = np.float64
 
-    def __init__(self):
-        self.quaternion: Rotation = Rotation.from_quat(np.array([0.0, 0.0, 0.0, 1.0]))
-        self.position = np.array([0.0, 0.0, 0.0])
-        self.velocity = np.array([0.0, 0.0, 0.0])
-        self.angular_velocity = np.array([0.0, 0.0, 0.0])
-        self.battery = np.array([1.0])
-        self.trim = np.array([0.0])
+    def __init__(self, buffer: np.ndarray = None, lock: ProcessLock = None):
+        if buffer is not None:
+            self._buffer = buffer
+        else:
+            self._buffer = np.zeros(self.N, dtype=self.dtype)
+            self._buffer[3] = 1.0
+            self._buffer[13] = 1.0
 
-    def get_state_vector(self):
-        return np.concatenate([self.quaternion.as_quat(canonical=True),
-                               self.position,
-                               self.angular_velocity,
-                               self.velocity,
-                               self.battery,
-                               self.trim])
+        self._lock = lock if lock is not None else threading.Lock()
+
+    @property
+    def quaternion(self) -> Rotation:
+        with self._lock:
+            q_data = self._buffer[IDX_Q].copy()
+        return Rotation.from_quat(q_data)
+
+    @quaternion.setter
+    def quaternion(self, value: Rotation):
+        q_data: np.ndarray = value.as_quat(canonical=True)
+        with self._lock:
+            self._buffer[IDX_Q] = q_data
+
+    @property
+    def position(self) -> np.ndarray:
+        with self._lock:
+            return self._buffer[IDX_P].copy()
+
+    @position.setter
+    def position(self, value: np.ndarray):
+        with self._lock:
+            self._buffer[IDX_P] = value
+
+    @property
+    def angular_velocity(self) -> np.ndarray:
+        with self._lock:
+            return self._buffer[IDX_O].copy()
+
+    @angular_velocity.setter
+    def angular_velocity(self, value: np.ndarray):
+        with self._lock:
+            self._buffer[IDX_O] = value
+
+    @property
+    def velocity(self) -> np.ndarray:
+        with self._lock:
+            return self._buffer[IDX_V].copy()
+
+    @velocity.setter
+    def velocity(self, value: np.ndarray):
+        with self._lock:
+            self._buffer[IDX_V] = value
+
+    @property
+    def battery(self) -> float:
+        with self._lock:
+            return float(self._buffer[IDX_BATTERY][0])
+
+    @battery.setter
+    def battery(self, value: float):
+        with self._lock:
+            self._buffer[IDX_BATTERY] = np.array([value], dtype=self.dtype)
+
+    @property
+    def trim(self) -> float:
+        with self._lock:
+            return float(self._buffer[IDX_TRIM][0])
+
+    @trim.setter
+    def trim(self, value: float):
+        with self._lock:
+            self._buffer[IDX_TRIM] = np.array([value], dtype=self.dtype)
+
+    def get_state_vector(self) -> np.ndarray:
+        with self._lock:
+            return self._buffer.copy()
 
     def set_state_vector(self, state_vector: np.ndarray):
-        self.quaternion = Rotation.from_quat(state_vector[IDX_Q])
-        self.position = state_vector[IDX_P]
-        self.angular_velocity = state_vector[IDX_O]
-        self.velocity = state_vector[IDX_P]
-        self.battery = state_vector[IDX_BATTERY]
-        self.trim = state_vector[IDX_TRIM]
+        if state_vector.shape != (self.N,):
+            raise ValueError(f"Provided vector of shape {state_vector.shape} does not match size of buffer: {self.N}")
+        with self._lock:
+            np.copyto(self._buffer, state_vector)
 
     @classmethod
-    def from_state_vector(cls, state_vector: np.ndarray):
-        cls.quaternion = Rotation.from_quat(state_vector[IDX_Q])
-        cls.position = state_vector[IDX_P]
-        cls.angular_velocity = state_vector[IDX_O]
-        cls.velocity = state_vector[IDX_P]
-        cls.battery = state_vector[IDX_BATTERY]
-        cls.trim = state_vector[IDX_TRIM]
-
-        return cls
-
-    @classmethod
-    def from_shared_memory_buffer(cls, buffer: np.ndarray, lock: Lock):
-        local_state = np.empty_like(buffer)
-        with lock:
-            np.copyto(local_state, buffer)
-
-        return cls.from_state_vector(local_state)
-
-    def set_quaternion(self, quaternion: Rotation):
-        self.quaternion = quaternion
-
-    def set_position(self, position: np.ndarray):
-        self.position = position
-
-
-class AircraftManager(SyncManager):
-    pass
-
-AircraftManager.register('Aircraft', Aircraft)
+    def from_shared_memory_buffer(cls, buffer: np.ndarray, lock: ProcessLock):
+        return cls(buffer=buffer, lock=lock)

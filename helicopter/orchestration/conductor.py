@@ -29,6 +29,7 @@ class FlightConductor:
         self.aircraft_buffer = np.ndarray(shape=(Aircraft.N,),
                                           dtype=Aircraft.dtype,
                                           buffer=aircraft_sm.buf)
+        self.aircraft = None
 
         self.controller = controller
         self.oracle = oracle
@@ -40,14 +41,16 @@ class FlightConductor:
 
     def initialize(self, aircraft_lock: Lock):
         # TODO: load waypoints for visualization
-        aircraft = Aircraft.from_shared_memory_buffer(buffer=self.aircraft_buffer, lock=aircraft_lock)
+        if self.aircraft is None:
+            self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
+
         self.oracle.active_flight_plan.activate(
-            quaternion=aircraft.quaternion,
-            translation=aircraft.position,
+            quaternion=self.aircraft.quaternion,
+            translation=self.aircraft.position,
             timestamp=0.0
         )
 
-    def loop(self, command_sm: SharedMemory, lock: Lock, aircraft_lock: Lock):
+    def loop(self, command_sm: SharedMemory, lock: Lock):
         """
         While flight path is incomplete:
 
@@ -68,14 +71,12 @@ class FlightConductor:
         command_buffer = np.ndarray(shape=(CommandBufferConstants.N,),
                                     dtype=CommandBufferConstants.dtype,
                                     buffer=command_sm.buf)
-
         while not self.oracle.finished:
             if self.kill_signal.is_set():
                 raise RuntimeError('Conductor detected kill signal. Shutting down')
 
             timestamp = time.time() - flight_start_time
-            aircraft = Aircraft.from_shared_memory_buffer(self.aircraft_buffer, aircraft_lock)
-            r, t = aircraft.quaternion, aircraft.position
+            r, t = self.aircraft.quaternion, self.aircraft.position
             self.oracle.update(r, t, timestamp=timestamp)
 
             flightplan = self.oracle.active_flight_plan

@@ -44,11 +44,10 @@ def control_wrapper(ctx: MPContext):
                                            kill_signal=ctx.kill_signal)
 
     try:
-        conductor.initialize()
+        conductor.initialize(aircraft_lock=ctx.aircraft_lock)
         ctx.start_event.set()
         conductor.loop(command_sm=ctx.command_sm,
-                       lock=ctx.shared_memory_lock,
-                       aircraft_lock=ctx.aircraft_lock)
+                       lock=ctx.shared_memory_lock)
     finally:
         ctx.shutdown_event.set()
         conductor.cleanup()
@@ -65,12 +64,12 @@ def vision_wrapper(ctx: MPContext, ready_event: Event):
     try:
         tracker.initialize(image_sm=ctx.image_sm,
                            quat_sm=ctx.quat_sm,
-                           intrinsics=ctx.intrinsics_dict)
+                           intrinsics=ctx.intrinsics_dict,
+                           aircraft_lock=ctx.aircraft_lock)
         ready_event.set()
         ctx.start_event.wait()
         tracker.loop(command_sm=ctx.command_sm,
-                     lock=ctx.shared_memory_lock,
-                     aircraft_lock=ctx.aircraft_lock)
+                     lock=ctx.shared_memory_lock)
     finally:
         ctx.shutdown_event.set()
         tracker.cleanup()
@@ -95,10 +94,11 @@ def render_wrapper(ctx: MPContext, ready_event: Event):
                               img_shape=ctx.image_dimension,
                               intrinsics_dict=ctx.intrinsics_dict,
                               camera_quat_sm=ctx.quat_sm,
-                              lock=ctx.shared_memory_lock)
+                              lock=ctx.shared_memory_lock,
+                              aircraft_lock=ctx.aircraft_lock)
         ready_event.set()
         ctx.start_event.wait()
-        visualizer.loop(aircraft_lock=ctx.aircraft_lock)
+        visualizer.loop()
     finally:
         ctx.shutdown_event.set()
         visualizer.cleanup()
