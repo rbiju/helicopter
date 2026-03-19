@@ -7,10 +7,10 @@ from jax.scipy.spatial.transform import Rotation as jaxRotation
 import pyrealsense2
 
 from helicopter.utils import PointQueue
-from helicopter.vision.point_detection.point_detector import PointDetector
-from helicopter.vision.tracking import ICP
+from ..point_detection.point_detector import PointDetector
 
 from .point_matcher import TrianglePointMatcher
+from .icp import ICP
 
 
 class TrackingPointHandler:

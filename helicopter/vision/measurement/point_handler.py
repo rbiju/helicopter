@@ -9,7 +9,7 @@ from scipy.optimize import linear_sum_assignment
 import pyrealsense2
 
 from helicopter.utils import PointQueue
-from vision.point_detection.point_detector import PointDetector
+from ..point_detection.point_detector import PointDetector
 
 
 class MeasurementPointHandler:

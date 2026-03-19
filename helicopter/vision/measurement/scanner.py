@@ -30,6 +30,7 @@ class Scanner:
                  point_handler: MeasurementPointHandler,
                  camera_state_handler: CameraStateHandler,
                  ukf: UKF,
+                 logger: MeasurementStateLogger = MeasurementStateLogger(),
                  measurement_time: float = 5.0):
         self.device = device
         self.point_handler = point_handler
@@ -51,7 +52,7 @@ class Scanner:
         self.vision_thread = threading.Thread(target=self.vision_loop, daemon=True)
         self.lock = threading.Lock()
 
-        self.logger = MeasurementStateLogger()
+        self.logger = logger
 
         self.last_fused_time = 0.0
         self.first_imu_frame = True

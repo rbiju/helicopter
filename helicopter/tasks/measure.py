@@ -1,12 +1,12 @@
+import functools
+
 import jax
 import jax.numpy as jnp
 import numpy as np
 import scipy.linalg as linalg
 
 from helicopter.configuration import HydraConfigurable
-from helicopter.vision import D435i
 from helicopter.vision import ErrorStateSquareRootUnscentedKalmanFilter as UKF
-from helicopter.vision.measurement.scanner import Scanner, CameraStateHandler, MeasurementPointHandler
 
 from .base import Task
 
@@ -27,7 +27,8 @@ def initialize_Q_matrix(dt: float, std_devs: dict) -> np.ndarray:
 
 
 def initialize_S_matrix(std_devs: dict) -> jax.Array:
-    P_dtheta = (std_devs['d_theta'] * np.pi / 180.) ** 2
+    var_dtheta = (std_devs['d_theta'] * np.pi / 180.) ** 2
+    P_dtheta = np.eye(3) * var_dtheta
 
     var_dp = std_devs['dp'] ** 2
     P_dp = np.eye(3) * var_dp
@@ -58,7 +59,7 @@ class UKFFactory:
                  q_std_devs: dict,
                  s_std_devs: dict,
                  r_std_devs: dict,
-                 N: int,
+                 N: int = 15,
                  alpha: float = 0.1,
                  beta: float = 2.0,
                  kappa: float = -12):
@@ -81,16 +82,9 @@ class UKFFactory:
 class Measure(Task):
     def __init__(self,
                  ukf_factory: UKFFactory,
-                 device: D435i,
-                 point_handler: MeasurementPointHandler,
-                 measurement_time: float = 30.0):
+                 scanner: functools.partial):
         super().__init__()
-
-        self.scanner = Scanner(device=device,
-                               point_handler=point_handler,
-                               camera_state_handler=CameraStateHandler(),
-                               ukf=ukf_factory.filter(),
-                               measurement_time=measurement_time)
+        self.scanner = scanner(ukf=ukf_factory.filter())
 
 
     def run(self, configuration_path: str):

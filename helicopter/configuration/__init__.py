@@ -1,1 +1,1 @@
-from .configuration import HydraConfigurable, LocalHydraConfiguration, CometHydraConfiguration
+from .configuration import HydraConfigurable, LocalHydraConfiguration

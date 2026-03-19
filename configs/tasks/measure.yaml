@@ -1,12 +1,8 @@
-constants:
-  ir_resolution: [480, 640]
-
 Measure:
   _target_: helicopter.tasks.Measure
-  measurement_time: 30.0
   ukf_factory:
     _target_: helicopter.tasks.measure.UKFFactory
-    dt: 1/200
+    dt: 0.005
     N: 15
     alpha: 0.1
     beta: 2.0
@@ -27,29 +23,38 @@ Measure:
       dp_x: 1.0e-2
       dp_y: 1.0e-2
       dp_z: 1.0e-2
-  device:
-    _target_: helicopter.vision.D435i
-    enable_motion: true
-    video_rate: 60
-    projector_power: 360.0
-    autoexpose: false
-    exposure_time: 1800
-    ema_accel: 0.1
-    ema_gyro: 0.1
-  point_handler:
-    _target_: helicopter.vision.measurement.MeasurementPointHandler
-    queue_len: 75
-    detector:
-      _target_: helicopter.vision.point_detection.YOLOPointDetector
-      marker_tolerance: 0.008
-      distance_threshold: 0.5
-      model:
-        _target_: helicopter.vision.point_detection.HelicopterYOLO
-        conf: 0.7
-        preprocessor:
-          _target_: helicopter.vision.point_detection.GPUImagePreprocessor
-          imgsz: ${constants.ir_resolution}
+  scanner:
+    _target_: helicopter.vision.measurement.scanner
+    _partial_: True
+    measurement_time: 30.0
+    logger:
+      _target_: helicopter.vision.measurement.MeasurementStateLogger
+      save_dir: '/home/ray/projects/helicopter/notebooks/logs'
+    camera_state_handler:
+      _target_: helicopter.vision.measurement.CameraStateHandler
+    device:
+      _target_: helicopter.vision.D435i
+      enable_motion: true
+      video_rate: 60
+      projector_power: 360.0
+      autoexpose: false
+      exposure_time: 1800
+      ema_accel: 0.1
+      ema_gyro: 0.1
+    point_handler:
+      _target_: helicopter.vision.measurement.MeasurementPointHandler
+      queue_len: 75
+      detector:
+        _target_: helicopter.vision.point_detection.YOLOPointDetector
+        marker_tolerance: 0.008
+        distance_threshold: 0.5
         model:
-          _target_: ultralytics.YOLO
-          model: "/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine"
-          task: "detect"
+          _target_: helicopter.vision.point_detection.HelicopterYOLO
+          conf: 0.7
+          preprocessor:
+            _target_: helicopter.vision.point_detection.GPUImagePreprocessor
+            imgsz: [480, 640]
+          model:
+            _target_: ultralytics.YOLO
+            model: "/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine"
+            task: "detect"
