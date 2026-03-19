@@ -20,6 +20,9 @@ dependencies = [
     "hydra-core",
     "click"]
 
+[project.scripts]
+helicopter = "helicopter.cli:helicopter"
+
 [tool.scikit-build]
 wheel.install-dir = "helicopter"
 cmake.targets = ["helicopter_cpp"]

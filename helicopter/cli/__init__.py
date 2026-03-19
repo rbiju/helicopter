@@ -1,2 +1,2 @@
-from .entrypoint import maeden
+from .entrypoint import helicopter
 from . import run

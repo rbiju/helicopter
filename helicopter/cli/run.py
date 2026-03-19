@@ -57,4 +57,4 @@ if __name__ == "__main__":
     test_args = ["run", "--name", "Measure", "-c", "/home/ray/projects/helicopter/configs/tasks/measure.yaml", "-d"]
 
     runner = CliRunner()
-    result = runner.invoke(helicopter, test_args)
+    result = runner.invoke(helicopter(), test_args)
