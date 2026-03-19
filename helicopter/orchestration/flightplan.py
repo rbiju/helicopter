@@ -49,12 +49,14 @@ class WaypointFollowingFlightPlan(FlightPlan, ABC):
         position_error = self.waypoint - t
         e_throttle = position_error[2]
 
+        # noinspection PyUnresolvedReferences
         yaw_rotvec = Rotation.as_rotvec(r)[2]
         yaw_rotation = Rotation.from_rotvec(np.array([0.0, 0.0, yaw_rotvec]))
         position_error_body = yaw_rotation.inv().apply(position_error)
+        # noinspection PyUnresolvedReferences
         e_pitch = position_error_body[0]
 
-        if e_pitch < 0.05:
+        if np.abs(e_pitch) < 0.05:
             e_yaw = 0.0
         else:
             psi_target = np.arctan2(position_error[1], position_error[0])
@@ -73,15 +75,14 @@ class ConstantHeadingFlightPlan(FlightPlan, ABC):
         position_error = self.waypoint - t
         e_throttle = position_error[2]
 
+        # noinspection PyUnresolvedReferences
         yaw_rotvec = Rotation.as_rotvec(quaternion)[2]
         yaw_rotation = Rotation.from_rotvec(np.array([0.0, 0.0, yaw_rotvec]))
         position_error_body = yaw_rotation.inv().apply(position_error)
+        # noinspection PyUnresolvedReferences
         e_pitch = position_error_body[0]
 
-        if e_pitch < 0.05:
-            e_yaw = 0.0
-        else:
-            e_yaw = self.reference_heading - yaw_rotvec
+        e_yaw = self.reference_heading - yaw_rotvec
 
         return np.array([e_throttle, e_pitch, e_yaw])
 
@@ -118,6 +119,7 @@ class HoverFlightPlan(ConstantHeadingFlightPlan):
         return FlightStates.HOVER
 
     def activate(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
+        # noinspection PyUnresolvedReferences
         self.reference_heading = Rotation.as_rotvec(quaternion)[2]
         self.start_time = timestamp
         self._waypoints.append(translation)
@@ -145,6 +147,7 @@ class ManualFlightPlan(FlightPlan):
 
     def activate(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
         self.activated = True
+        self.start_time = timestamp
 
     def tick(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
         depleted = False

@@ -67,8 +67,7 @@ class Aircraft:
 
     @classmethod
     def from_shared_memory_buffer(cls, buffer: np.ndarray, lock: Lock):
-        shape = (cls.N,)
-        local_state = np.empty(shape, dtype=np.float64)
+        local_state = np.empty_like(buffer)
         with lock:
             np.copyto(local_state, buffer)
 

@@ -35,6 +35,7 @@ class Oracle:
 
         if self.active_idx >= len(self.flight_plan_sequence):
             self.finished = True
+            return
 
         self.active_flight_plan.activate(r, t, timestamp)
 

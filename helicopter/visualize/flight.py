@@ -172,7 +172,7 @@ class FlightVisualizer(Visualizer):
         intrinsics = self.unpack_intrinsics(local_intrinsics_dict)
 
         ir_frame = np.empty(img_shape, dtype=np.int8)
-        ir_buffer = np.ndarray((4,), dtype=np.int8, buffer=image_sm.buf)
+        ir_buffer = np.ndarray(img_shape, dtype=np.int8, buffer=image_sm.buf)
         with lock:
             np.copyto(ir_frame, ir_buffer)
 
@@ -186,27 +186,29 @@ class FlightVisualizer(Visualizer):
 
         camera_matrix, dist_coeffs = self.realsense_to_opencv_intrinsics(intrinsics)
         corners, ids, rejected = self.detector.detectMarkers(ir_frame)
-        for marker_id, marker_corners in zip(ids, corners):
-            if marker_id not in aruco_registry.keys():
-                print(f'Warning: ARUCO marker with id {marker_id} not registered. Skipping.')
-                continue
-            mesh_obj: ARUCOMarkerModel = aruco_registry[marker_id]
-            mesh = mesh_obj.mesh()
+        if ids is not None:
+            for marker_id, marker_corners in zip(ids, corners):
+                marker_id_int = int(marker_id[0])
+                if marker_id_int not in aruco_registry.keys():
+                    print(f'Warning: ARUCO marker with id {marker_id_int} not registered. Skipping.')
+                    continue
+                mesh_obj: ARUCOMarkerModel = aruco_registry[marker_id_int]
+                mesh = mesh_obj.mesh()
 
-            success, marker_rotation, marker_position = self.get_marker_quaternion(marker_corners,
-                                                                               self.marker_size,
-                                                                               camera_matrix,
-                                                                               dist_coeffs)
-            if not success:
-                print(f"Warning: Failed to solve PnP for marker ID {marker_id}. Skipping.")
-                continue
+                success, marker_rotation, marker_position = self.get_marker_quaternion(marker_corners,
+                                                                                   self.marker_size,
+                                                                                   camera_matrix,
+                                                                                   dist_coeffs)
+                if not success:
+                    print(f"Warning: Failed to solve PnP for marker ID {marker_id_int}. Skipping.")
+                    continue
 
-            corrected_marker_point = self.camera_quat.inv().apply(marker_position)
-            total_rotation = self.camera_quat * marker_rotation
-            mesh_handle = self.add_mesh(mesh, f'/aruco_mesh/{marker_id}',
-                                        position=(corrected_marker_point - mesh_obj.marker_offset),
-                                        orientation=total_rotation.as_quat(canonical=True))
-            self.models[marker_id] = mesh_handle
+                corrected_marker_point = self.camera_quat.inv().apply(marker_position)
+                total_rotation = self.camera_quat * marker_rotation
+                mesh_handle = self.add_mesh(mesh, f'/aruco_mesh/{marker_id_int}',
+                                            position=(corrected_marker_point - mesh_obj.marker_offset),
+                                            orientation=total_rotation.as_quat(canonical=True))
+                self.models[marker_id_int] = mesh_handle
 
         print("Aruco markers initialized")
 
@@ -247,7 +249,7 @@ class FlightVisualizer(Visualizer):
                 quat = aircraft.quaternion
                 translation = aircraft.position
 
-                render_quat = self.camera_quat.inverse() * quat
+                render_quat = self.camera_quat.inv() * quat
                 self.update_helicopter(render_quat, translation)
 
     def cleanup(self):

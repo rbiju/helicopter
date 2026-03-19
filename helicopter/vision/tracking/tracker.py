@@ -141,6 +141,7 @@ class Tracker:
         command_buffer = np.ndarray(shape=(CommandBufferConstants.N,),
                                     dtype=CommandBufferConstants.dtype,
                                     buffer=command_sm.buf)
+        commands = np.empty_like(command_buffer)
         self.is_running = True
         self.vision_thread.start()
 
@@ -165,7 +166,6 @@ class Tracker:
             while self.last_simulated_time < vision_time:
                 self.last_simulated_time += step_size
 
-                commands = np.empty_like(command_buffer)
                 with lock:
                     np.copyto(commands, command_buffer)
 
@@ -181,6 +181,10 @@ class Tracker:
                                             propagated_nominal=propagated_nominal,
                                             commands=commands)
                 self.profiler.end("UKF_Predict")
+
+                with aircraft_lock:
+                    np.copyto(self.aircraft_buffer, propagated_nominal)
+
             self.profiler.end('Simulation')
 
             self.profiler.start('Detection')

@@ -38,9 +38,14 @@ class FlightConductor:
 
         self.kill_signal = kill_signal
 
-    def initialize(self):
+    def initialize(self, aircraft_lock: Lock):
         # TODO: load waypoints for visualization
-        pass
+        aircraft = Aircraft.from_shared_memory_buffer(buffer=self.aircraft_buffer, lock=aircraft_lock)
+        self.oracle.active_flight_plan.activate(
+            quaternion=aircraft.quaternion,
+            translation=aircraft.position,
+            timestamp=0.0
+        )
 
     def loop(self, command_sm: SharedMemory, lock: Lock, aircraft_lock: Lock):
         """
