@@ -44,11 +44,13 @@ class FlightConductor:
         if self.aircraft is None:
             self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
 
+        # First flight plan should always be IDLE so physics model can turn off gravity
         self.oracle.active_flight_plan.activate(
             quaternion=self.aircraft.quaternion,
             translation=self.aircraft.position,
             timestamp=0.0
         )
+        self.aircraft.flight_state = self.oracle.active_flight_state
 
     def loop(self, command_sm: SharedMemory, lock: Lock):
         """
@@ -76,6 +78,7 @@ class FlightConductor:
                 raise RuntimeError('Conductor detected kill signal. Shutting down')
 
             timestamp = time.time() - flight_start_time
+            self.aircraft.flight_state = self.oracle.active_flight_state(timestamp)
             r, t = self.aircraft.quaternion, self.aircraft.position
             self.oracle.update(r, t, timestamp=timestamp)
 

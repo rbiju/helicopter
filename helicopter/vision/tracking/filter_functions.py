@@ -51,7 +51,7 @@ def decompose_fn(old_state, new_state):
 
 
 @jit
-def propagate(s, dt, commands):
+def propagate(s, dt, commands, ground=False):
     # Position in world frame
     # Velocity in body frame
 
@@ -73,7 +73,7 @@ def propagate(s, dt, commands):
     pos_new = pos_old + vel_rotated * dt
 
     # Velocity
-    gravity = quat_new.inv().apply(G_WORLD)
+    gravity = jnp.where(ground, jnp.array([0.0, 0, 0]), quat_new.inv().apply(G_WORLD))
     thrust = thrust * MAX_THRUST * battery + pitch * MAX_TAIL_THRUST * battery
     drag = DRAG * vel_old
     F_net = gravity + thrust - drag

@@ -12,9 +12,8 @@ class FlightPlan(ABC):
         self._waypoints = deque()
         self.activated = False
 
-    @property
     @abstractmethod
-    def flight_state(self) -> FlightStates:
+    def flight_state(self, timestamp: float) -> FlightStates:
         raise NotImplementedError
 
     @property
@@ -87,18 +86,40 @@ class ConstantHeadingFlightPlan(FlightPlan, ABC):
         return np.array([e_throttle, e_pitch, e_yaw])
 
 
+class IdleFlightPlan(FlightPlan, ABC):
+    def __init__(self):
+        super().__init__()
+
+    def flight_state(self, timestamp: float) -> FlightStates:
+        return FlightStates.IDLE
+
+    def compute_error(self, quaternion: Rotation, translation: np.ndarray):
+        return np.array([0.0, 0.0, 0.0])
+
+    def activate(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
+        pass
+
+    def tick(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
+        return True
+
+
 class TakeOffFlightPlan(WaypointFollowingFlightPlan):
-    def __init__(self, takeoff_height: float = 0.2):
+    def __init__(self, takeoff_height: float = 0.2, ground_time: float = 0.1):
         super().__init__()
         self.takeoff_height = takeoff_height
         self.tick_radius = 0.025
+        self.ground_time = ground_time
+        self.start_time = 0
 
-    @property
-    def flight_state(self) -> FlightStates:
-        return FlightStates.TAKEOFF
+    def flight_state(self, timestamp: float) -> FlightStates:
+        if timestamp - self.start_time < self.ground_time:
+            return FlightStates.IDLE
+        else:
+            return FlightStates.TAKEOFF
 
     def activate(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
         self._waypoints.append(translation + np.array([0, 0, self.takeoff_height]))
+        self.start_time = timestamp
         self.activated = True
 
     def tick(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
@@ -114,8 +135,7 @@ class HoverFlightPlan(ConstantHeadingFlightPlan):
         self.start_time = 0
         self.hover_time = hover_time
 
-    @property
-    def flight_state(self) -> FlightStates:
+    def flight_state(self, timestamp: float) -> FlightStates:
         return FlightStates.HOVER
 
     def activate(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
@@ -138,8 +158,7 @@ class ManualFlightPlan(FlightPlan):
         self.start_time = 0
         self.hover_time = flight_time
 
-    @property
-    def flight_state(self) -> FlightStates:
+    def flight_state(self, timestamp: float) -> FlightStates:
         return FlightStates.MANUAL
 
     def compute_error(self, r: Rotation, t: np.ndarray):

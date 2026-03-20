@@ -37,7 +37,7 @@ class MPContext:
 def control_wrapper(ctx: MPContext):
     config = LocalHydraConfiguration(file_path=ctx.configuration_path)
     # noinspection PyUnresolvedReferences
-    conductor = FlightConductor.from_hydra_configuration(config, find_key=True)
+    conductor = FlightConductor.from_hydra_configuration(config)
 
     # noinspection PyCallingNonCallable
     conductor: FlightConductor = conductor(aircraft_sm=ctx.aircraft_sm,
@@ -56,7 +56,7 @@ def control_wrapper(ctx: MPContext):
 def vision_wrapper(ctx: MPContext, ready_event: Event):
     config = LocalHydraConfiguration(file_path=ctx.configuration_path)
     # noinspection PyUnresolvedReferences
-    tracker = Tracker.from_hydra_configuration(config, find_key=True)
+    tracker = Tracker.from_hydra_configuration(config)
     # noinspection PyCallingNonCallable
     tracker: Tracker = tracker(aircraft_sm=ctx.aircraft_sm,
                                kill_signal=ctx.kill_signal)
@@ -82,7 +82,7 @@ def vision_wrapper(ctx: MPContext, ready_event: Event):
 def render_wrapper(ctx: MPContext, ready_event: Event):
     config = LocalHydraConfiguration(file_path=ctx.configuration_path)
     # noinspection PyUnresolvedReferences
-    visualizer = FlightVisualizer.from_hydra_configuration(config, find_key=True)
+    visualizer = FlightVisualizer.from_hydra_configuration(config)
     # noinspection PyCallingNonCallable
     visualizer: FlightVisualizer = visualizer(aircraft_sm=ctx.aircraft_sm,
                                               kill_signal=ctx.kill_signal)

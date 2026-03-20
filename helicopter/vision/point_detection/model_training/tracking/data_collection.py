@@ -1,5 +1,6 @@
 import os
 import time
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -13,32 +14,30 @@ if __name__ == '__main__':
                    video_rate=30,
                    projector_power=0.,
                    autoexpose=False,
-                   exposure_time=1800)
+                   exposure_time=2000)
 
-    print('Starting data collection in 5 seconds...')
     time.sleep(5)
 
     print('Collecting data')
     camera.start()
     images = []
-    for i in tqdm(range(1)):
+    for i in tqdm(range(25)):
         frames = camera.pipeline.wait_for_frames()
         depth_image, ts_depth, ir_image, ts_ir, laser_state = camera.process_frames(frames)
 
         images.append(ir_image.copy())
-        print(i)
-
         time.sleep(0.5)
 
     camera.stop()
 
-    data_path = "/home/ray/datasets/helicopter/point_detection/tracking/temp"
+    dataset_name = 'set03'
+    data_path = Path("/home/ray/datasets/helicopter/point_detection/tracking") / dataset_name
     if not os.path.exists(data_path):
-        print(f"Making directory {data_path}")
+        print(f"Making directory {str(data_path)}")
         os.mkdir(data_path)
 
     for i, image in tqdm(enumerate(images)):
         img = np.repeat(image[..., np.newaxis], 3, -1)
-        cv2.imwrite(f"{data_path}/{i}.png", img)
+        cv2.imwrite(f"{data_path}/{dataset_name}_{i}.png", img)
 
     print(f'Images saved to {data_path}')

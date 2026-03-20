@@ -20,10 +20,9 @@ class Oracle:
     def active_flight_plan(self) -> FlightPlan:
         return self.flight_plan_sequence[self.active_idx]
 
-    @property
-    def active_flight_state(self) -> FlightStates:
+    def active_flight_state(self, timestamp: float) -> FlightStates:
         if not self.finished:
-            return self.active_flight_plan.flight_state
+            return self.active_flight_plan.flight_state(timestamp=timestamp)
         else:
             return FlightStates.DONE
 

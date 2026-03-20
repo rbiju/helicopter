@@ -12,6 +12,7 @@ IDX_O = slice(7, 10)
 IDX_V = slice(10, 13)
 IDX_BATTERY = slice(13, 14)
 IDX_TRIM = slice(14, 15)
+IDX_STATE = slice(15, 16)
 
 
 class FlightStates(Enum):
@@ -26,7 +27,7 @@ class FlightStates(Enum):
 
 
 class Aircraft:
-    N: int = 15
+    N: int = 16
     dtype = np.float64
 
     def __init__(self, buffer: np.ndarray = None, lock: ProcessLock = None):
@@ -101,15 +102,26 @@ class Aircraft:
         with self._lock:
             self._buffer[IDX_TRIM] = np.array([value], dtype=self.dtype)
 
+    @property
+    def flight_state(self) -> FlightStates:
+        with self._lock:
+            state_val = int(self._buffer[IDX_STATE][0])
+        return FlightStates(state_val)
+
+    @flight_state.setter
+    def flight_state(self, state: FlightStates):
+        with self._lock:
+            self._buffer[IDX_STATE] = np.array([float(state.value)], dtype=self.dtype)
+
     def get_state_vector(self) -> np.ndarray:
         with self._lock:
-            return self._buffer.copy()
+            return self._buffer.copy()[:self.N - 1]
 
     def set_state_vector(self, state_vector: np.ndarray):
-        if state_vector.shape != (self.N,):
-            raise ValueError(f"Provided vector of shape {state_vector.shape} does not match size of buffer: {self.N}")
+        if state_vector.shape != (self.N - 1,):
+            raise ValueError(f"Provided vector of shape {state_vector.shape} does not match size of buffer: {self.N - 1}")
         with self._lock:
-            np.copyto(self._buffer, state_vector)
+            np.copyto(self._buffer[:self.N - 1], state_vector)
 
     @classmethod
     def from_shared_memory_buffer(cls, buffer: np.ndarray, lock: ProcessLock):
