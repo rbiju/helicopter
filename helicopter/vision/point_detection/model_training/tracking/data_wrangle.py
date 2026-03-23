@@ -3,6 +3,34 @@ import random
 from pathlib import Path
 
 
+def organize_labels(_export_path: str):
+    source_path = Path(_export_path) / 'labels'
+    target_path = Path(_export_path).parent
+
+    if not source_path.exists():
+        print(f"Error: Source directory '{source_path}' does not exist.")
+        return
+
+    moved_count = 0
+
+    for label_file in source_path.glob("*.txt"):
+        filename = label_file.name
+
+        if filename == "classes.txt":
+            print("Skipping 'classes.txt'...")
+            continue
+
+        prefix = filename.split('_')[0]
+
+        destination_dir = target_path / prefix / "labels"
+        destination_dir.mkdir(parents=True, exist_ok=True)
+
+        destination_file = destination_dir / filename
+
+        shutil.move(label_file, destination_file)
+        moved_count += 1
+    print(f"\nSuccess! Moved {moved_count} label files into their respective folders.")
+
 def merge_yolo_datasets(source_dirs, output_dir, split_ratio=0.8):
     output_path = Path(output_dir)
 
@@ -36,7 +64,6 @@ def merge_yolo_datasets(source_dirs, output_dir, split_ratio=0.8):
         images = [f for f in img_source.iterdir() if f.suffix.lower() in valid_exts]
 
         for img_file in images:
-            # Identify corresponding label file
             label_file = lbl_source / f"{img_file.stem}.txt"
 
             if not label_file.exists():
@@ -48,7 +75,6 @@ def merge_yolo_datasets(source_dirs, output_dir, split_ratio=0.8):
             dest_img_key = 'train_img' if is_train else 'val_img'
             dest_lbl_key = 'train_lbl' if is_train else 'val_lbl'
 
-            # Copy files using their existing names
             shutil.copy2(img_file, dirs[dest_img_key] / img_file.name)
             shutil.copy2(label_file, dirs[dest_lbl_key] / label_file.name)
 
@@ -61,8 +87,13 @@ if __name__ == "__main__":
     inputs = [
         "/home/ray/datasets/helicopter/point_detection/tracking/set01",
         "/home/ray/datasets/helicopter/point_detection/tracking/set02",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set03",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set04",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set05",
     ]
 
-    output = "/home/ray/datasets/helicopter/point_detection/measure/master"
+    output = "/home/ray/datasets/helicopter/point_detection/tracking/master"
 
-    merge_yolo_datasets(inputs, output, split_ratio=0.9)
+    # export_path = "/home/ray/datasets/helicopter/point_detection/tracking/temp"
+    # organize_labels(export_path)
+    merge_yolo_datasets(inputs, output, split_ratio=0.8)

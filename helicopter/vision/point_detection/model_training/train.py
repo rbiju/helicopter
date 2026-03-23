@@ -1,19 +1,23 @@
+from pathlib import Path
 from ultralytics import YOLO
 
 
 if __name__ == "__main__":
     model = YOLO("yolo26n.pt")
 
-    results = model.train(data="/home/ray/datasets/helicopter/point_detection/measure/measure.yaml",
-                          epochs=300, imgsz=640, device=0, save_dir="/home/ray/yolo_models/helicopter/measure",
+    model_dir = Path("/home/ray/yolo_models/helicopter/track")
+    results = model.train(data="/home/ray/datasets/helicopter/point_detection/tracking/tracking.yaml",
+                          epochs=100, imgsz=1280, device=0, save_dir=str(model_dir),
                           hsv_v=0.9,
                           flipud=0.5,
                           dropout=0.1,
-                          translate=0.25)
+                          rect=True,
+                          translate=0.25,
+                          optimizer='MuSGD')
 
-    best = YOLO("/home/ray/yolo_models/helicopter/measure/weights/best.pt")
+    best = YOLO(str(model_dir / "weights" / "best.pt"))
     best.export(format='engine',
-                data="/home/ray/datasets/helicopter/point_detection/measure/measure.yaml",
+                data="/home/ray/datasets/helicopter/point_detection/tracking/tracking.yaml",
                 int8=True,
-                imgsz=640,
+                imgsz=[720, 1280],
                 dynamic=False)

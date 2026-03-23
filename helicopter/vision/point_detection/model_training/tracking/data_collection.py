@@ -16,9 +16,11 @@ if __name__ == '__main__':
                    autoexpose=False,
                    exposure_time=2000)
 
+    print('Starting detection in 5 seconds...')
     time.sleep(5)
 
-    print('Collecting data')
+    dataset_name = 'set05'
+    print(f'Collecting data for {dataset_name}')
     camera.start()
     images = []
     for i in tqdm(range(25)):
@@ -30,8 +32,7 @@ if __name__ == '__main__':
 
     camera.stop()
 
-    dataset_name = 'set03'
-    data_path = Path("/home/ray/datasets/helicopter/point_detection/tracking") / dataset_name
+    data_path = Path("/home/ray/datasets/helicopter/point_detection/tracking") / dataset_name / 'images'
     if not os.path.exists(data_path):
         print(f"Making directory {str(data_path)}")
         os.mkdir(data_path)
