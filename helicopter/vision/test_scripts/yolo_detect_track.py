@@ -1,26 +1,100 @@
 import cv2
-
+import numpy as np
 from ultralytics import YOLO
 
 from helicopter.utils import Profiler, Quitter, KeyListener
 from helicopter.vision import D435i
 from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor
 
-from .yolo_detect import get_points_coords, get_refined_keypoints
+from helicopter.vision.test_scripts.yolo_detect import get_refined_keypoints
+
+
+def get_points_coords(depth_frame, keypoints, intrinsics):
+    if not keypoints:
+        return None
+
+    h, w = depth_frame.shape
+
+    valid_depths = []
+    valid_uvs = []
+    valid_radii = []
+
+    valid_kps = []
+    invalid_kps = []
+    for kp in keypoints:
+        cx, cy = kp.pt
+        radius = kp.size / 2
+
+        ix, iy = int(cx), int(cy)
+
+        if ix < 0 or ix >= w or iy < 0 or iy >= h:
+            invalid_kps.append(kp)
+            continue
+
+        safe_r = int(radius * 0.8)
+        if safe_r < 1:
+            safe_r = 1
+
+        x0, x1 = max(0, ix - safe_r), min(w, ix + safe_r + 1)
+        y0, y1 = max(0, iy - safe_r), min(h, iy + safe_r + 1)
+
+        roi = depth_frame[y0:y1, x0:x1]
+
+        valid_pixels = roi[roi > 0]
+
+        # if len(valid_pixels) < roi.size * 0.7:
+        #     invalid_kps.append(kp)
+        #     continue
+
+        depth = np.mean(valid_pixels)
+        d_std = np.std(valid_pixels)
+
+        # if d_std > 0.02:
+        #     invalid_kps.append(kp)
+        #     continue
+
+        if depth <= 0:
+            invalid_kps.append(kp)
+            continue
+
+        valid_depths.append(depth)
+        valid_uvs.append((cx, cy))
+        valid_radii.append(radius)
+
+        valid_kps.append(kp)
+
+    if not valid_depths:
+        return None
+
+    depths = np.array(valid_depths)
+    uvs = np.array(valid_uvs)
+
+    fx, fy = intrinsics.fx, intrinsics.fy
+    ppx, ppy = intrinsics.ppx, intrinsics.ppy
+
+    z_cam = depths
+    x_cam = (uvs[:, 0] - ppx) * z_cam / fx
+    y_cam = (uvs[:, 1] - ppy) * z_cam / fy
+
+    final_points = np.column_stack((z_cam, -x_cam, -y_cam))
+
+    return final_points, valid_kps, invalid_kps
 
 
 if __name__ == '__main__':
     profiler = Profiler()
-    camera = D435i(video_resolution=[720, 1280],
+    imgsz = [720, 1280]
+    camera = D435i(video_resolution=imgsz,
                    video_rate=30,
                    projector_power=0.,
                    autoexpose=False,
                    exposure_time=2000)
 
-    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/track_20260320_0/weights/best.engine',
+    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/track_20260323_1/weights/best.engine',
                                       task='detect'),
-                           preprocessor=GPUImagePreprocessor(),
-                           conf=0.1)
+                           preprocessor=GPUImagePreprocessor(imgsz=imgsz),
+                           imgsz=imgsz,
+                           conf=0.01)
     listener = KeyListener()
     quitter = Quitter(listener=listener)
 
@@ -57,24 +131,23 @@ if __name__ == '__main__':
                 profiler.end("E2E")
 
                 if points is None:
-                    continue
+                    detected_images.append(ir_image)
                 else:
                     points, valid, invalid = points
 
-                a = cv2.cvtColor(ir_image, cv2.COLOR_GRAY2RGB)
-                a = cv2.drawKeypoints(ir_image, invalid, a, color=(0, 0, 255), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
-                a = cv2.drawKeypoints(a, valid, a, color=(0, 255, 0), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
-                detected_images.append(a)
+                    a = cv2.cvtColor(ir_image, cv2.COLOR_GRAY2RGB)
+                    a = cv2.drawKeypoints(ir_image, invalid, a, color=(0, 0, 255), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
+                    a = cv2.drawKeypoints(a, valid, a, color=(0, 255, 0), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
+                    detected_images.append(a)
     finally:
         camera.stop()
         quitter.stop()
 
-    print(f"Frame count: {frame_count}")
     print(profiler)
 
     output_path = "detections_tracking.mp4"
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, 60.0, (1280, 720), isColor=True)
+    out = cv2.VideoWriter(output_path, fourcc, 30.0, (1280, 720), isColor=True)
 
     for frame in detected_images:
         out.write(frame)

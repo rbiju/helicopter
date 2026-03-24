@@ -90,10 +90,15 @@ if __name__ == "__main__":
         "/home/ray/datasets/helicopter/point_detection/tracking/set03",
         "/home/ray/datasets/helicopter/point_detection/tracking/set04",
         "/home/ray/datasets/helicopter/point_detection/tracking/set05",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set06",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set07",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set08",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set09",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set10",
     ]
 
     output = "/home/ray/datasets/helicopter/point_detection/tracking/master"
 
     # export_path = "/home/ray/datasets/helicopter/point_detection/tracking/temp"
     # organize_labels(export_path)
-    merge_yolo_datasets(inputs, output, split_ratio=0.8)
+    merge_yolo_datasets(inputs, output, split_ratio=0.9)

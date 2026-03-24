@@ -8,3 +8,4 @@
 .DS_Store
 /helicopter/vision/test_scripts/detections.mp4
 /.gitattributes
+/helicopter/vision/test_scripts/detections_tracking.mp4

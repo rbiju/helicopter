@@ -19,7 +19,7 @@ if __name__ == '__main__':
     print('Starting detection in 5 seconds...')
     time.sleep(5)
 
-    dataset_name = 'set05'
+    dataset_name = 'set10'
     print(f'Collecting data for {dataset_name}')
     camera.start()
     images = []
@@ -36,6 +36,8 @@ if __name__ == '__main__':
     if not os.path.exists(data_path):
         print(f"Making directory {str(data_path)}")
         os.mkdir(data_path)
+    else:
+        raise RuntimeError("Directory ", str(data_path), " already exists.")
 
     for i, image in tqdm(enumerate(images)):
         img = np.repeat(image[..., np.newaxis], 3, -1)
