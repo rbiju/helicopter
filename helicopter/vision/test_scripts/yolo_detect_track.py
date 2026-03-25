@@ -42,16 +42,16 @@ def get_points_coords(depth_frame, keypoints, intrinsics):
 
         valid_pixels = roi[roi > 0]
 
-        # if len(valid_pixels) < roi.size * 0.7:
-        #     invalid_kps.append(kp)
-        #     continue
+        if len(valid_pixels) < roi.size * 0.7:
+            invalid_kps.append(kp)
+            continue
 
         depth = np.mean(valid_pixels)
         d_std = np.std(valid_pixels)
 
-        # if d_std > 0.02:
-        #     invalid_kps.append(kp)
-        #     continue
+        if d_std > 0.01:
+            invalid_kps.append(kp)
+            continue
 
         if depth <= 0:
             invalid_kps.append(kp)
@@ -90,11 +90,11 @@ if __name__ == '__main__':
                    autoexpose=False,
                    exposure_time=2000)
 
-    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/track_20260323_1/weights/best.engine',
+    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/track_20260324_1/weights/best.engine',
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(imgsz=imgsz),
                            imgsz=imgsz,
-                           conf=0.01)
+                           conf=0.05)
     listener = KeyListener()
     quitter = Quitter(listener=listener)
 
@@ -131,7 +131,8 @@ if __name__ == '__main__':
                 profiler.end("E2E")
 
                 if points is None:
-                    detected_images.append(ir_image)
+                    a = cv2.cvtColor(ir_image, cv2.COLOR_GRAY2RGB)
+                    detected_images.append(a)
                 else:
                     points, valid, invalid = points
 

@@ -10,9 +10,11 @@ from helicopter.vision.point_detection import HelicopterYOLO
 
 class PointDetector(ABC):
     def __init__(self, marker_tolerance: float = 0.01,
-                 distance_threshold: float = 0.5, ):
+                 distance_threshold: float = 0.5,
+                 marker_std_dev: float = 0.003):
         self.marker_tolerance = marker_tolerance
         self.distance_threshold = distance_threshold
+        self.marker_std_dev = marker_std_dev
 
     @abstractmethod
     def detect(self, ir_frame: np.ndarray) -> list[cv2.KeyPoint]:
@@ -55,7 +57,7 @@ class PointDetector(ABC):
             d_std = np.std(valid_pixels)
 
             # Corresponds to marker size
-            if d_std > 0.003:
+            if d_std > self.marker_std_dev:
                 continue
 
             if depth > self.distance_threshold or depth <= 0:
@@ -123,8 +125,9 @@ class YOLOPointDetector(PointDetector):
     def __init__(self,
                  model: HelicopterYOLO,
                  marker_tolerance: float = 0.01,
-                 distance_threshold: float = 0.5):
-        super().__init__(marker_tolerance, distance_threshold)
+                 distance_threshold: float = 0.5,
+                 marker_std_dev: float = 0.003):
+        super().__init__(marker_tolerance, distance_threshold, marker_std_dev)
         self.model = model
 
     @staticmethod

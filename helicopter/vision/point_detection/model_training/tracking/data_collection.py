@@ -19,7 +19,14 @@ if __name__ == '__main__':
     print('Starting detection in 5 seconds...')
     time.sleep(5)
 
-    dataset_name = 'set10'
+    dataset_name = 'set14'
+    data_path = Path("/home/ray/datasets/helicopter/point_detection/tracking") / dataset_name / 'images'
+    if not os.path.exists(data_path):
+        print(f"Making directory {str(data_path)}")
+        os.mkdir(data_path)
+    else:
+        raise RuntimeError("Directory ", str(data_path), " already exists.")
+
     print(f'Collecting data for {dataset_name}')
     camera.start()
     images = []
@@ -31,13 +38,6 @@ if __name__ == '__main__':
         time.sleep(0.5)
 
     camera.stop()
-
-    data_path = Path("/home/ray/datasets/helicopter/point_detection/tracking") / dataset_name / 'images'
-    if not os.path.exists(data_path):
-        print(f"Making directory {str(data_path)}")
-        os.mkdir(data_path)
-    else:
-        raise RuntimeError("Directory ", str(data_path), " already exists.")
 
     for i, image in tqdm(enumerate(images)):
         img = np.repeat(image[..., np.newaxis], 3, -1)

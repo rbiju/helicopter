@@ -7,7 +7,7 @@ if __name__ == "__main__":
 
     model_dir = Path("/home/ray/yolo_models/helicopter/track")
     results = model.train(data="/home/ray/datasets/helicopter/point_detection/tracking/tracking.yaml",
-                          epochs=300, imgsz=1280, device=0, save_dir=str(model_dir),
+                          epochs=350, imgsz=1280, device=0, save_dir=str(model_dir), box=12.0,
                           hsv_v=0.9,
                           flipud=0.5,
                           dropout=0.1,
