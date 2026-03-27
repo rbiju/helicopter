@@ -10,7 +10,7 @@ from .kabsch import Kabsch
 
 
 class PointMatcher(ABC):
-    def __init__(self, reference_points_path: str = 'assets/points_clouds/green_syma.npy'):
+    def __init__(self, reference_points_path: str = 'assets/point_clouds/green_syma.npy'):
         reference_points_path = Path(__file__).parents[3] / reference_points_path
         self.reference_points = np.load(str(reference_points_path))
 

@@ -1,7 +1,7 @@
 Measure:
   _target_: helicopter.tasks.Measure
   ukf_factory:
-    _target_: helicopter.tasks.measure.UKFFactory
+    _target_: helicopter.vision.UKFFactory
     dt: 0.005
     N: 15
     alpha: 0.1

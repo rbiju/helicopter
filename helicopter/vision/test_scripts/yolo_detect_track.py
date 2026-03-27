@@ -88,13 +88,13 @@ if __name__ == '__main__':
                    video_rate=30,
                    projector_power=0.,
                    autoexpose=False,
-                   exposure_time=2000)
+                   exposure_time=2400)
 
-    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/track_20260324_1/weights/best.engine',
+    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/track_20260327_0/weights/best.engine',
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(imgsz=imgsz),
                            imgsz=imgsz,
-                           conf=0.05)
+                           conf=0.01)
     listener = KeyListener()
     quitter = Quitter(listener=listener)
 

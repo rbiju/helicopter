@@ -11,6 +11,12 @@ class Kabsch:
         u, _, vh = np.linalg.svd(covar)
 
         rotation = vh.T @ u.T
+
+        if np.linalg.det(rotation) < 0:
+            I = np.eye(3)
+            I[2, 2] = -1.0
+            rotation = vh.T @ I @ u.T
+
         translation = q.mean(axis=0) - rotation @ p.mean(axis=0)
 
         return Rotation.from_matrix(rotation), translation

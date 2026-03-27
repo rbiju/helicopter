@@ -12,7 +12,7 @@ import pyrealsense2 as rs
 
 from helicopter.configuration import HydraConfigurable
 from helicopter.aircraft import Aircraft, FlightStates
-from helicopter.vision import D435i, ErrorStateSquareRootUnscentedKalmanFilter
+from helicopter.vision import D435i, ErrorStateSquareRootUnscentedKalmanFilter, UKFFactory
 from helicopter.utils import PointQueue, Profiler, CommandBufferConstants
 
 from .point_handler import TrackingPointHandler
@@ -24,7 +24,7 @@ class Tracker:
     def __init__(self, aircraft_sm: SharedMemory,
                  point_handler: TrackingPointHandler,
                  camera: D435i,
-                 ukf: ErrorStateSquareRootUnscentedKalmanFilter,
+                 ukf_factory: UKFFactory,
                  kill_signal: Event,
                  simulation_fps: float = 250.):
         self.aircraft_buffer = np.ndarray(shape=(Aircraft.N,),
@@ -34,7 +34,7 @@ class Tracker:
 
         self.point_handler = point_handler
         self.camera = camera
-        self.ukf = ukf
+        self.ukf: ErrorStateSquareRootUnscentedKalmanFilter = ukf_factory.filter()
 
         self.vision_thread = threading.Thread(target=self.vision_loop, daemon=True)
         self.vision_queue = queue.Queue(maxsize=5)
@@ -92,9 +92,12 @@ class Tracker:
         counter = 0
         accel_queue = PointQueue(maxlen=camera_orientation_iters)
         while counter < camera_orientation_iters:
-            imu_frames = self.camera.imu_pipeline.wait_for_frames()
-            accel, _, _, _ = self.camera.process_imu_frames(imu_frames)
-            accel_queue.enqueue(accel)
+            imu_frame = self.camera.imu_pipeline.wait_for_frames()
+            imu_data = self.camera.process_imu_frames(imu_frame)
+            if imu_data is not None:
+                accel, _, _, _ = imu_data
+                accel_queue.enqueue(accel)
+                counter += 1
 
         v_B = accel_queue.mean()
         v_W = np.array([0, 0, 1.0])
@@ -130,13 +133,15 @@ class Tracker:
                 continue
             counter += 1
 
+            self.profiler.start('Init_Matching')
             r, t = self.point_handler.matcher.get_alignment(self.point_handler.init_points_coords)
+            self.profiler.end('Init_Matching')
 
             if self.aircraft is None:
                 self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
 
-            self.aircraft.quaternion = r
-            self.aircraft.position = t
+            self.aircraft.quaternion = self.camera_quat * r
+            self.aircraft.position = self.camera_quat.apply(t)
 
     def loop(self, command_sm: SharedMemory, lock: Lock):
         command_buffer = np.ndarray(shape=(CommandBufferConstants.N,),

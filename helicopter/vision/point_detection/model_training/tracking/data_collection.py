@@ -19,7 +19,7 @@ if __name__ == '__main__':
     print('Starting detection in 5 seconds...')
     time.sleep(5)
 
-    dataset_name = 'set14'
+    dataset_name = 'set19'
     data_path = Path("/home/ray/datasets/helicopter/point_detection/tracking") / dataset_name / 'images'
     if not os.path.exists(data_path):
         print(f"Making directory {str(data_path)}")

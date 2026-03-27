@@ -6,18 +6,35 @@ if __name__ == "__main__":
     model = YOLO("yolo26n.pt")
 
     model_dir = Path("/home/ray/yolo_models/helicopter/track")
-    results = model.train(data="/home/ray/datasets/helicopter/point_detection/tracking/tracking.yaml",
-                          epochs=350, imgsz=1280, device=0, save_dir=str(model_dir), box=12.0,
-                          hsv_v=0.9,
-                          flipud=0.5,
-                          dropout=0.1,
-                          rect=True,
-                          translate=0.25,
-                          optimizer='MuSGD')
+    results = model.train(
+        data="/home/ray/datasets/helicopter/point_detection/tracking/tracking.yaml",
+        epochs=350,
+        imgsz=1280,
+        batch=12,
+        device=0,
+        save_dir=str(model_dir),
+        optimizer='MuSGD',
+        dropout=0.1,
+        hsv_h=0.015,
+        hsv_s=0.7,
+        hsv_v=0.9,
+        flipud=0.5,
+        fliplr=0.5,
+        degrees=45.0,
+        translate=0.3,
+        scale=0.5,
+        perspective=0.001,
+        mosaic=1.0,
+        mixup=0.1,
+    )
 
     best = YOLO(str(model_dir / "weights" / "best.pt"))
     best.export(format='engine',
                 data="/home/ray/datasets/helicopter/point_detection/tracking/tracking.yaml",
-                int8=True,
+                simplify=True,
+                int8=False,
+                half=True,
                 imgsz=[736, 1280],
+                split='train',
+                fraction=1.0,
                 dynamic=False)

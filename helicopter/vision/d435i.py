@@ -92,12 +92,15 @@ class D435i:
 
     @staticmethod
     def set_projector_power(depth_sensor: rs.depth_sensor, power: float):
-        if 0. <= power <= 360:
+        if 0. < power <= 360:
             print(f"Setting projector power to {power}")
             depth_sensor.set_option(rs.option.laser_power, power)
             depth_sensor.set_option(rs.option.emitter_enabled, 1)
+        elif power == 0:
+            print(f"Disabling projector (power was set to 0)")
+            depth_sensor.set_option(rs.option.emitter_enabled, 0)
         else:
-            warnings.warn(f"Specified projector power {power} is invalid. Must be between 0 and 360."
+            warnings.warn(f"Specified projector power {power} is invalid. Must be between 0 and 360 inclusive"
                           f"Projector power setting skipped.")
 
     @staticmethod
@@ -265,7 +268,6 @@ class D435i:
             return accel_data, ts_accel, gyro_data, ts_gyro
 
     def stop(self):
-        print("Closing D435i pipelines")
         if self.enable_motion:
             try:
                 self.imu_pipeline.stop()
@@ -276,3 +278,4 @@ class D435i:
             self.pipeline.stop()
         except RuntimeError:
             pass
+        print("Camera pipelines stopped")

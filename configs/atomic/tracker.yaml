@@ -5,6 +5,8 @@ Tracker:
     _target_: helicopter.vision.tracking.TrackingPointHandler
     detector:
       _target_: helicopter.vision.point_detection.YOLOPointDetector
+      marker_tolerance: 0.005
+      distance_threshold: 3.0
       marker_std_dev: 0.01
       model:
         _target_: helicopter.vision.point_detection.HelicopterYOLO
