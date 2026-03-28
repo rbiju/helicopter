@@ -71,11 +71,8 @@ class TrackingPointHandler:
 
     def register_points(self, points: np.ndarray):
         deduplicated = self.deduplicate(points)
-        final_points = []
 
         for point in deduplicated:
-            final_points.append(point)
-
             if len(self.init_points) < 1:
                 self.add_point(point)
             else:
@@ -85,11 +82,6 @@ class TrackingPointHandler:
                     self.add_point(point)
                 else:
                     self.init_points[closest_point].enqueue(point)
-
-        if len(final_points) == 0:
-            return np.empty((0, 3))
-
-        return np.vstack(final_points)
 
     def get_measured_points(self, ir_frame: np.ndarray, depth_frame: np.ndarray,
                             intrinsics: pyrealsense2.intrinsics) -> tuple[np.ndarray, list[cv2.KeyPoint]] | None:

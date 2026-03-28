@@ -5,9 +5,10 @@ Tracker:
     _target_: helicopter.vision.tracking.TrackingPointHandler
     detector:
       _target_: helicopter.vision.point_detection.YOLOPointDetector
-      marker_tolerance: 0.005
-      distance_threshold: 3.0
+      marker_tolerance: 0.01
+      distance_threshold: 4.0
       marker_std_dev: 0.01
+      margin: 2
       model:
         _target_: helicopter.vision.point_detection.HelicopterYOLO
         model:
@@ -22,7 +23,7 @@ Tracker:
         imgsz:
           - 720
           - 1280
-        conf: 0.05
+        conf: 0.01
     matcher:
       _target_: helicopter.vision.tracking.TrianglePointMatcher
       n: 10
@@ -37,7 +38,7 @@ Tracker:
       - 1280
     projector_power: 0.0
     autoexpose: false
-    exposure_time: 2000
+    exposure_time: 2400
     ema_accel: 1.0
   ukf_factory:
     _target_: helicopter.vision.UKFFactory

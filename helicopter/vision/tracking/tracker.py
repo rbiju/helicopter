@@ -100,21 +100,32 @@ class Tracker:
                 counter += 1
 
         v_B = accel_queue.mean()
+        v_B /= np.linalg.norm(v_B)
         v_W = np.array([0, 0, 1.0])
 
-        self.camera_quat = Rotation.from_rotvec(np.cross(v_B, v_W))
+        axis = np.cross(v_B, v_W)
+        axis_norm = np.linalg.norm(axis)
+
+        angle = np.arctan2(axis_norm, np.dot(v_B, v_W))
+
+        if axis_norm > 1e-6:
+            rotvec = axis * (angle / axis_norm)
+        else:
+            rotvec = np.array([np.pi, 0, 0]) if v_B[2] < 0 else np.zeros(3)
+
+        self.camera_quat = Rotation.from_rotvec(rotvec)
         camera_quat = self.camera_quat.as_quat(canonical=True)
         buffer = np.ndarray(camera_quat.shape, dtype=camera_quat.dtype, buffer=quat_sm.buf)
         np.copyto(buffer, camera_quat)
+        print(f'Initial Camera Acceleration (Normalized): {v_B}')
+        print(f'Camera quaternion initialized: {self.camera_quat.as_rotvec(degrees=True)}')
 
         orientation_iters = 200
         print("Initializing helicopter orientation. Do not move aircraft.")
         counter = 0
-        bad_frames = 0
         first_frame_collected = False
         while counter < orientation_iters:
-            if bad_frames > 50:
-                raise RuntimeError('Helicopter points not visible in 25% of init frames. Check that aircraft is in view.')
+            counter += 1
             frames = self.camera.pipeline.wait_for_frames()
             depth_image, ts_depth, ir_image, ts_ir, laser_state = self.camera.process_frames(frames)
             measure_out = self.point_handler.get_measured_points(ir_frame=ir_image,
@@ -129,19 +140,22 @@ class Tracker:
                 marker_coords, keypoints = measure_out
                 self.point_handler.register_points(marker_coords)
             else:
-                bad_frames += 1
                 continue
-            counter += 1
 
-            self.profiler.start('Init_Matching')
-            r, t = self.point_handler.matcher.get_alignment(self.point_handler.init_points_coords)
-            self.profiler.end('Init_Matching')
+        print(f'{len(self.point_handler.init_points_coords)} initial points detected')
 
-            if self.aircraft is None:
-                self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
+        self.profiler.start('Init_Matching')
+        r, t = self.point_handler.matcher.get_alignment(self.point_handler.init_points_coords)
+        self.profiler.end('Init_Matching')
 
-            self.aircraft.quaternion = self.camera_quat * r
-            self.aircraft.position = self.camera_quat.apply(t)
+        if self.aircraft is None:
+            self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
+
+        self.aircraft.quaternion = self.camera_quat * r
+        self.aircraft.position = self.camera_quat.apply(t)
+
+        print(f'Initialization complete. Aircraft detected @: {self.aircraft.position} \n '
+              f'with orientation {self.aircraft.quaternion.as_rotvec(degrees=True)}')
 
     def loop(self, command_sm: SharedMemory, lock: Lock):
         command_buffer = np.ndarray(shape=(CommandBufferConstants.N,),

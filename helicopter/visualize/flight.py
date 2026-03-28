@@ -67,7 +67,7 @@ class FlightVisualizer(Visualizer):
         self.detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
 
         self.models = {}
-        self.marker_size = 0.04
+        self.marker_size = 0.0427
 
         self.camera_quat = None
 
@@ -138,7 +138,10 @@ class FlightVisualizer(Visualizer):
         return np.array([point[2], -point[0], -point[1]])
 
     @staticmethod
-    def get_marker_quaternion(marker_corners, marker_size_meters, camera_matrix, dist_coeffs) -> tuple[bool, Rotation, np.ndarray]:
+    def get_marker_quaternion(marker_corners,
+                              marker_size_meters,
+                              camera_matrix,
+                              dist_coeffs) -> tuple[bool, Rotation, np.ndarray]:
         half_size = marker_size_meters / 2.0
         obj_points = np.array([
             [-half_size, half_size, 0],

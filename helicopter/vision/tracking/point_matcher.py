@@ -89,6 +89,9 @@ class TrianglePointMatcher(PointMatcher):
         return correspondences
 
     def get_alignment(self, sample_points: np.ndarray) -> tuple[Rotation, np.ndarray]:
+        if len(sample_points) < 3:
+            raise RuntimeError('Need at least 3 points to align')
+
         triangles, samples_lookup = self.compute_triangle_lookup_sample(sample_points)
         correspondences = self.get_top_n_triangle_correspondences(triangles, self.lookup, samples_lookup)
 

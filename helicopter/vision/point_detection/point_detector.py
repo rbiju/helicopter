@@ -126,9 +126,11 @@ class YOLOPointDetector(PointDetector):
                  model: HelicopterYOLO,
                  marker_tolerance: float = 0.01,
                  distance_threshold: float = 0.5,
-                 marker_std_dev: float = 0.003):
+                 marker_std_dev: float = 0.003,
+                 margin: int = 1):
         super().__init__(marker_tolerance, distance_threshold, marker_std_dev)
         self.model = model
+        self.margin = margin
 
     @staticmethod
     def get_refined_keypoints(ir_frame, boxes, margin=2) -> Sequence[cv2.KeyPoint]:
@@ -168,5 +170,5 @@ class YOLOPointDetector(PointDetector):
 
     def detect(self, ir_frame: np.ndarray) -> Sequence[cv2.KeyPoint]:
         boxes = self.model(ir_frame)
-        keypoints = self.get_refined_keypoints(ir_frame, boxes, margin=1)
+        keypoints = self.get_refined_keypoints(ir_frame, boxes, margin=self.margin)
         return keypoints
