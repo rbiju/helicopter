@@ -141,23 +141,23 @@ if __name__ == '__main__':
                 break
 
             frames = camera.pipeline.wait_for_frames()
-            depth_image, ts_depth, ir_image, ts_ir, laser_state = camera.process_frames(frames)
+            video = camera.process_frames(frames)
             frame_count += 1
-            if ir_image is not None:
+            if video.ir_image is not None:
                 profiler.start('E2E')
                 profiler.start("Inference")
                 profiler.start("Detect")
 
-                boxes = model(ir_image)
+                boxes = model(video.ir_image)
                 profiler.end("Inference")
 
                 profiler.start('Keypoints')
-                circles = get_refined_keypoints(ir_image, boxes, margin=2)
+                circles = get_refined_keypoints(video.ir_image, boxes, margin=2)
                 profiler.end("Keypoints")
                 profiler.end("Detect")
 
                 profiler.start("Deproject")
-                points = get_points_coords(depth_image, circles, camera.intrinsics)
+                points = get_points_coords(video.depth_image, circles, camera.intrinsics)
                 profiler.end("Deproject")
                 profiler.end("E2E")
 
@@ -166,8 +166,8 @@ if __name__ == '__main__':
                 else:
                     points, valid, invalid = points
 
-                a = cv2.cvtColor(ir_image, cv2.COLOR_GRAY2RGB)
-                a = cv2.drawKeypoints(ir_image, invalid, a, color=(0, 0, 255), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
+                a = cv2.cvtColor(video.ir_image, cv2.COLOR_GRAY2RGB)
+                a = cv2.drawKeypoints(video.ir_image, invalid, a, color=(0, 0, 255), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
                 a = cv2.drawKeypoints(a, valid, a, color=(0, 255, 0), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
                 detected_images.append(a)
     finally:

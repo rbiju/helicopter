@@ -26,8 +26,10 @@ class FlightStates(Enum):
     KILL_POWER = 7
 
 
+# TODO: add timestamp to buffer
 class Aircraft:
     N: int = 16
+    STATE_N: int = 15
     dtype = np.float64
 
     def __init__(self, buffer: np.ndarray = None, lock: ProcessLock = None):
@@ -115,13 +117,13 @@ class Aircraft:
 
     def get_state_vector(self) -> np.ndarray:
         with self._lock:
-            return self._buffer.copy()[:self.N - 1]
+            return self._buffer.copy()[:self.STATE_N]
 
     def set_state_vector(self, state_vector: np.ndarray):
-        if state_vector.shape != (self.N - 1,):
-            raise ValueError(f"Provided vector of shape {state_vector.shape} does not match size of buffer: {self.N - 1}")
+        if state_vector.shape != (self.STATE_N,):
+            raise ValueError(f"Provided vector of shape {state_vector.shape} does not match size of buffer: {self.STATE_N}")
         with self._lock:
-            np.copyto(self._buffer[:self.N - 1], state_vector)
+            np.copyto(self._buffer[:self.STATE_N], state_vector)
 
     @classmethod
     def from_shared_memory_buffer(cls, buffer: np.ndarray, lock: ProcessLock):

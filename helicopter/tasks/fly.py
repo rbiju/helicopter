@@ -91,7 +91,7 @@ def render_wrapper(ctx: MPContext, ready_event: Event):
 
     try:
         visualizer.initialize(image_sm=ctx.image_sm,
-                              img_shape=ctx.image_dimension,
+                              img_shape=[*ctx.image_dimension, 3],
                               intrinsics_dict=ctx.intrinsics_dict,
                               camera_quat_sm=ctx.quat_sm,
                               lock=ctx.shared_memory_lock,
@@ -133,7 +133,7 @@ class Fly(Task):
             with SharedMemoryManager() as smm:
                 aircraft_dummy = np.zeros(shape=(Aircraft.N,), dtype=np.float64)
                 aircraft_sm = smm.SharedMemory(size=aircraft_dummy.nbytes)
-                image_dummy = np.zeros(self.image_dimension, dtype=np.uint8)
+                image_dummy = np.zeros([*self.image_dimension, 3], dtype=np.uint8)
                 image_sm = smm.SharedMemory(size=image_dummy.nbytes)
                 quat_dummy = np.zeros(4, dtype=np.float64)
                 quat_sm = smm.SharedMemory(size=quat_dummy.nbytes)

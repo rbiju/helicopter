@@ -32,9 +32,9 @@ if __name__ == '__main__':
     images = []
     for i in tqdm(range(25)):
         frames = camera.pipeline.wait_for_frames()
-        depth_image, ts_depth, ir_image, ts_ir, laser_state = camera.process_frames(frames)
+        video = camera.process_frames(frames)
 
-        images.append(ir_image.copy())
+        images.append(video.ir_image.copy())
         time.sleep(0.5)
 
     camera.stop()

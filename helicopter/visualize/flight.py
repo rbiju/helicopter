@@ -170,6 +170,7 @@ class FlightVisualizer(Visualizer):
 
         return True, rotation, tvec
 
+    # TODO: Move aruco detection to tracker. Let the visualizer just handle the models
     def initialize(self, image_sm: SharedMemory, img_shape: list[int], intrinsics_dict: MutableMapping,
                    camera_quat_sm: SharedMemory, lock: Lock, aircraft_lock: Lock):
         if self.aircraft is None:
@@ -238,6 +239,8 @@ class FlightVisualizer(Visualizer):
             )
             self.path_counter += 1
 
+    # TODO: plot state vector to uPlot handles using aircraft timestamp
+    # TODO: display commands being sent
     def loop(self):
         self.is_running = True
         while self.is_running:

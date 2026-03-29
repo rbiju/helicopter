@@ -70,14 +70,14 @@ class Tracker:
         while self.is_running:
             frames = self.camera.pipeline.wait_for_frames()
 
-            depth_image, ts_depth, ir_image, ts_ir, laser_state = self.camera.process_frames(frames)
+            video = self.camera.process_frames(frames)
 
-            if ir_image is not None:
+            if video.ir_image is not None:
                 try:
-                    self.vision_queue.put((ts_depth, ir_image, depth_image), block=False)
+                    self.vision_queue.put((video.depth_ts, video.ir_image, video.depth_image), block=False)
                 except queue.Full:
                     self.vision_queue.get_nowait()
-                    self.vision_queue.put((ts_depth, ir_image, depth_image), block=False)
+                    self.vision_queue.put((video.depth_ts, video.ir_image, video.depth_image), block=False)
 
 
     def initialize(self, quat_sm: SharedMemory,
@@ -127,16 +127,17 @@ class Tracker:
         while counter < orientation_iters:
             counter += 1
             frames = self.camera.pipeline.wait_for_frames()
-            depth_image, ts_depth, ir_image, ts_ir, laser_state = self.camera.process_frames(frames)
-            measure_out = self.point_handler.get_measured_points(ir_frame=ir_image,
-                                                                 depth_frame=depth_image,
+            video = self.camera.process_frames(frames)
+            if not first_frame_collected:
+                first_frame_buffer = np.ndarray(video.color_image.shape, dtype=video.color_image.dtype,
+                                                buffer=image_sm.buf)
+                np.copyto(first_frame_buffer, video.color_image)
+                first_frame_collected = True
+
+            measure_out = self.point_handler.get_measured_points(ir_frame=video.ir_image,
+                                                                 depth_frame=video.depth_image,
                                                                  intrinsics=self.camera.intrinsics)
             if measure_out is not None:
-                if not first_frame_collected:
-                    first_frame_buffer = np.ndarray(ir_image.shape, dtype=ir_image.dtype, buffer=image_sm.buf)
-                    np.copyto(first_frame_buffer, ir_image)
-                    first_frame_collected = True
-
                 marker_coords, keypoints = measure_out
                 self.point_handler.register_points(marker_coords)
             else:
@@ -157,6 +158,7 @@ class Tracker:
         print(f'Initialization complete. Aircraft detected @: {self.aircraft.position} \n '
               f'with orientation {self.aircraft.quaternion.as_rotvec(degrees=True)}')
 
+    # TODO: add timestamp to aircraft buffer
     def loop(self, command_sm: SharedMemory, lock: Lock):
         command_buffer = np.ndarray(shape=(CommandBufferConstants.N,),
                                     dtype=CommandBufferConstants.dtype,

@@ -174,14 +174,14 @@ class Scanner:
         while self.is_running:
             frames = self.device.pipeline.wait_for_frames()
 
-            depth_image, ts_depth, ir_image, ts_ir, laser_state = self.device.process_frames(frames)
+            video = self.device.process_frames(frames)
 
-            if ir_image is not None:
+            if video.ir_image is not None:
                 try:
-                    self.vision_queue.put((ts_depth, ir_image, depth_image), block=False)
+                    self.vision_queue.put((video.depth_ts, video.ir_image, video.depth_image), block=False)
                 except queue.Full:
                     self.vision_queue.get_nowait()
-                    self.vision_queue.put((ts_depth, ir_image, depth_image), block=False)
+                    self.vision_queue.put((video.depth_ts, video.ir_image, video.depth_image), block=False)
 
     def loop(self, headless=True):
         self.device.time_queue.clear()

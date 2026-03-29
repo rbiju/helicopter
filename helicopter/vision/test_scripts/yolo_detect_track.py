@@ -86,9 +86,12 @@ if __name__ == '__main__':
     imgsz = [720, 1280]
     camera = D435i(video_resolution=imgsz,
                    video_rate=30,
+                   enable_rgb=True,
                    projector_power=0.,
                    autoexpose=False,
-                   exposure_time=2400)
+                   exposure_time=3600,
+                   autoexpose_rgb=False,
+                   exposure_time_rgb=2400)
 
     model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/track_20260327_0/weights/best.engine',
                                       task='detect'),
@@ -110,36 +113,41 @@ if __name__ == '__main__':
                 break
 
             frames = camera.pipeline.wait_for_frames()
-            depth_image, ts_depth, ir_image, ts_ir, laser_state = camera.process_frames(frames)
+            video = camera.process_frames(frames)
             frame_count += 1
-            if ir_image is not None:
+            if video.ir_image is not None:
                 profiler.start('E2E')
                 profiler.start("Inference")
                 profiler.start("Detect")
 
-                boxes = model(ir_image)
+                boxes = model(video.ir_image)
                 profiler.end("Inference")
 
                 profiler.start('Keypoints')
-                circles = get_refined_keypoints(ir_image, boxes, margin=2)
+                circles = get_refined_keypoints(video.ir_image, boxes, margin=2)
                 profiler.end("Keypoints")
                 profiler.end("Detect")
 
                 profiler.start("Deproject")
-                points = get_points_coords(depth_image, circles, camera.intrinsics)
+                points = get_points_coords(video.depth_image, circles, camera.intrinsics)
                 profiler.end("Deproject")
                 profiler.end("E2E")
 
-                if points is None:
-                    a = cv2.cvtColor(ir_image, cv2.COLOR_GRAY2RGB)
-                    detected_images.append(a)
-                else:
-                    points, valid, invalid = points
+                canvas = cv2.cvtColor(video.ir_image, cv2.COLOR_GRAY2RGB)
 
-                    a = cv2.cvtColor(ir_image, cv2.COLOR_GRAY2RGB)
-                    a = cv2.drawKeypoints(ir_image, invalid, a, color=(0, 0, 255), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
-                    a = cv2.drawKeypoints(a, valid, a, color=(0, 255, 0), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
-                    detected_images.append(a)
+                if points is None:
+                    detected_images.append(canvas)
+                else:
+                    coords, valid, invalid = points
+                    canvas = cv2.drawKeypoints(canvas, invalid, None,
+                                               color=(0, 0, 255),
+                                               flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
+                    canvas = cv2.drawKeypoints(canvas, valid, None,
+                                               color=(0, 255, 0),
+                                               flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
+
+                    detected_images.append(canvas)
+
     finally:
         camera.stop()
         quitter.stop()

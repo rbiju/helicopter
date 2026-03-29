@@ -1,9 +1,21 @@
-import warnings
 from collections import deque
+from dataclasses import dataclass
 from typing import Optional
+import warnings
 
 import numpy as np
 import pyrealsense2 as rs
+
+
+@dataclass
+class VideoFrameOutput:
+    depth_image: np.ndarray
+    ir_image: np.ndarray
+    color_image: np.ndarray
+    depth_ts: float
+    ir_ts: float
+    color_ts: float
+    laser_state: bool
 
 
 class D435i:
@@ -17,7 +29,9 @@ class D435i:
                  projector_power: float = 150.,
                  toggle_projector: bool = False,
                  autoexpose: bool = True,
-                 exposure_time: int = 800,
+                 exposure_time: int = 2400,
+                 autoexpose_rgb: bool = False,
+                 exposure_time_rgb: int = 2400,
                  ema_accel: float = 1.0,
                  ema_gyro: float = 1.0,):
         self.ACCEL_RATE = accel_rate
@@ -35,6 +49,9 @@ class D435i:
         self.COLOR_RESOLUTION = video_resolution
         self.COLOR_RATE = video_rate
 
+        self.enable_rgb = enable_rgb
+        self.enable_motion = enable_motion
+
         # Sensor setup
         serial = self.get_device_serial()
         ctx = rs.context()
@@ -42,8 +59,13 @@ class D435i:
         depth_sensor = device.first_depth_sensor()
         depth_sensor.set_option(rs.option.visual_preset, 4)
         self.depth_scale = depth_sensor.get_depth_scale()
-        self.set_exposure(depth_sensor, autoexposure=autoexpose, exposure_time=exposure_time)
+        self.set_ir_exposure(depth_sensor, autoexposure=autoexpose, exposure_time=exposure_time)
         self.set_projector_power(depth_sensor, projector_power)
+        if enable_rgb:
+            color_sensor = device.first_color_sensor()
+            self.set_color_exposure(color_sensor,
+                                    autoexposure=autoexpose_rgb,
+                                    exposure_time=exposure_time_rgb)
 
         self.global_time = global_time
 
@@ -104,7 +126,7 @@ class D435i:
                           f"Projector power setting skipped.")
 
     @staticmethod
-    def set_exposure(depth_sensor: rs.depth_sensor, autoexposure: bool, exposure_time: int):
+    def set_ir_exposure(depth_sensor: rs.depth_sensor, autoexposure: bool, exposure_time: int):
         if not autoexposure:
             depth_sensor.set_option(rs.option.enable_auto_exposure, 0)
             depth_sensor.set_option(rs.option.exposure, exposure_time)
@@ -114,6 +136,18 @@ class D435i:
             depth_sensor.set_option(rs.option.enable_auto_exposure, 1)
 
             print("Auto-exposure enabled")
+
+    @staticmethod
+    def set_color_exposure(color_sensor: rs.color_sensor, autoexposure: bool, exposure_time: int):
+        if not autoexposure:
+            color_sensor.set_option(rs.option.enable_auto_exposure, 0)
+            color_sensor.set_option(rs.option.exposure, exposure_time)
+
+            print(f"RGB Auto-exposure disabled and exposure set to {exposure_time}")
+        else:
+            color_sensor.set_option(rs.option.enable_auto_exposure, 1)
+
+            print("RGB Auto-exposure enabled")
 
     @staticmethod
     def get_intrinsics(serial, stream_type=rs.stream.infrared, stream_index=1, width=640, height=480, fps=30,
@@ -208,11 +242,12 @@ class D435i:
             depth_sensor.set_option(rs.option.global_time_enabled, 0)
 
     def process_frames(self, frames: rs.composite_frame):
-        frames = self.align.process(frames)
+        aligned = self.align.process(frames)
 
-        depth_frame = frames.get_depth_frame()
+        depth_frame = aligned.get_depth_frame()
         laser_state = (depth_frame.get_frame_metadata(rs.frame_metadata_value.frame_laser_power_mode) == 1)
-        ir_frame = frames.get_infrared_frame(1)
+        ir_frame = aligned.get_infrared_frame(1)
+        color_frame = aligned.get_color_frame()
 
         if depth_frame:
             depth_image = np.asanyarray(depth_frame.get_data()).copy()
@@ -227,8 +262,20 @@ class D435i:
         else:
             ir_image = None
             ts_ir = None
+        if color_frame:
+            color_image = np.asanyarray(color_frame.get_data()).copy()
+            ts_color = float(color_frame.get_timestamp()) / 1000.
+        else:
+            color_image = None
+            ts_color = None
 
-        return depth_image, ts_depth, ir_image, ts_ir, laser_state
+        return VideoFrameOutput(depth_image=depth_image,
+                                depth_ts=ts_depth,
+                                ir_image=ir_image,
+                                ir_ts=ts_ir,
+                                color_image=color_image,
+                                color_ts=ts_color,
+                                laser_state=laser_state)
 
     def process_imu_frames(self, frames, ema_accel: Optional[float] = None, ema_gyro: Optional[float] = None):
         accel_data = None
