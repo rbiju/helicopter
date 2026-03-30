@@ -61,11 +61,14 @@ class D435i:
         self.depth_scale = depth_sensor.get_depth_scale()
         self.set_ir_exposure(depth_sensor, autoexposure=autoexpose, exposure_time=exposure_time)
         self.set_projector_power(depth_sensor, projector_power)
+
+        self.color_ir_extrinsics = None
         if enable_rgb:
             color_sensor = device.first_color_sensor()
             self.set_color_exposure(color_sensor,
                                     autoexposure=autoexpose_rgb,
                                     exposure_time=exposure_time_rgb)
+            self.color_ir_extrinsics = self.get_color_to_ir_extrinsics()
 
         self.global_time = global_time
 
@@ -171,6 +174,49 @@ class D435i:
                             return v_profile.get_intrinsics()
 
         raise RuntimeError(f"Stream configuration not found for device {serial}")
+
+    def get_color_to_ir_extrinsics(self, color_format=rs.format.rgb8, ir_format=rs.format.y8, ir_index=1):
+        if not self.enable_rgb:
+            raise RuntimeError("RGB stream is not enabled. Cannot calculate color-to-IR extrinsics.")
+
+        serial = self.get_device_serial()
+        ctx = rs.context()
+        devices = [dev for dev in ctx.devices if dev.get_info(rs.camera_info.serial_number) == serial]
+        if not devices:
+            raise RuntimeError(f"Device {serial} not found")
+
+        device = devices[0]
+        color_profile = None
+        ir_profile = None
+
+        color_width, color_height = self.COLOR_RESOLUTION
+        ir_width, ir_height = self.IR_RESOLUTION
+
+        for sensor in device.query_sensors():
+            for profile in sensor.get_stream_profiles():
+                if (profile.stream_type() == rs.stream.color and
+                        profile.format() == color_format and
+                        profile.fps() == self.COLOR_RATE):
+
+                    if profile.is_video_stream_profile():
+                        v_profile = profile.as_video_stream_profile()
+                        if v_profile.width() == color_width and v_profile.height() == color_height:
+                            color_profile = v_profile
+
+                if (profile.stream_type() == rs.stream.infrared and
+                        profile.stream_index() == ir_index and
+                        profile.format() == ir_format and
+                        profile.fps() == self.IR_RATE):
+
+                    if profile.is_video_stream_profile():
+                        v_profile = profile.as_video_stream_profile()
+                        if v_profile.width() == ir_width and v_profile.height() == ir_height:
+                            ir_profile = v_profile
+
+                if color_profile and ir_profile:
+                    return color_profile.get_extrinsics_to(ir_profile)
+
+        raise RuntimeError(f"Extrinsics not found for device {serial}")
 
     def get_camera_pipeline(self, serial, enable_rgb: bool):
         ctx = rs.context()

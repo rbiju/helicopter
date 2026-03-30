@@ -1,13 +1,10 @@
-from collections.abc import MutableMapping
 import time
 from multiprocessing.synchronize import Lock, Event
 from multiprocessing.shared_memory import SharedMemory
+from multiprocessing import Queue
 
 import numpy as np
 from scipy.spatial.transform import Rotation
-
-import cv2
-import pyrealsense2 as rs
 
 from helicopter.configuration import HydraConfigurable
 from helicopter.aircraft import Aircraft
@@ -57,17 +54,11 @@ class FlightVisualizer(Visualizer):
 
         helicopter_mesh = HelicopterModel().mesh()
         self.helicopter_handle = self.add_mesh(helicopter_mesh, '/camera')
+        self.models = {}
 
         self.point_idxs = []
 
         self.last_position = np.array([0.0, 0.0, 0.0])
-
-        aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-        parameters = cv2.aruco.DetectorParameters()
-        self.detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
-
-        self.models = {}
-        self.marker_size = 0.0427
 
         self.camera_quat = None
 
@@ -81,142 +72,23 @@ class FlightVisualizer(Visualizer):
     def kill_flight(self):
         self.kill_signal.set()
 
-    @staticmethod
-    def unpack_intrinsics(intrinsics_dict: MutableMapping) -> rs.intrinsics:
-        intrinsics = rs.intrinsics()
 
-        intrinsics.width = intrinsics_dict['width']
-        intrinsics.height = intrinsics_dict['height']
-        intrinsics.ppx = intrinsics_dict['ppx']
-        intrinsics.ppy = intrinsics_dict['ppy']
-        intrinsics.fx = intrinsics_dict['fx']
-        intrinsics.fy = intrinsics_dict['fy']
-        intrinsics.model = rs.distortion(intrinsics_dict['model'])
-        intrinsics.coeffs = intrinsics_dict['coeffs']
-
-        return intrinsics
-
-    @staticmethod
-    def realsense_to_opencv_intrinsics(rs_intrinsics: rs.intrinsics):
-        fx = rs_intrinsics.fx
-        fy = rs_intrinsics.fy
-        cx = rs_intrinsics.ppx
-        cy = rs_intrinsics.ppy
-
-        camera_matrix = np.array([
-            [fx, 0, cx],
-            [0, fy, cy],
-            [0, 0, 1]
-        ], dtype=np.float64)
-
-        dist_coeffs = np.array(rs_intrinsics.coeffs, dtype=np.float64)
-
-        return camera_matrix, dist_coeffs
-
-    @staticmethod
-    def get_marker_depth(marker_corners, _id, depth_array, intrinsics, window_size=5):
-        center_x = int(np.mean(marker_corners[:, 0]))
-        center_y = int(np.mean(marker_corners[:, 1]))
-
-        height, width = depth_array.shape
-
-        half_w = window_size // 2
-        y_min, y_max = max(0, center_y - half_w), min(height, center_y + half_w + 1)
-        x_min, x_max = max(0, center_x - half_w), min(width, center_x + half_w + 1)
-
-        roi = depth_array[y_min:y_max, x_min:x_max]
-
-        valid_depths = roi[roi > 0]
-
-        if len(valid_depths) == 0:
-            raise RuntimeError(f"No valid depth points found for marker id {_id}")
-
-        depth = np.median(valid_depths)
-        point = rs.rs2_deproject_pixel_to_point(intrinsics,
-                                                pixel=[np.mean(marker_corners[:, 0]), np.mean(marker_corners[:, 1])],
-                                                depth=depth)
-        return np.array([point[2], -point[0], -point[1]])
-
-    @staticmethod
-    def get_marker_quaternion(marker_corners,
-                              marker_size_meters,
-                              camera_matrix,
-                              dist_coeffs) -> tuple[bool, Rotation, np.ndarray]:
-        half_size = marker_size_meters / 2.0
-        obj_points = np.array([
-            [-half_size, half_size, 0],
-            [half_size, half_size, 0],
-            [half_size, -half_size, 0],
-            [-half_size, -half_size, 0]
-        ], dtype=np.float32)
-
-        img_points = marker_corners[0].astype(np.float32)
-
-        success, rvec, tvec = cv2.solvePnP(
-            obj_points,
-            img_points,
-            camera_matrix,
-            dist_coeffs,
-            flags=cv2.SOLVEPNP_IPPE_SQUARE
-        )
-
-        if not success:
-            return False, Rotation.from_rotvec(np.array([0, 0, 0.0])), np.array([0, 0, 0.0])
-
-        rvec_flat = rvec.flatten()
-
-        rotation = Rotation.from_rotvec(rvec_flat)
-        rotation = coordinate_transform * rotation
-
-        return True, rotation, tvec
-
-    # TODO: Move aruco detection to tracker. Let the visualizer just handle the models
-    def initialize(self, image_sm: SharedMemory, img_shape: list[int], intrinsics_dict: MutableMapping,
-                   camera_quat_sm: SharedMemory, lock: Lock, aircraft_lock: Lock):
+    def initialize(self, aruco_queue: Queue, aircraft_lock: Lock):
         if self.aircraft is None:
             self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
 
-        local_intrinsics_dict = dict(intrinsics_dict)
-        intrinsics = self.unpack_intrinsics(local_intrinsics_dict)
+        aruco_dict = aruco_queue.get()
+        for marker_id in aruco_dict.keys():
+            rotation = aruco_dict[marker_id]['rotation']
+            position = aruco_dict[marker_id]['position']
 
-        ir_frame = np.empty(img_shape, dtype=np.int8)
-        ir_buffer = np.ndarray(img_shape, dtype=np.int8, buffer=image_sm.buf)
-        with lock:
-            np.copyto(ir_frame, ir_buffer)
+            mesh_obj: ARUCOMarkerModel = aruco_registry[marker_id]
+            mesh = mesh_obj.mesh()
 
-        if self.camera_quat is None:
-            camera_quat = np.empty((4,), dtype=np.float64)
-            camera_quat_buffer = np.ndarray((4,), dtype=np.float64, buffer=camera_quat_sm.buf)
-            with lock:
-                np.copyto(camera_quat, camera_quat_buffer)
-
-            self.camera_quat = Rotation.from_quat(camera_quat)
-
-        camera_matrix, dist_coeffs = self.realsense_to_opencv_intrinsics(intrinsics)
-        corners, ids, rejected = self.detector.detectMarkers(ir_frame)
-        if ids is not None:
-            for marker_id, marker_corners in zip(ids, corners):
-                marker_id_int = int(marker_id[0])
-                if marker_id_int not in aruco_registry.keys():
-                    print(f'Warning: ARUCO marker with id {marker_id_int} not registered. Skipping.')
-                    continue
-                mesh_obj: ARUCOMarkerModel = aruco_registry[marker_id_int]
-                mesh = mesh_obj.mesh()
-
-                success, marker_rotation, marker_position = self.get_marker_quaternion(marker_corners,
-                                                                                   self.marker_size,
-                                                                                   camera_matrix,
-                                                                                   dist_coeffs)
-                if not success:
-                    print(f"Warning: Failed to solve PnP for marker ID {marker_id_int}. Skipping.")
-                    continue
-
-                corrected_marker_point = self.camera_quat.apply(marker_position)
-                total_rotation = self.camera_quat * marker_rotation
-                mesh_handle = self.add_mesh(mesh, f'/aruco_mesh/{marker_id_int}',
-                                            position=(corrected_marker_point - mesh_obj.marker_offset),
-                                            orientation=total_rotation.as_quat(canonical=True))
-                self.models[marker_id_int] = mesh_handle
+            mesh_handle = self.add_mesh(mesh, f'/aruco_mesh/{marker_id}',
+                                        position=(position - mesh_obj.marker_offset),
+                                        orientation=rotation.as_quat(canonical=True))
+            self.models[marker_id] = mesh_handle
 
         print("Aruco markers initialized")
 
