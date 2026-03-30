@@ -265,6 +265,8 @@ class Tracker:
                     self.first_frame = True
                     self.first_frame_time = vision_time
 
+                vision_time = vision_time - self.first_frame_time
+
             except queue.Empty:
                 time.sleep(0.001)
                 continue

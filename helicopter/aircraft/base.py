@@ -13,6 +13,7 @@ IDX_V = slice(10, 13)
 IDX_BATTERY = slice(13, 14)
 IDX_TRIM = slice(14, 15)
 IDX_STATE = slice(15, 16)
+IDX_TIME = slice(16, 17)
 
 
 class FlightStates(Enum):
@@ -26,7 +27,6 @@ class FlightStates(Enum):
     KILL_POWER = 7
 
 
-# TODO: add timestamp to buffer
 class Aircraft:
     N: int = 16
     STATE_N: int = 15
@@ -114,6 +114,16 @@ class Aircraft:
     def flight_state(self, state: FlightStates):
         with self._lock:
             self._buffer[IDX_STATE] = np.array([float(state.value)], dtype=self.dtype)
+
+    @property
+    def timestamp(self) -> float:
+        with self._lock:
+            return float(self._buffer[IDX_TIME][0])
+
+    @timestamp.setter
+    def timestamp(self, time: float):
+        with self._lock:
+            self._buffer[IDX_TIME] = np.array([time], dtype=self.dtype)
 
     def get_state_vector(self) -> np.ndarray:
         with self._lock:

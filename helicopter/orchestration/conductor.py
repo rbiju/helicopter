@@ -1,4 +1,3 @@
-import time
 from multiprocessing.shared_memory import SharedMemory
 from multiprocessing.synchronize import Lock, Event
 
@@ -69,7 +68,6 @@ class FlightConductor:
             flightplan = self.oracle.get_active_flightplan()
             waypoint = flightplan.waypoint
         """
-        flight_start_time = time.time()
         command_buffer = np.ndarray(shape=(CommandBufferConstants.N,),
                                     dtype=CommandBufferConstants.dtype,
                                     buffer=command_sm.buf)
@@ -77,7 +75,7 @@ class FlightConductor:
             if self.kill_signal.is_set():
                 raise RuntimeError('Conductor detected kill signal. Shutting down')
 
-            timestamp = time.time() - flight_start_time
+            timestamp = self.aircraft.timestamp
             self.aircraft.flight_state = self.oracle.active_flight_state(timestamp)
             r, t = self.aircraft.quaternion, self.aircraft.position
             self.oracle.update(r, t, timestamp=timestamp)
