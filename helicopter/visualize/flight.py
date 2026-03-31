@@ -11,7 +11,7 @@ from helicopter.aircraft import Aircraft
 from helicopter.utils import HelicopterModel
 
 from .base import Visualizer
-from .aruco_registry import ARUCOMarkerModel, aruco_registry
+from .marker_registry import MUTUALLY_EXCLUSIVE_IDS, MarkerModel, model_registry, GameTableModel
 
 
 CAM_TO_BODY_MATRIX = np.array([
@@ -26,12 +26,15 @@ coordinate_transform = Rotation.from_matrix(CAM_TO_BODY_MATRIX)
 class FlightVisualizer(Visualizer):
     def __init__(self, aircraft_sm: SharedMemory,
                  kill_signal: Event,
+                 board_pieces: list[int],
                  fps: float = 30.0):
         super().__init__()
         self.aircraft_buffer = np.ndarray(shape=(Aircraft.N,),
                                           dtype=Aircraft.dtype,
                                           buffer=aircraft_sm.buf)
         self.aircraft = None
+
+        self.board_pieces = self.validate_board_pieces(board_pieces)
 
         self.server.initial_camera.position = (-0.25, -0.5, 0.1)
         self.server.initial_camera.look_at = (0.0, 0.0, 0.0)
@@ -72,28 +75,14 @@ class FlightVisualizer(Visualizer):
     def kill_flight(self):
         self.kill_signal.set()
 
+    @staticmethod
+    def validate_board_pieces(board_pieces: list[int]):
+        for marker_set in MUTUALLY_EXCLUSIVE_IDS.keys():
+            mut_ex_markers = MUTUALLY_EXCLUSIVE_IDS[marker_set]
+            if len(set(mut_ex_markers).intersection(board_pieces)) > 1:
+                raise RuntimeError(f'Multiple markers from mutually exclusive set {marker_set} found')
 
-    def initialize(self, aruco_queue: Queue, aircraft_lock: Lock):
-        if self.aircraft is None:
-            self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
-
-        aruco_dict = aruco_queue.get()
-        for marker_id in aruco_dict.keys():
-            rotation = aruco_dict[marker_id]['rotation']
-            position = aruco_dict[marker_id]['position']
-
-            mesh_obj: ARUCOMarkerModel = aruco_registry[marker_id]
-            mesh = mesh_obj.mesh()
-
-            mesh_handle = self.add_mesh(mesh, f'/aruco_mesh/{marker_id}',
-                                        position=(position - mesh_obj.marker_offset),
-                                        orientation=rotation.as_quat(canonical=True))
-            self.models[marker_id] = mesh_handle
-
-        print("Aruco markers initialized")
-
-        self.update_helicopter(self.aircraft.quaternion, self.aircraft.position)
-
+        return board_pieces
 
     def update_helicopter(self, quat: Rotation, translation: np.ndarray):
         total_rotation = self.camera_quat * quat
@@ -110,6 +99,41 @@ class FlightVisualizer(Visualizer):
                 line_width=2.0,
             )
             self.path_counter += 1
+
+    def initialize(self, marker_queue: Queue, origin_queue: Queue, aircraft_lock: Lock):
+        if self.aircraft is None:
+            self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
+
+        aruco_dict = marker_queue.get()
+        for marker_id in aruco_dict.keys():
+            mesh_obj: MarkerModel = model_registry[marker_id]
+            if isinstance(mesh_obj, GameTableModel):
+                if marker_id in self.board_pieces:
+                    origin_dict = {'id': marker_id, 'position': mesh_obj.marker_offset, 'rotation': mesh_obj.marker_rotation}
+                    origin_queue.put(origin_dict)
+
+        time.sleep(1.0)
+
+        for marker_id in aruco_dict.keys():
+            rotation = aruco_dict[marker_id]['rotation']
+            position = aruco_dict[marker_id]['position']
+            if marker_id in self.board_pieces:
+                mesh_obj: MarkerModel = model_registry[marker_id]
+                mesh = mesh_obj.mesh()
+                if isinstance(mesh_obj, GameTableModel):
+                    mesh_handle = self.add_mesh(mesh, f'/game_table/{marker_id}',
+                                                position=(position - mesh_obj.marker_offset),
+                                                orientation=rotation.as_quat(canonical=True))
+
+                mesh = mesh_obj.mesh()
+
+                mesh_handle = self.add_mesh(mesh, f'/aruco_mesh/{marker_id}',
+                                            position=(position - mesh_obj.marker_offset),
+                                            orientation=rotation.as_quat(canonical=True))
+                self.models[marker_id] = mesh_handle
+
+        self.update_helicopter(self.aircraft.quaternion, self.aircraft.position)
+        print("Visualizer initialized")
 
     # TODO: plot state vector to uPlot handles using aircraft timestamp
     # TODO: display commands being sent

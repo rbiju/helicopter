@@ -5,8 +5,10 @@ from scipy.spatial.transform import Rotation
 
 import trimesh
 
+MUTUALLY_EXCLUSIVE_IDS = {"GameTable": [0, 1, 2]}
 
-class ARUCOMarkerModel(ABC):
+
+class MarkerModel(ABC):
     def __init__(self):
         pass
 
@@ -32,14 +34,14 @@ class ARUCOMarkerModel(ABC):
     def marker_rotation(self) -> Rotation:
         return Rotation.from_quat(np.array([0, 0, 0, 1.0]))
 
-class ARUCOModelRegistry:
+class ModelRegistry:
     def __init__(self):
         self._classes = {}
 
     def register(self):
         def decorator(cls):
-            if not issubclass(cls, ARUCOMarkerModel):
-                raise ValueError("Only ARUCOMarkerModel objects should be registered here.")
+            if not issubclass(cls, MarkerModel):
+                raise ValueError("Only MarkerModel objects should be registered here.")
             key = cls.id
             if key in self._classes:
                 raise ValueError(f"Model with id '{key}' already registered.")
@@ -55,11 +57,22 @@ class ARUCOModelRegistry:
         return list(self._classes.keys())
 
 
-aruco_registry = ARUCOModelRegistry()
+model_registry = ModelRegistry()
 
 
-@aruco_registry.register()
-class GameTableModelLongSide(ARUCOMarkerModel):
+class GameTableModel(MarkerModel, ABC):
+    def __init__(self):
+        super().__init__()
+
+    def mesh(self) -> trimesh.Trimesh:
+        obj_path: str = 'assets/objects/table/table.obj'
+
+        mesh = trimesh.load_mesh(obj_path)
+        return mesh
+
+
+@model_registry.register()
+class GameTableModelTopSide(GameTableModel):
     def __init__(self):
         super().__init__()
 
@@ -67,18 +80,15 @@ class GameTableModelLongSide(ARUCOMarkerModel):
     def id(self) -> int:
         return 0
 
-    def mesh(self) -> trimesh.Trimesh:
-        obj_path: str = 'assets/objects/table/table.obj'
-
-        mesh = trimesh.load_mesh(obj_path)
-        return mesh
-
     def marker_offset(self) -> np.ndarray:
-        return np.array([-0.355, 0.6085, 0.02])
+        return np.array([-0.33, 0.58, 0.0])
+
+    def marker_rotation(self) -> Rotation:
+        return Rotation.from_euler('Y', [-90], degrees=True)
 
 
-@aruco_registry.register()
-class GameTableModelShortSide(ARUCOMarkerModel):
+@model_registry.register()
+class GameTableModelLongSide(GameTableModel):
     def __init__(self):
         super().__init__()
 
@@ -86,19 +96,21 @@ class GameTableModelShortSide(ARUCOMarkerModel):
     def id(self) -> int:
         return 1
 
-    def mesh(self) -> trimesh.Trimesh:
-        obj_path: str = 'assets/objects/table/table.obj'
+    def marker_offset(self) -> np.ndarray:
+        return np.array([-0.355, 0.605, 0.025])
 
-        mesh = trimesh.load_mesh(obj_path)
+    def marker_rotation(self) -> Rotation:
+        return Rotation.from_euler('Z', [-90], degrees=True)
 
-        rotation = Rotation.from_rotvec(np.array([0.0, 0.0, np.pi / 2]))
-        transform = np.zeros((4, 4))
-        transform[:3, :3] = Rotation.as_matrix(rotation)
-        transform[3, 3] = 1.0
 
-        mesh.apply_transform(transform)
+@model_registry.register()
+class GameTableModelShortSide(GameTableModel):
+    def __init__(self):
+        super().__init__()
 
-        return mesh
+    @property
+    def id(self) -> int:
+        return 2
 
     def marker_offset(self) -> np.ndarray:
-        return np.array([-0.6085, -0.355, 0.02])
+        return np.array([-0.355, 0.605, 0.025])

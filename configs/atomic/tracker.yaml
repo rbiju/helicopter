@@ -32,6 +32,7 @@ Tracker:
   camera:
     _target_: helicopter.vision.D435i
     enable_motion: true
+    enable_rgb: true
     video_rate: 30
     video_resolution:
       - 720
@@ -39,6 +40,8 @@ Tracker:
     projector_power: 0.0
     autoexpose: false
     exposure_time: 2400
+    autoexpose_rgb: false
+    exposure_time_rgb: 500
     ema_accel: 1.0
   ukf_factory:
     _target_: helicopter.vision.UKFFactory

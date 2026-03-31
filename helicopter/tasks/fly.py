@@ -23,8 +23,8 @@ class MPContext:
     start_event: Event
     shutdown_event: Event
     command_sm: SharedMemory
-    aruco_queue: mp.Queue
-    vision_ready: Event
+    marker_queue: mp.Queue
+    origin_queue: mp.Queue
     aircraft_lock: Lock
     shared_memory_lock: Lock
     kill_signal: Event
@@ -58,8 +58,9 @@ def vision_wrapper(ctx: MPContext, ready_event: Event):
                                kill_signal=ctx.kill_signal)
 
     try:
-        tracker.initialize(aruco_queue=ctx.aruco_queue,
-                           aircraft_lock=ctx.aircraft_lock)
+        tracker.initialize(marker_queue=ctx.marker_queue,
+                           origin_queue=ctx.origin_queue,
+                           aircraft_lock=ctx.aircraft_lock, )
         ready_event.set()
         ctx.start_event.wait()
         tracker.loop(command_sm=ctx.command_sm,
@@ -81,10 +82,9 @@ def render_wrapper(ctx: MPContext, ready_event: Event):
     visualizer: FlightVisualizer = visualizer(aircraft_sm=ctx.aircraft_sm,
                                               kill_signal=ctx.kill_signal)
 
-    ctx.vision_ready.wait()
-
     try:
-        visualizer.initialize(aruco_queue=ctx.aruco_queue,
+        visualizer.initialize(marker_queue=ctx.marker_queue,
+                              origin_queue=ctx.origin_queue,
                               aircraft_lock=ctx.aircraft_lock)
         ready_event.set()
         ctx.start_event.wait()
@@ -127,15 +127,16 @@ class Fly(Task):
             sm_lock = mp.Lock()
             aircraft_lock = mp.Lock()
             kill_signal = mp.Event()
-            aruco_queue = mp.Queue()
+            marker_queue = mp.Queue()
+            origin_queue = mp.Queue()
 
             ctx = MPContext(aircraft_sm=aircraft_sm,
                             configuration_path=configuration_path,
                             start_event=start_event,
                             shutdown_event=shutdown_event,
                             command_sm=command_sm,
-                            vision_ready=vision_ready,
-                            aruco_queue=aruco_queue,
+                            marker_queue=marker_queue,
+                            origin_queue=origin_queue,
                             aircraft_lock=aircraft_lock,
                             shared_memory_lock=sm_lock,
                             kill_signal=kill_signal)

@@ -189,8 +189,8 @@ class D435i:
         color_profile = None
         ir_profile = None
 
-        color_width, color_height = self.COLOR_RESOLUTION
-        ir_width, ir_height = self.IR_RESOLUTION
+        color_height, color_width = self.COLOR_RESOLUTION
+        ir_height, ir_width = self.IR_RESOLUTION
 
         for sensor in device.query_sensors():
             for profile in sensor.get_stream_profiles():
@@ -243,11 +243,6 @@ class D435i:
                                             self.IR_RESOLUTION[0],
                                             self.IR_RATE, rs.format.y8)
 
-        print("Successfully retrieved IR Intrinsics:")
-        print(f"  Resolution: {ir_intrinsics.width}x{ir_intrinsics.height}")
-        print(f"  Focal Length (fx, fy): ({ir_intrinsics.fx:.2f}, {ir_intrinsics.fy:.2f})")
-        print(f"  Principal Point (cx, cy): ({ir_intrinsics.ppx:.2f}, {ir_intrinsics.ppy:.2f})")
-
         return pipeline, config, ir_intrinsics
 
     def get_imu_pipeline(self, serial):
@@ -278,6 +273,10 @@ class D435i:
             else:
                 motion_sensor.set_option(rs.option.global_time_enabled, 0)
 
+            print("--- Active Motion Streams ---")
+            for stream in imu_profile.get_streams():
+                print(f"{stream.stream_type()} | FPS: {stream.fps()} | Format: {stream.format()}")
+
         profile = self.pipeline.start(self.config)
         device = profile.get_device()
         depth_sensor = device.first_depth_sensor()
@@ -286,6 +285,14 @@ class D435i:
             depth_sensor.set_option(rs.option.global_time_enabled, 1)
         else:
             depth_sensor.set_option(rs.option.global_time_enabled, 0)
+
+        print("--- Active Video Streams ---")
+        for stream in profile.get_streams():
+            if stream.is_video_stream_profile():
+                v = stream.as_video_stream_profile()
+                print(f"{v.stream_type()} | {v.width()}x{v.height()} | FPS: {v.fps()} | Format: {v.format()}")
+            else:
+                print(f"{stream.stream_type()} | FPS: {stream.fps()} | Format: {stream.format()}")
 
     def process_frames(self, frames: rs.composite_frame):
         aligned = self.align.process(frames)

@@ -20,13 +20,11 @@ from .point_handler import TrackingPointHandler
 from .filter_functions import propagate, transition_fn, measurement_fn, compose_fn
 
 
-CAM_TO_BODY_MATRIX = np.array([
-    [0., -1., 0.],
-    [0., 0., -1.],
-    [1., 0., 0.]
+COB_MATRIX = np.array([
+    [0, 0, 1],
+    [-1, 0, 0],
+    [0, -1, 0]
 ])
-coordinate_transform = Rotation.from_matrix(CAM_TO_BODY_MATRIX)
-
 
 @HydraConfigurable
 class Tracker:
@@ -49,11 +47,14 @@ class Tracker:
         self.vision_queue = queue.Queue(maxsize=5)
 
         self.camera_quat: Rotation = Rotation.from_rotvec(np.array([0, 0, 0.0]))
+        self.origin_position: np.ndarray = np.array([0.0, 0.0, 0.0])
+        self.origin_quat: Rotation = Rotation.from_rotvec(np.array([0, 0, 0.0]))
         self.initialized = False
         self.is_running = False
 
         aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
         parameters = cv2.aruco.DetectorParameters()
+        parameters.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
         self.detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
         self.marker_size = 0.0427
 
@@ -110,29 +111,62 @@ class Tracker:
         if not success:
             return False, Rotation.from_rotvec(np.array([0, 0, 0.0])), np.array([0, 0, 0.0])
 
-        rvec_flat = rvec.flatten()
+        R, _ = cv2.Rodrigues(rvec)
 
-        rotation = Rotation.from_rotvec(rvec_flat)
-        rotation = coordinate_transform * rotation
+        flip_180 = np.array([
+            [1, 0, 0],
+            [0, -1, 0],
+            [0, 0, -1]
+        ], dtype=np.float64)
 
-        return True, rotation, tvec
+        R_offset = R @ flip_180
+
+        rvec, _ = cv2.Rodrigues(R_offset)
+        rvec = rvec.flatten()
+        rvec = COB_MATRIX @ rvec
+
+        translation = COB_MATRIX @ tvec.flatten()
+        rotation = Rotation.from_rotvec(rvec)
+
+        return True, rotation, translation
 
     @staticmethod
-    def align_aruco_to_ir(rvec_rgb, tvec_rgb, extrinsics: rs.extrinsics):
+    def align_rgb_to_ir(R_rgb, tvec_rgb, extrinsics: rs.extrinsics):
         R_ext = np.array(extrinsics.rotation).reshape(3, 3)
 
         T_ext = np.array(extrinsics.translation).reshape(3, 1)
 
-        rvec_rgb = np.array(rvec_rgb).reshape(3, 1)
+        rvec_rgb = R_rgb.as_rotvec()
         tvec_rgb = np.array(tvec_rgb).reshape(3, 1)
 
-        R_aruco_rgb, _ = cv2.Rodrigues(rvec_rgb)
-        R_aruco_ir = np.dot(R_ext, R_aruco_rgb)
+        R_marker_rgb, _ = cv2.Rodrigues(rvec_rgb)
+        R_marker_ir = R_ext @ R_marker_rgb
 
-        T_aruco_ir = np.dot(R_ext, tvec_rgb) + T_ext
-        rvec_ir, _ = cv2.Rodrigues(R_aruco_ir)
+        T_marker_ir = R_ext @ tvec_rgb + T_ext
+        rvec_ir, _ = cv2.Rodrigues(R_marker_ir)
 
-        return Rotation.from_rotvec(rvec_ir.flatten()), T_aruco_ir.flatten()
+        return Rotation.from_rotvec(rvec_ir.flatten()), T_marker_ir.flatten()
+
+    @staticmethod
+    def get_table_quat(marker_quat, imu_gravity):
+        x_marker = marker_quat.as_matrix()[:, 0]
+
+        x_proj = x_marker - np.dot(x_marker, imu_gravity) * imu_gravity
+        x_table = x_proj / np.linalg.norm(x_proj)
+
+        y_table = np.cross(imu_gravity, x_table)
+
+        R_table_matrix = np.column_stack((x_table, y_table, imu_gravity))
+        table_quat = Rotation.from_matrix(R_table_matrix)
+
+        return table_quat
+
+    def transform_to_table_space(self, points):
+        p_camera = np.array(points)
+        p_shifted = p_camera - self.origin_position
+        point_table = self.origin_quat.inv().apply(p_shifted)
+
+        return point_table
 
     def vision_loop(self):
         while self.is_running:
@@ -148,8 +182,16 @@ class Tracker:
                     self.vision_queue.put((video.depth_ts, video.ir_image, video.depth_image), block=False)
 
 
+    """
+    Set table as origin:
+    Visualizer calculates origin offset + marker rotation correction based on marker ID
+    Rotate origin offset by marker rotation, add marker translation --> world space table center coords
+    Subtract translation, apply camera rotation, inverse of table rotation to detected points
+    
+    """
     def initialize(self,
-                   aruco_queue: Queue,
+                   marker_queue: Queue,
+                   origin_queue: Queue,
                    aircraft_lock: Lock):
         self.camera.start()
 
@@ -157,12 +199,12 @@ class Tracker:
         counter = 0
         accel_queue = PointQueue(maxlen=camera_orientation_iters)
         while counter < camera_orientation_iters:
+            counter += 1
             imu_frame = self.camera.imu_pipeline.wait_for_frames()
             imu_data = self.camera.process_imu_frames(imu_frame)
             if imu_data is not None:
                 accel, _, _, _ = imu_data
                 accel_queue.enqueue(accel)
-                counter += 1
 
         v_B = accel_queue.mean()
         v_B /= np.linalg.norm(v_B)
@@ -185,19 +227,22 @@ class Tracker:
         orientation_iters = 200
         print("Initializing helicopter orientation. Do not move aircraft.")
         counter = 0
-        first_frame = False
-        aruco_image = None
+        tag_dict = {}
         while counter < orientation_iters:
             counter += 1
             frames = self.camera.pipeline.wait_for_frames()
             video = self.camera.process_frames(frames)
-            if not first_frame:
-                aruco_image = video.color_image
-                first_frame = True
-
             measure_out = self.point_handler.get_measured_points(ir_frame=video.ir_image,
                                                                  depth_frame=video.depth_image,
                                                                  intrinsics=self.camera.intrinsics)
+
+            self.profiler.start('Aruco_Detection')
+            corners, ids, rejected = self.detector.detectMarkers(video.color_image)
+            self.profiler.end('Aruco_Detection')
+            if ids is not None:
+                for _id, corner in zip(ids, corners):
+                    tag_dict[int(_id[0])] = corner
+
             if measure_out is not None:
                 marker_coords, keypoints = measure_out
                 self.point_handler.register_points(marker_coords)
@@ -206,6 +251,45 @@ class Tracker:
 
         print(f'{len(self.point_handler.init_points_coords)} initial points detected')
 
+        camera_matrix, dist_coeffs = self.realsense_to_opencv_intrinsics(self.camera.intrinsics)
+        marker_dict = {}
+        if tag_dict:
+            for marker_id in tag_dict.keys():
+                success, marker_rotation, marker_position = self.get_marker_position(tag_dict[marker_id],
+                                                                                     self.marker_size,
+                                                                                     camera_matrix,
+                                                                                     dist_coeffs)
+                if not success:
+                    print(f"Warning: Failed to solve PnP for marker ID {marker_id}. Skipping.")
+                    continue
+
+                aligned_marker_rotation, aligned_marker_position = self.align_rgb_to_ir(marker_rotation,
+                                                                                        marker_position,
+                                                                                        self.camera.color_ir_extrinsics)
+
+                marker_dict[marker_id] = {'position': aligned_marker_position,
+                                          'rotation': aligned_marker_rotation}
+        else:
+            raise RuntimeError('Aruco detection failed')
+
+        marker_queue.put(marker_dict)
+
+        print(f'Aruco markers detected @: {marker_dict}')
+
+        try:
+            origin = origin_queue.get(timeout=10.0)
+        except queue.Full:
+            raise RuntimeError('Render init led to timeout')
+
+        # noinspection PyTypeChecker
+        self.origin_quat = self.get_table_quat(marker_dict[origin['id']]['rotation'] * origin['rotation'],
+                                               v_B)
+        self.origin_position = (marker_dict[origin['id']]['position'] +
+                                self.origin_quat.apply(origin['position']))
+
+        origin_queue.put({'position': self.origin_position,
+                          'rotation': self.origin_quat})
+
         self.profiler.start('Init_Matching')
         r, t = self.point_handler.matcher.get_alignment(self.point_handler.init_points_coords)
         self.profiler.end('Init_Matching')
@@ -213,36 +297,8 @@ class Tracker:
         if self.aircraft is None:
             self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
 
-        self.aircraft.quaternion = self.camera_quat * r
-        self.aircraft.position = self.camera_quat.apply(t)
-
-        aruco_dict = {}
-        camera_matrix, dist_coeffs = self.realsense_to_opencv_intrinsics(self.camera.intrinsics)
-        corners, ids, rejected = self.detector.detectMarkers(aruco_image)
-        if ids is not None:
-            for marker_id, marker_corners in zip(ids, corners):
-                marker_id_int = int(marker_id[0])
-                success, marker_rotation, marker_position = self.get_marker_position(marker_corners,
-                                                                                     self.marker_size,
-                                                                                     camera_matrix,
-                                                                                     dist_coeffs)
-                if not success:
-                    print(f"Warning: Failed to solve PnP for marker ID {marker_id_int}. Skipping.")
-                    continue
-
-                aligned_marker_rotation, aligned_marker_position = self.align_aruco_to_ir(marker_rotation,
-                                                                                          marker_position,
-                                                                                          self.camera.color_ir_extrinsics)
-
-                corrected_marker_point = self.camera_quat.apply(aligned_marker_position)
-                corrected_rotation = self.camera_quat * aligned_marker_rotation
-
-                aruco_dict[marker_id_int] = {'position': corrected_marker_point, 'rotation': corrected_rotation}
-
-        aruco_queue.put(aruco_dict)
-
-        print(f'Initialization complete. Aircraft detected @: {self.aircraft.position} \n '
-              f'with orientation {self.aircraft.quaternion.as_rotvec(degrees=True)}')
+        self.aircraft.quaternion = self.origin_quat.inv() * r
+        self.aircraft.position = self.transform_to_table_space(t)
 
     # TODO: add timestamp to aircraft buffer
     def loop(self, command_sm: SharedMemory, lock: Lock):

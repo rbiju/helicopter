@@ -89,7 +89,7 @@ if __name__ == '__main__':
                    enable_rgb=True,
                    projector_power=0.,
                    autoexpose=False,
-                   exposure_time=3600,
+                   exposure_time=2400,
                    autoexpose_rgb=False,
                    exposure_time_rgb=2400)
 
@@ -97,7 +97,7 @@ if __name__ == '__main__':
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(imgsz=imgsz),
                            imgsz=imgsz,
-                           conf=0.01)
+                           conf=0.1)
     listener = KeyListener()
     quitter = Quitter(listener=listener)
 
