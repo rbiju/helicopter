@@ -89,9 +89,10 @@ if __name__ == '__main__':
                    enable_rgb=True,
                    projector_power=0.,
                    autoexpose=False,
-                   exposure_time=2400,
+                   exposure_time=4000,
                    autoexpose_rgb=False,
-                   exposure_time_rgb=2400)
+                   exposure_time_rgb=2400,
+                   depth_preset=3)
 
     model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/track_20260327_0/weights/best.engine',
                                       task='detect'),

@@ -224,7 +224,7 @@ class Tracker:
         print(f'Initial Camera Acceleration (Normalized): {v_B}')
         print(f'Camera quaternion initialized: {self.camera_quat.as_rotvec(degrees=True)}')
 
-        orientation_iters = 200
+        orientation_iters = 400
         print("Initializing helicopter orientation. Do not move aircraft.")
         counter = 0
         tag_dict = {}
@@ -380,7 +380,6 @@ class Tracker:
                 nominal_state = jnp.array(self.aircraft.get_state_vector())
 
                 self.profiler.start('Match_Points')
-
                 measure_idx, ref_idx = self.point_handler.get_point_correspondence(q, t, measured_points)
                 self.profiler.end('Match_Points')
 

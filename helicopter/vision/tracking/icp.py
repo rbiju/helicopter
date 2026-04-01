@@ -4,7 +4,12 @@ from jax.scipy.spatial.transform import Rotation
 from functools import partial
 
 
-class Kabsch:
+class ICP:
+    def __init__(self, distance_threshold: float = 5e-2, etol: float = 5e-3, max_iterations: int = 10):
+        self.distance_threshold = distance_threshold
+        self.etol = etol
+        self.max_iterations = max_iterations
+
     @partial(jax.jit, static_argnums=(0,))
     def kabsch(self, P, Q, weights=None):
         if weights is None:
@@ -34,29 +39,29 @@ class Kabsch:
     def apply(self, R: Rotation, t, points):
         return R.apply(points) + t
 
-
-class ICP:
-    def __init__(self, distance_threshold: float = 1e-1, etol: float = 5e-3, max_iterations: int = 10):
-        self.distance_threshold = distance_threshold
-        self.etol = etol
-        self.max_iterations = max_iterations
-        self.kabsch = Kabsch()
-
     @partial(jax.jit, static_argnums=(0,))
     def get_correspondence(self, reference_points, sample_points):
         diff = sample_points[:, None, :] - reference_points[None, :, :]
         distances = jnp.linalg.norm(diff, axis=-1)
 
-        min_distances = jnp.min(distances, axis=1)
-        min_idxs = jnp.argmin(distances, axis=1)
+        sample_to_ref_dist = jnp.min(distances, axis=1)
+        sample_to_ref_idx = jnp.argmin(distances, axis=1)
 
-        valid_mask = min_distances < self.distance_threshold
+        ref_to_sample_idx = jnp.argmin(distances, axis=0)
 
-        return min_idxs, valid_mask
+        sample_indices = jnp.arange(sample_points.shape[0])
+        is_mutual = ref_to_sample_idx[sample_to_ref_idx] == sample_indices
+
+        valid_mask = jnp.logical_and(
+            sample_to_ref_dist < self.distance_threshold,
+            is_mutual
+        )
+
+        return sample_to_ref_idx, valid_mask
 
     @partial(jax.jit, static_argnums=(0,))
     def iterate(self, q_old: Rotation, t_old, sample_points, reference_points):
-        transformed_reference_points = self.kabsch.apply(q_old, t_old, reference_points)
+        transformed_reference_points = self.apply(q_old, t_old, reference_points)
 
         def cond_fn(state):
             error, iter_count, q, t = state
@@ -66,11 +71,11 @@ class ICP:
             error, iter_count, q, t = state
 
             min_idxs, valid_mask = self.get_correspondence(transformed_reference_points, sample_points)
-            matched_reference = transformed_reference_points[min_idxs]
+            matched_reference = reference_points[min_idxs]
 
-            q_new, t_new = self.kabsch.kabsch(matched_reference, sample_points, weights=valid_mask)
+            q_new, t_new = self.kabsch(matched_reference, sample_points, weights=valid_mask)
 
-            transformed_ref = self.kabsch.apply(q_new, t_new, matched_reference)
+            transformed_ref = self.apply(q_new, t_new, matched_reference)
 
             diff = jnp.linalg.norm(transformed_ref - sample_points, axis=-1)
             error_new = jnp.sum(diff * valid_mask)
@@ -86,4 +91,4 @@ class ICP:
         final_transformed_refs = q_final.apply(reference_points) + t_final
         final_min_idxs, final_valid_mask = self.get_correspondence(final_transformed_refs, sample_points)
 
-        return final_min_idxs, final_valid_mask
+        return final_min_idxs, final_valid_mask, q_final, t_final

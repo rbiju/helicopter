@@ -32,6 +32,7 @@ class D435i:
                  exposure_time: int = 2400,
                  autoexpose_rgb: bool = False,
                  exposure_time_rgb: int = 2400,
+                 depth_preset: int = 4,
                  ema_accel: float = 1.0,
                  ema_gyro: float = 1.0,):
         self.ACCEL_RATE = accel_rate
@@ -57,7 +58,7 @@ class D435i:
         ctx = rs.context()
         device = self.get_device_from_serial(ctx, serial)
         depth_sensor = device.first_depth_sensor()
-        depth_sensor.set_option(rs.option.visual_preset, 4)
+        depth_sensor.set_option(rs.option.visual_preset, depth_preset)
         self.depth_scale = depth_sensor.get_depth_scale()
         self.set_ir_exposure(depth_sensor, autoexposure=autoexpose, exposure_time=exposure_time)
         self.set_projector_power(depth_sensor, projector_power)
