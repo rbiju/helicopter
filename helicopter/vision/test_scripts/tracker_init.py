@@ -31,9 +31,9 @@ if __name__ == "__main__":
 
     marker_queue = Queue()
     origin_queue = Queue()
-    origin_queue.put({'id': 2,
+    origin_queue.put({'id': 0,
                       'position': np.array([0, 0, 0]),
-                      'rotation': Rotation.from_rotvec(np.array([0, 0, 0])),})
+                      'rotation': Rotation.from_euler('Y', [-90], degrees=True)})
     lock = Lock()
 
     try:

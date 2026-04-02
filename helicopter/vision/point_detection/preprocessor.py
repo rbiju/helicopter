@@ -4,6 +4,7 @@ import math
 import cv2
 import numpy as np
 import torch
+import torchvision.transforms.v2 as v2
 from torchvision.transforms import Pad
 
 
@@ -61,11 +62,13 @@ class GPUSquarePadImagePreprocessor(ImagePreprocessor):
 
 
 class GPUImagePreprocessor(ImagePreprocessor):
-    def __init__(self, imgsz: tuple[int, int] | list[int] = (480, 640), stride: int = 32, pad: bool = True):
+    def __init__(self, imgsz: tuple[int, int] | list[int] = (480, 640), stride: int = 32, pad: bool = True,
+                 brightness_factor: float = 1.0):
         super().__init__(imgsz)
         if self.device != 'cuda':
             raise RuntimeError('GPU required to use this preprocessor')
         self.stride = stride
+        self.brightness_factor = brightness_factor
 
         self.pad_sequence = self.pad_sequence(imgsz=self.imgsz)
         self.top_pad = self.pad_sequence[1]
@@ -100,6 +103,7 @@ class GPUImagePreprocessor(ImagePreprocessor):
         tensor = tensor.expand(1, 3, -1, -1).contiguous().float()
 
         tensor = tensor / 255.
+        v2.functional.adjust_brightness(tensor, self.brightness_factor)
 
         return tensor
 

@@ -76,9 +76,9 @@ if __name__ == '__main__':
                    enable_rgb=True,
                    projector_power=0.,
                    autoexpose=False,
-                   exposure_time=3600,
+                   exposure_time=2400,
                    autoexpose_rgb=False,
-                   exposure_time_rgb=1000)
+                   exposure_time_rgb=500)
 
     aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
     parameters = cv2.aruco.DetectorParameters()

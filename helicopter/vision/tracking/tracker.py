@@ -55,6 +55,17 @@ class Tracker:
         aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
         parameters = cv2.aruco.DetectorParameters()
         parameters.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+        parameters.cornerRefinementWinSize = 5
+        parameters.cornerRefinementMaxIterations = 100
+        parameters.cornerRefinementMinAccuracy = 0.001
+        parameters.minMarkerPerimeterRate = 0.01
+        parameters.minMarkerDistanceRate = 0.05
+        parameters.adaptiveThreshWinSizeMin = 3
+        parameters.adaptiveThreshWinSizeMax = 53
+        parameters.adaptiveThreshWinSizeStep = 5
+        parameters.adaptiveThreshConstant = 5
+        parameters.polygonalApproxAccuracyRate = 0.03
+        parameters.errorCorrectionRate = 0.6
         self.detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
         self.marker_size = 0.0427
 
@@ -161,9 +172,8 @@ class Tracker:
 
         return table_quat
 
-    def transform_to_table_space(self, points):
-        p_camera = np.array(points)
-        p_shifted = p_camera - self.origin_position
+    def world_to_table_space(self, points: np.ndarray) -> np.ndarray:
+        p_shifted = points - self.origin_position
         point_table = self.origin_quat.inv().apply(p_shifted)
 
         return point_table
@@ -195,6 +205,10 @@ class Tracker:
                    aircraft_lock: Lock):
         self.camera.start()
 
+        # ------------------------------------------------------------
+        # |                           IMU                            |
+        # ------------------------------------------------------------
+
         camera_orientation_iters = 1000
         counter = 0
         accel_queue = PointQueue(maxlen=camera_orientation_iters)
@@ -224,24 +238,21 @@ class Tracker:
         print(f'Initial Camera Acceleration (Normalized): {v_B}')
         print(f'Camera quaternion initialized: {self.camera_quat.as_rotvec(degrees=True)}')
 
-        orientation_iters = 400
+        # ------------------------------------------------------------
+        # |                         POINTS                           |
+        # ------------------------------------------------------------
+        table_iters = 400
         print("Initializing helicopter orientation. Do not move aircraft.")
         counter = 0
-        tag_dict = {}
-        while counter < orientation_iters:
+        while counter < table_iters:
             counter += 1
             frames = self.camera.pipeline.wait_for_frames()
             video = self.camera.process_frames(frames)
+            self.profiler.start("Init_Detection")
             measure_out = self.point_handler.get_measured_points(ir_frame=video.ir_image,
                                                                  depth_frame=video.depth_image,
                                                                  intrinsics=self.camera.intrinsics)
-
-            self.profiler.start('Aruco_Detection')
-            corners, ids, rejected = self.detector.detectMarkers(video.color_image)
-            self.profiler.end('Aruco_Detection')
-            if ids is not None:
-                for _id, corner in zip(ids, corners):
-                    tag_dict[int(_id[0])] = corner
+            self.profiler.end("Init_Detection")
 
             if measure_out is not None:
                 marker_coords, keypoints = measure_out
@@ -250,6 +261,26 @@ class Tracker:
                 continue
 
         print(f'{len(self.point_handler.init_points_coords)} initial points detected')
+
+
+        # ------------------------------------------------------------
+        # |                         TABLE                            |
+        # ------------------------------------------------------------
+        table_iters = 100
+        print("Initializing table orientation.")
+        counter = 0
+        tag_dict = {}
+        while counter < table_iters:
+            counter += 1
+            frames = self.camera.pipeline.wait_for_frames()
+            video = self.camera.process_frames(frames)
+
+            self.profiler.start('Aruco_Detection')
+            corners, ids, rejected = self.detector.detectMarkers(video.color_image)
+            self.profiler.end('Aruco_Detection')
+            if ids is not None:
+                for _id, corner in zip(ids, corners):
+                    tag_dict[int(_id[0])] = corner
 
         camera_matrix, dist_coeffs = self.realsense_to_opencv_intrinsics(self.camera.intrinsics)
         marker_dict = {}
@@ -276,29 +307,35 @@ class Tracker:
 
         print(f'Aruco markers detected @: {marker_dict}')
 
+        # ------------------------------------------------------------
+        # |                         ORIGIN                           |
+        # ------------------------------------------------------------
+
         try:
             origin = origin_queue.get(timeout=10.0)
         except queue.Full:
             raise RuntimeError('Render init led to timeout')
 
-        # noinspection PyTypeChecker
-        self.origin_quat = self.get_table_quat(marker_dict[origin['id']]['rotation'] * origin['rotation'],
-                                               v_B)
-        self.origin_position = (marker_dict[origin['id']]['position'] +
-                                self.origin_quat.apply(origin['position']))
-
+        yaw_only_marker_quat = Rotation.from_rotvec(np.array([0, 0, marker_dict[origin['id']]['rotation'].as_rotvec()[2]]))
+        self.origin_quat = self.camera_quat * marker_dict[origin['id']]['rotation'] * yaw_only_marker_quat
+        self.origin_position = self.origin_quat.apply(marker_dict[origin['id']]['position']) + origin['position']
         origin_queue.put({'position': self.origin_position,
                           'rotation': self.origin_quat})
 
+        # ------------------------------------------------------------
+        # |                        AIRCRAFT                          |
+        # ------------------------------------------------------------
+
         self.profiler.start('Init_Matching')
-        r, t = self.point_handler.matcher.get_alignment(self.point_handler.init_points_coords)
+        world_space_coords = self.camera_quat.apply(self.point_handler.init_points_coords)
+        r, t = self.point_handler.matcher.get_alignment(world_space_coords)
         self.profiler.end('Init_Matching')
 
         if self.aircraft is None:
             self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
 
         self.aircraft.quaternion = self.origin_quat.inv() * r
-        self.aircraft.position = self.transform_to_table_space(t)
+        self.aircraft.position = self.world_to_table_space(t)
 
     # TODO: add timestamp to aircraft buffer
     def loop(self, command_sm: SharedMemory, lock: Lock):
@@ -372,19 +409,20 @@ class Tracker:
                 continue
             else:
                 measured_points, keypoints = measured_out
-                # noinspection PyTypeChecker
-                measured_points: np.ndarray = self.camera_quat.apply(measured_points)
+                measured_points = self.camera_quat.apply(measured_points)
+                world_measured_points = self.camera_quat.apply(measured_points)
+                table_measured_points = self.world_to_table_space(world_measured_points)
 
                 q = self.aircraft.quaternion
                 t = self.aircraft.position.copy()
                 nominal_state = jnp.array(self.aircraft.get_state_vector())
 
                 self.profiler.start('Match_Points')
-                measure_idx, ref_idx = self.point_handler.get_point_correspondence(q, t, measured_points)
+                measure_idx, ref_idx = self.point_handler.get_point_correspondence(q, t, table_measured_points)
                 self.profiler.end('Match_Points')
 
                 self.profiler.start('UKF_Update')
-                z_points = measured_points[measure_idx]
+                z_points = table_measured_points[measure_idx]
                 ref_points = self.point_handler.matcher.reference_points[ref_idx]
 
                 for z_point, ref_point in zip(z_points, ref_points):

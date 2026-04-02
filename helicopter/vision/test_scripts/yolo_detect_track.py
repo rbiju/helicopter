@@ -89,16 +89,17 @@ if __name__ == '__main__':
                    enable_rgb=True,
                    projector_power=0.,
                    autoexpose=False,
-                   exposure_time=4000,
+                   exposure_time=3000,
                    autoexpose_rgb=False,
                    exposure_time_rgb=2400,
                    depth_preset=3)
 
-    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/track_20260327_0/weights/best.engine',
+    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/track_20260401_3/weights/best.engine',
                                       task='detect'),
-                           preprocessor=GPUImagePreprocessor(imgsz=imgsz),
+                           preprocessor=GPUImagePreprocessor(imgsz=imgsz,
+                                                             brightness_factor=1.5),
                            imgsz=imgsz,
-                           conf=0.1)
+                           conf=0.15)
     listener = KeyListener()
     quitter = Quitter(listener=listener)
 

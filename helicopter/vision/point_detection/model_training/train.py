@@ -5,19 +5,18 @@ from ultralytics import YOLO
 if __name__ == "__main__":
     model = YOLO("yolo26n.pt")
 
-    model_dir = Path("/home/ray/yolo_models/helicopter/track")
-    results = model.train(
+    model_dir = Path("/home/ray/yolo_models/helicopter/track_20260402_0")
+    model.train(
         data="/home/ray/datasets/helicopter/point_detection/tracking/tracking.yaml",
-        epochs=350,
+        epochs=300,
         imgsz=1280,
-        batch=12,
+        batch=10,
         device=0,
         save_dir=str(model_dir),
         optimizer='MuSGD',
         dropout=0.1,
-        hsv_h=0.015,
-        hsv_s=0.7,
-        hsv_v=0.9,
+        hsv_s=0.5,
+        hsv_v=0.5,
         flipud=0.5,
         fliplr=0.5,
         degrees=45.0,
@@ -25,7 +24,10 @@ if __name__ == "__main__":
         scale=0.5,
         perspective=0.001,
         mosaic=1.0,
+        close_mosaic=25,
         mixup=0.1,
+        lr0=2e-3,
+        cos_lr=True
     )
 
     best = YOLO(str(model_dir / "weights" / "best.pt"))

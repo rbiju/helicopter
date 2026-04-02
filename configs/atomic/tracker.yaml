@@ -13,7 +13,7 @@ Tracker:
         _target_: helicopter.vision.point_detection.HelicopterYOLO
         model:
           _target_: ultralytics.YOLO
-          model: '/home/ray/yolo_models/helicopter/track_20260327_0/weights/best.engine'
+          model: '/home/ray/yolo_models/helicopter/track_20260401_3/weights/best.engine'
           task: "detect"
         preprocessor:
           _target_:  helicopter.vision.point_detection.GPUImagePreprocessor
@@ -23,7 +23,7 @@ Tracker:
         imgsz:
           - 720
           - 1280
-        conf: 0.1
+        conf: 0.15
     matcher:
       _target_: helicopter.vision.tracking.TrianglePointMatcher
       n: 10
@@ -39,9 +39,9 @@ Tracker:
       - 1280
     projector_power: 0.0
     autoexpose: false
-    exposure_time: 4000
+    exposure_time: 3000
     autoexpose_rgb: false
-    exposure_time_rgb: 1000
+    exposure_time_rgb: 500
     depth_preset: 3
     ema_accel: 1.0
   ukf_factory:

@@ -27,7 +27,6 @@ class Kabsch:
 
         return Rotation.from_matrix(rotation), translation
 
-    # noinspection PyTypeHints
     @staticmethod
     def apply(quat: Rotation, translation: np.ndarray, points: np.ndarray):
         return quat.apply(points) + translation
