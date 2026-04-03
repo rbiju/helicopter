@@ -29,6 +29,9 @@ Tracker:
       n: 10
       reference_points_path: 'assets/point_clouds/green_syma.npy'
     max_icp_iters: 10
+  marker_detector:
+    _target_: helicopter.vision.point_detection.ARUCOMarkerDetector
+    marker_size_meters: 0.0427
   camera:
     _target_: helicopter.vision.D435i
     enable_motion: true

@@ -18,7 +18,8 @@ dependencies = [
     "viser",
     "pyserial",
     "hydra-core",
-    "click"]
+    "click",
+    "pupil-apriltags"]
 
 [project.scripts]
 helicopter = "helicopter.cli:helicopter"

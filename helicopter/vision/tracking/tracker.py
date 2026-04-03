@@ -5,15 +5,14 @@ from multiprocessing import Queue
 from multiprocessing.synchronize import Lock, Event
 from multiprocessing.shared_memory import SharedMemory
 
-import cv2
 import jax.numpy as jnp
 import numpy as np
 from scipy.spatial.transform import Rotation
-import pyrealsense2 as rs
 
 from helicopter.configuration import HydraConfigurable
 from helicopter.aircraft import Aircraft, FlightStates
 from helicopter.vision import D435i, ErrorStateSquareRootUnscentedKalmanFilter, UKFFactory
+from helicopter.vision.point_detection import MarkerDetector
 from helicopter.utils import PointQueue, Profiler, CommandBufferConstants
 
 from .point_handler import TrackingPointHandler
@@ -30,6 +29,7 @@ COB_MATRIX = np.array([
 class Tracker:
     def __init__(self, aircraft_sm: SharedMemory,
                  point_handler: TrackingPointHandler,
+                 marker_detector: MarkerDetector,
                  camera: D435i,
                  ukf_factory: UKFFactory,
                  kill_signal: Event,
@@ -40,8 +40,12 @@ class Tracker:
         self.aircraft = None
 
         self.point_handler = point_handler
+        self.marker_detector = marker_detector
         self.camera = camera
         self.ukf: ErrorStateSquareRootUnscentedKalmanFilter = ukf_factory.filter()
+
+        self.marker_detector.activate(rs_intrinsics=self.camera.intrinsics,
+                                      rs_extrinsics=self.camera.color_ir_extrinsics)
 
         self.vision_thread = threading.Thread(target=self.vision_loop, daemon=True)
         self.vision_queue = queue.Queue(maxsize=5)
@@ -55,23 +59,6 @@ class Tracker:
         self.initialized = False
         self.is_running = False
 
-        aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-        parameters = cv2.aruco.DetectorParameters()
-        parameters.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
-        parameters.cornerRefinementWinSize = 5
-        parameters.cornerRefinementMaxIterations = 100
-        parameters.cornerRefinementMinAccuracy = 0.001
-        parameters.minMarkerPerimeterRate = 0.01
-        parameters.minMarkerDistanceRate = 0.05
-        parameters.adaptiveThreshWinSizeMin = 3
-        parameters.adaptiveThreshWinSizeMax = 53
-        parameters.adaptiveThreshWinSizeStep = 5
-        parameters.adaptiveThreshConstant = 5
-        parameters.polygonalApproxAccuracyRate = 0.03
-        parameters.errorCorrectionRate = 0.6
-        self.detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
-        self.marker_size = 0.0427
-
         self.profiler = Profiler()
 
         self.last_simulated_time = 0.0
@@ -81,85 +68,6 @@ class Tracker:
         self.first_frame_time = 0.0
 
         self.kill_signal = kill_signal
-
-    @staticmethod
-    def realsense_to_opencv_intrinsics(rs_intrinsics: rs.intrinsics):
-        fx = rs_intrinsics.fx
-        fy = rs_intrinsics.fy
-        cx = rs_intrinsics.ppx
-        cy = rs_intrinsics.ppy
-
-        camera_matrix = np.array([
-            [fx, 0, cx],
-            [0, fy, cy],
-            [0, 0, 1]
-        ], dtype=np.float64)
-
-        dist_coeffs = np.array(rs_intrinsics.coeffs, dtype=np.float64)
-
-        return camera_matrix, dist_coeffs
-
-    @staticmethod
-    def get_marker_position(marker_corners,
-                            marker_size_meters,
-                            camera_matrix,
-                            dist_coeffs) -> tuple[bool, Rotation, np.ndarray]:
-        half_size = marker_size_meters / 2.0
-        obj_points = np.array([
-            [-half_size, half_size, 0],
-            [half_size, half_size, 0],
-            [half_size, -half_size, 0],
-            [-half_size, -half_size, 0]
-        ], dtype=np.float32)
-
-        img_points = marker_corners[0].astype(np.float32)
-
-        success, rvec, tvec = cv2.solvePnP(
-            obj_points,
-            img_points,
-            camera_matrix,
-            dist_coeffs,
-            flags=cv2.SOLVEPNP_IPPE_SQUARE
-        )
-
-        if not success:
-            return False, Rotation.from_rotvec(np.array([0, 0, 0.0])), np.array([0, 0, 0.0])
-
-        R, _ = cv2.Rodrigues(rvec)
-
-        flip_180 = np.array([
-            [1, 0, 0],
-            [0, -1, 0],
-            [0, 0, -1]
-        ], dtype=np.float64)
-
-        R_offset = R @ flip_180
-
-        rvec, _ = cv2.Rodrigues(R_offset)
-        rvec = rvec.flatten()
-        rvec = COB_MATRIX @ rvec
-
-        translation = COB_MATRIX @ tvec.flatten()
-        rotation = Rotation.from_rotvec(rvec)
-
-        return True, rotation, translation
-
-    @staticmethod
-    def align_rgb_to_ir(R_rgb, tvec_rgb, extrinsics: rs.extrinsics):
-        R_ext = np.array(extrinsics.rotation).reshape(3, 3)
-
-        T_ext = np.array(extrinsics.translation).reshape(3, 1)
-
-        rvec_rgb = R_rgb.as_rotvec()
-        tvec_rgb = np.array(tvec_rgb).reshape(3, 1)
-
-        R_marker_rgb, _ = cv2.Rodrigues(rvec_rgb)
-        R_marker_ir = R_ext @ R_marker_rgb
-
-        T_marker_ir = R_ext @ tvec_rgb + T_ext
-        rvec_ir, _ = cv2.Rodrigues(R_marker_ir)
-
-        return Rotation.from_rotvec(rvec_ir.flatten()), T_marker_ir.flatten()
 
     def world_to_table_space(self, points: np.ndarray) -> np.ndarray:
         p_shifted = points - self.origin_position
@@ -258,43 +166,25 @@ class Tracker:
         table_iters = 100
         print("Initializing table orientation.")
         counter = 0
-        tag_dict = {}
+        marker_dict = {}
         while counter < table_iters:
             counter += 1
             frames = self.camera.pipeline.wait_for_frames()
             video = self.camera.process_frames(frames)
 
-            self.profiler.start('Aruco_Detection')
-            corners, ids, rejected = self.detector.detectMarkers(video.color_image)
-            self.profiler.end('Aruco_Detection')
-            if ids is not None:
-                for _id, corner in zip(ids, corners):
-                    tag_dict[int(_id[0])] = corner
+            self.profiler.start('Marker_Detection')
+            detections = self.marker_detector.detect_markers(video.color_image)
+            self.profiler.end('Marker_Detection')
+            if len(detections) > 0:
+                for detection in detections:
+                    marker_dict[detection.id] = {'rotation': detection.rotation,
+                                              'position': detection.position,}
 
-        camera_matrix, dist_coeffs = self.realsense_to_opencv_intrinsics(self.camera.intrinsics)
-        marker_dict = {}
-        if tag_dict:
-            for marker_id in tag_dict.keys():
-                success, marker_rotation, marker_position = self.get_marker_position(tag_dict[marker_id],
-                                                                                     self.marker_size,
-                                                                                     camera_matrix,
-                                                                                     dist_coeffs)
-                if not success:
-                    print(f"Warning: Failed to solve PnP for marker ID {marker_id}. Skipping.")
-                    continue
+        if not marker_dict:
+            raise RuntimeError('Failed to find any markers.')
 
-                aligned_marker_rotation, aligned_marker_position = self.align_rgb_to_ir(marker_rotation,
-                                                                                        marker_position,
-                                                                                        self.camera.color_ir_extrinsics)
-
-                marker_dict[marker_id] = {'position': aligned_marker_position,
-                                          'rotation': aligned_marker_rotation}
-        else:
-            raise RuntimeError('Aruco detection failed')
-
+        print(f'Markers detected @: {marker_dict}')
         marker_queue.put(marker_dict)
-
-        print(f'Aruco markers detected @: {marker_dict}')
 
         # ------------------------------------------------------------
         # |                         ORIGIN                           |
