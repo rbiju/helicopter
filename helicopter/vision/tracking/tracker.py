@@ -10,7 +10,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from helicopter.configuration import HydraConfigurable
-from helicopter.aircraft import Aircraft, FlightState
+from helicopter.aircraft import Aircraft
 from helicopter.vision import D435i, ErrorStateSquareRootUnscentedKalmanFilter, UKFFactory
 from helicopter.vision.point_detection import MarkerDetector
 from helicopter.utils import PointQueue, Profiler, CommandBufferConstants
@@ -255,12 +255,7 @@ class Tracker:
 
                 nominal_state = jnp.array(self.aircraft.get_state_vector())
 
-                # TODO: modify ground logic to rely on z coordinate + normal force
-                flight_state = self.aircraft.flight_state
-                if flight_state == FlightState.IDLE or flight_state == FlightState.DONE:
-                    ground = True
-                else:
-                    ground = False
+                ground = np.abs(nominal_state[6]) < 1e-2
                 propagated_nominal = propagate(nominal_state, step_size, commands, ground)
 
                 self.profiler.start("UKF_Predict")
