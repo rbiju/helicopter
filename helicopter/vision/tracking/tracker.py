@@ -46,9 +46,12 @@ class Tracker:
         self.vision_thread = threading.Thread(target=self.vision_loop, daemon=True)
         self.vision_queue = queue.Queue(maxsize=5)
 
-        self.camera_quat: Rotation = Rotation.from_rotvec(np.array([0, 0, 0.0]))
-        self.origin_position: np.ndarray = np.array([0.0, 0.0, 0.0])
-        self.origin_quat: Rotation = Rotation.from_rotvec(np.array([0, 0, 0.0]))
+        # camera space is in raw camera axes
+        # world space is gravity aligned, zero yaw with origin coincident with IR sensor
+        # table space has center as origin, X-Y aligned with edges (short-long), Z aligned with gravity
+        self.camera_quat: Rotation = Rotation.from_rotvec(np.array([0, 0, 0.0]))    # for going from camera space to world space
+        self.origin_position: np.ndarray = np.array([0.0, 0.0, 0.0])    # location of center of table in world space
+        self.origin_quat: Rotation = Rotation.from_rotvec(np.array([0, 0, 0.0]))    # full quat for camera --> table
         self.initialized = False
         self.is_running = False
 
@@ -157,20 +160,6 @@ class Tracker:
         rvec_ir, _ = cv2.Rodrigues(R_marker_ir)
 
         return Rotation.from_rotvec(rvec_ir.flatten()), T_marker_ir.flatten()
-
-    @staticmethod
-    def get_table_quat(marker_quat, imu_gravity):
-        x_marker = marker_quat.as_matrix()[:, 0]
-
-        x_proj = x_marker - np.dot(x_marker, imu_gravity) * imu_gravity
-        x_table = x_proj / np.linalg.norm(x_proj)
-
-        y_table = np.cross(imu_gravity, x_table)
-
-        R_table_matrix = np.column_stack((x_table, y_table, imu_gravity))
-        table_quat = Rotation.from_matrix(R_table_matrix)
-
-        return table_quat
 
     def world_to_table_space(self, points: np.ndarray) -> np.ndarray:
         p_shifted = points - self.origin_position
@@ -316,11 +305,14 @@ class Tracker:
         except queue.Full:
             raise RuntimeError('Render init led to timeout')
 
-        yaw_only_marker_quat = Rotation.from_rotvec(np.array([0, 0, marker_dict[origin['id']]['rotation'].as_rotvec()[2]]))
-        self.origin_quat = self.camera_quat * marker_dict[origin['id']]['rotation'] * yaw_only_marker_quat
-        self.origin_position = self.origin_quat.apply(marker_dict[origin['id']]['position']) + origin['position']
-        origin_queue.put({'position': self.origin_position,
-                          'rotation': self.origin_quat})
+        yaw_only_marker_quat = Rotation.from_euler('z',
+                                                   marker_dict[origin['id']]['rotation'].as_euler('zyx')[0])
+        self.origin_quat = self.camera_quat * yaw_only_marker_quat * origin['rotation']
+        self.origin_position = self.camera_quat.apply(marker_dict[origin['id']]['position'] +
+                                                      (yaw_only_marker_quat * origin['rotation']).apply(origin['position']))
+        origin_queue.put({'origin_position': self.origin_position,
+                          'origin_quat': self.origin_quat,
+                          'camera_quat': self.camera_quat})
 
         # ------------------------------------------------------------
         # |                        AIRCRAFT                          |

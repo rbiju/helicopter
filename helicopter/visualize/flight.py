@@ -59,6 +59,10 @@ class FlightVisualizer(Visualizer):
         self.helicopter_handle = self.add_mesh(helicopter_mesh, '/camera')
         self.models = {}
 
+        self.camera_quat = Rotation.from_rotvec(np.array([0.0, 0.0, 0.0]))
+        self.origin_quat = Rotation.from_rotvec(np.array([0.0, 0.0, 0.0]))
+        self.origin_position = np.array([0.0, 0.0, 0.0])
+
         self.point_idxs = []
 
         self.last_position = np.array([0.0, 0.0, 0.0])
@@ -84,6 +88,32 @@ class FlightVisualizer(Visualizer):
 
         return board_pieces
 
+    def camera_to_table_space(self, object_rotation: Rotation, object_position: np.ndarray,
+                              offset_rotation: Rotation, offset_position: np.ndarray):
+        """
+
+        Args:
+            object_rotation: camera space marker rotation
+            object_position: camera space marker position
+            offset_rotation: action to return marker in line with object frame
+            offset_position: offset between marker and origin in object frame
+
+        Returns:
+            Rotation and translation for object in table space, ready for rendering
+
+        """
+        # conversion to world space
+        object_world_space_rotation = self.camera_quat * object_rotation * offset_rotation
+        object_world_space_position = self.camera_quat.apply(object_position)
+
+        # world to table space
+        object_table_space_rotation = self.origin_quat.inv() * object_world_space_rotation
+        object_table_space_position = (self.origin_quat.inv().apply(object_world_space_position -
+                                                                   self.origin_position) +
+                                       object_table_space_rotation.apply(offset_position))
+
+        return object_table_space_rotation, object_table_space_position
+
     def update_helicopter(self, quat: Rotation, translation: np.ndarray):
         total_rotation = self.camera_quat * quat
         self.helicopter_handle.wxyz = total_rotation.as_quat(canonical=True, scalar_first=True)
@@ -104,8 +134,8 @@ class FlightVisualizer(Visualizer):
         if self.aircraft is None:
             self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
 
-        aruco_dict = marker_queue.get()
-        for marker_id in aruco_dict.keys():
+        marker_dict = marker_queue.get()
+        for marker_id in marker_dict.keys():
             mesh_obj: MarkerModel = model_registry[marker_id]
             if isinstance(mesh_obj, GameTableModel):
                 if marker_id in self.board_pieces:
@@ -114,22 +144,27 @@ class FlightVisualizer(Visualizer):
 
         time.sleep(1.0)
 
-        for marker_id in aruco_dict.keys():
-            rotation = aruco_dict[marker_id]['rotation']
-            position = aruco_dict[marker_id]['position']
+        origin_dict_tracker = origin_queue.get()
+        self.origin_quat = origin_dict_tracker['origin_quat']
+        self.origin_position = origin_dict_tracker['origin_position']
+        self.camera_quat = origin_dict_tracker['camera_quat']
+
+        for marker_id in marker_dict.keys():
+            rotation = marker_dict[marker_id]['rotation']
+            position = marker_dict[marker_id]['position']
             if marker_id in self.board_pieces:
                 mesh_obj: MarkerModel = model_registry[marker_id]
                 mesh = mesh_obj.mesh()
                 if isinstance(mesh_obj, GameTableModel):
-                    mesh_handle = self.add_mesh(mesh, f'/game_table/{marker_id}',
-                                                position=(position - mesh_obj.marker_offset),
-                                                orientation=rotation.as_quat(canonical=True))
-
-                mesh = mesh_obj.mesh()
-
-                mesh_handle = self.add_mesh(mesh, f'/aruco_mesh/{marker_id}',
-                                            position=(position - mesh_obj.marker_offset),
-                                            orientation=rotation.as_quat(canonical=True))
+                    mesh_handle = self.add_mesh(mesh, f'/game_table/{marker_id}')
+                else:
+                    table_space_rotation, table_space_position = self.camera_to_table_space(object_rotation=rotation,
+                                                                                            object_position=position,
+                                                                                            offset_rotation=mesh_obj.marker_rotation,
+                                                                                            offset_position=mesh_obj.marker_offset)
+                    mesh_handle = self.add_mesh(mesh, f'/aruco_mesh/{marker_id}',
+                                                position=table_space_position,
+                                                orientation=table_space_rotation.as_quat(canonical=True))
                 self.models[marker_id] = mesh_handle
 
         self.update_helicopter(self.aircraft.quaternion, self.aircraft.position)
