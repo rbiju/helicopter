@@ -10,7 +10,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from helicopter.configuration import HydraConfigurable
-from helicopter.aircraft import Aircraft, FlightStates
+from helicopter.aircraft import Aircraft, FlightState
 from helicopter.vision import D435i, ErrorStateSquareRootUnscentedKalmanFilter, UKFFactory
 from helicopter.vision.point_detection import MarkerDetector
 from helicopter.utils import PointQueue, Profiler, CommandBufferConstants
@@ -219,7 +219,6 @@ class Tracker:
         self.aircraft.quaternion = self.origin_quat.inv() * r
         self.aircraft.position = self.world_to_table_space(t)
 
-    # TODO: add timestamp to aircraft buffer
     def loop(self, command_sm: SharedMemory, lock: Lock):
         command_buffer = np.ndarray(shape=(CommandBufferConstants.N,),
                                     dtype=CommandBufferConstants.dtype,
@@ -256,8 +255,9 @@ class Tracker:
 
                 nominal_state = jnp.array(self.aircraft.get_state_vector())
 
+                # TODO: modify ground logic to rely on z coordinate + normal force
                 flight_state = self.aircraft.flight_state
-                if flight_state == FlightStates.IDLE or flight_state == FlightStates.DONE:
+                if flight_state == FlightState.IDLE or flight_state == FlightState.DONE:
                     ground = True
                 else:
                     ground = False
@@ -271,6 +271,7 @@ class Tracker:
                                             commands=commands)
                 self.profiler.end("UKF_Predict")
 
+                self.aircraft.timestamp = self.last_simulated_time
                 self.aircraft.set_state_vector(np.asarray(propagated_nominal))
 
             self.profiler.end('Simulation')
@@ -318,6 +319,7 @@ class Tracker:
 
                 self.ukf = self.ukf.reset()
 
+                self.aircraft.timestamp = vision_time
                 self.aircraft.set_state_vector(nominal_state)
                 self.profiler.end('UKF_Update')
 

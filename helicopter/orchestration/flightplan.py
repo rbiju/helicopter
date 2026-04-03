@@ -4,7 +4,7 @@ from collections import deque
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from helicopter.aircraft import FlightStates
+from helicopter.aircraft import FlightState
 
 
 class FlightPlan(ABC):
@@ -13,7 +13,7 @@ class FlightPlan(ABC):
         self.activated = False
 
     @abstractmethod
-    def flight_state(self, timestamp: float) -> FlightStates:
+    def flight_state(self, timestamp: float) -> FlightState:
         raise NotImplementedError
 
     @property
@@ -86,8 +86,8 @@ class IdleFlightPlan(FlightPlan, ABC):
     def __init__(self):
         super().__init__()
 
-    def flight_state(self, timestamp: float) -> FlightStates:
-        return FlightStates.IDLE
+    def flight_state(self, timestamp: float) -> FlightState:
+        return FlightState.IDLE
 
     def compute_error(self, quaternion: Rotation, translation: np.ndarray):
         return np.array([0.0, 0.0, 0.0])
@@ -107,11 +107,11 @@ class TakeOffFlightPlan(WaypointFollowingFlightPlan):
         self.ground_time = ground_time
         self.start_time = 0
 
-    def flight_state(self, timestamp: float) -> FlightStates:
+    def flight_state(self, timestamp: float) -> FlightState:
         if timestamp - self.start_time < self.ground_time:
-            return FlightStates.IDLE
+            return FlightState.IDLE
         else:
-            return FlightStates.TAKEOFF
+            return FlightState.TAKEOFF
 
     def activate(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
         self._waypoints.append(translation + np.array([0, 0, self.takeoff_height]))
@@ -131,8 +131,8 @@ class HoverFlightPlan(ConstantHeadingFlightPlan):
         self.start_time = 0
         self.hover_time = hover_time
 
-    def flight_state(self, timestamp: float) -> FlightStates:
-        return FlightStates.HOVER
+    def flight_state(self, timestamp: float) -> FlightState:
+        return FlightState.HOVER
 
     def activate(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
         self.reference_heading = Rotation.as_rotvec(quaternion)[2]
@@ -153,8 +153,8 @@ class ManualFlightPlan(FlightPlan):
         self.start_time = 0
         self.hover_time = flight_time
 
-    def flight_state(self, timestamp: float) -> FlightStates:
-        return FlightStates.MANUAL
+    def flight_state(self, timestamp: float) -> FlightState:
+        return FlightState.MANUAL
 
     def compute_error(self, r: Rotation, t: np.ndarray):
         return np.array([0.0, 0.0, 0.0])

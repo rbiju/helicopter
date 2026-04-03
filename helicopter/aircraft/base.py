@@ -16,7 +16,7 @@ IDX_STATE = slice(15, 16)
 IDX_TIME = slice(16, 17)
 
 
-class FlightStates(Enum):
+class FlightState(Enum):
     IDLE = 0
     TAKEOFF = 1
     WAYPOINT_FOLLOW = 2
@@ -25,6 +25,20 @@ class FlightStates(Enum):
     MANUAL = 5
     DONE = 6
     KILL_POWER = 7
+
+    @property
+    def color(self) -> str:
+        _colors = {
+            self.IDLE.value: "#0A210F",
+            self.TAKEOFF.value: "#14591D",
+            self.WAYPOINT_FOLLOW.value: "#99AA38",
+            self.HOVER.value: "#E1E289",
+            self.LANDING.value: "#FFA69E",
+            self.MANUAL.value: "#4F3130",
+            self.DONE.value: "#ACD2ED",
+            self.KILL_POWER.value: "#FF4E00"
+        }
+        return _colors.get(self.value, "#ffffff")
 
 
 class Aircraft:
@@ -105,13 +119,13 @@ class Aircraft:
             self._buffer[IDX_TRIM] = np.array([value], dtype=self.dtype)
 
     @property
-    def flight_state(self) -> FlightStates:
+    def flight_state(self) -> FlightState:
         with self._lock:
             state_val = int(self._buffer[IDX_STATE][0])
-        return FlightStates(state_val)
+        return FlightState(state_val)
 
     @flight_state.setter
-    def flight_state(self, state: FlightStates):
+    def flight_state(self, state: FlightState):
         with self._lock:
             self._buffer[IDX_STATE] = np.array([float(state.value)], dtype=self.dtype)
 
@@ -138,3 +152,13 @@ class Aircraft:
     @classmethod
     def from_shared_memory_buffer(cls, buffer: np.ndarray, lock: ProcessLock):
         return cls(buffer=buffer, lock=lock)
+
+    @property
+    def state_dict(self) -> dict[str, np.ndarray]:
+        with self._lock:
+            return {'Position': self.position,
+                    'Velocity': self.velocity,
+                    'Orientation': Rotation.as_quat(self.quaternion, canonical=True),
+                    'Angular Velocity': self.angular_velocity,
+                    'Timestamp': self.timestamp,
+                    'Flight State': self.flight_state,}

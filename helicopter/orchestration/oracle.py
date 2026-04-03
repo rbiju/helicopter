@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from helicopter.aircraft import FlightStates
+from helicopter.aircraft import FlightState
 from .flightplan import FlightPlan
 
 
@@ -20,11 +20,11 @@ class Oracle:
     def active_flight_plan(self) -> FlightPlan:
         return self.flight_plan_sequence[self.active_idx]
 
-    def active_flight_state(self, timestamp: float) -> FlightStates:
+    def active_flight_state(self, timestamp: float) -> FlightState:
         if not self.finished:
             return self.active_flight_plan.flight_state(timestamp=timestamp)
         else:
-            return FlightStates.DONE
+            return FlightState.DONE
 
     def kill_flight(self):
         self.finished = True

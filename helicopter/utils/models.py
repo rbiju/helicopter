@@ -54,11 +54,9 @@ class HelicopterModel(Model):
         mesh = trimesh.load_mesh(self.obj_path)
         centroid = mesh.centroid
         mesh.apply_translation(-centroid)
-        mesh.apply_scale(0.01)
+        mesh.apply_scale(3.37e-5)
 
-        rotA = Rotation.from_rotvec(np.array([0.0, 0.0, np.pi / 2]))
-        rotB = Rotation.from_rotvec(np.array([np.pi / 2, 0.0, 0.0]))
-        rotation = rotA * rotB
+        rotation = Rotation.from_euler('XZ', [-np.pi / 2, np.pi])
 
         transform = self.transformation_matrix(rotation, np.array([0.0, 0.0, 0.0]))
 
