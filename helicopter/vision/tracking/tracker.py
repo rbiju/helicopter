@@ -19,12 +19,6 @@ from .point_handler import TrackingPointHandler
 from .filter_functions import propagate, transition_fn, measurement_fn, compose_fn
 
 
-COB_MATRIX = np.array([
-    [0, 0, 1],
-    [-1, 0, 0],
-    [0, -1, 0]
-])
-
 @HydraConfigurable
 class Tracker:
     def __init__(self, aircraft_sm: SharedMemory,
@@ -69,6 +63,12 @@ class Tracker:
 
         self.kill_signal = kill_signal
 
+    def get_origin_position(self, rotations: list[Rotation], lengths: list[np.ndarray]) -> np.ndarray:
+        current_position = np.array([0.0, 0.0, 0.0])
+        for rotation, length in zip(rotations, lengths):
+            current_position += length
+        pass
+
     def world_to_table_space(self, points: np.ndarray) -> np.ndarray:
         p_shifted = points - self.origin_position
         point_table = self.origin_quat.inv().apply(p_shifted)
@@ -89,13 +89,6 @@ class Tracker:
                     self.vision_queue.put((video.depth_ts, video.ir_image, video.depth_image), block=False)
 
 
-    """
-    Set table as origin:
-    Visualizer calculates origin offset + marker rotation correction based on marker ID
-    Rotate origin offset by marker rotation, add marker translation --> world space table center coords
-    Subtract translation, apply camera rotation, inverse of table rotation to detected points
-    
-    """
     def initialize(self,
                    marker_queue: Queue,
                    origin_queue: Queue,
@@ -109,6 +102,7 @@ class Tracker:
         camera_orientation_iters = 1000
         counter = 0
         accel_queue = PointQueue(maxlen=camera_orientation_iters)
+        print('\nInitializing camera orientation.')
         while counter < camera_orientation_iters:
             counter += 1
             imu_frame = self.camera.imu_pipeline.wait_for_frames()
@@ -138,10 +132,10 @@ class Tracker:
         # ------------------------------------------------------------
         # |                         POINTS                           |
         # ------------------------------------------------------------
-        table_iters = 400
-        print("Initializing helicopter orientation. Do not move aircraft.")
+        marker_iters = 400
+        print("\nInitializing helicopter orientation. Do not move aircraft.")
         counter = 0
-        while counter < table_iters:
+        while counter < marker_iters:
             counter += 1
             frames = self.camera.pipeline.wait_for_frames()
             video = self.camera.process_frames(frames)
@@ -161,13 +155,13 @@ class Tracker:
 
 
         # ------------------------------------------------------------
-        # |                         TABLE                            |
+        # |                         MARKERS                          |
         # ------------------------------------------------------------
-        table_iters = 100
-        print("Initializing table orientation.")
+        marker_iters = 100
+        print("\nInitializing marker orientations.")
         counter = 0
         marker_dict = {}
-        while counter < table_iters:
+        while counter < marker_iters:
             counter += 1
             frames = self.camera.pipeline.wait_for_frames()
             video = self.camera.process_frames(frames)
@@ -195,11 +189,14 @@ class Tracker:
         except queue.Full:
             raise RuntimeError('Render init led to timeout')
 
-        yaw_only_marker_quat = Rotation.from_euler('z',
-                                                   marker_dict[origin['id']]['rotation'].as_euler('zyx')[0])
-        self.origin_quat = self.camera_quat * yaw_only_marker_quat * origin['rotation']
-        self.origin_position = self.camera_quat.apply(marker_dict[origin['id']]['position'] +
-                                                      (yaw_only_marker_quat * origin['rotation']).apply(origin['position']))
+        world_space_marker_rotation = self.camera_quat * (marker_dict[origin['id']]['rotation'])
+        yaw_only_marker_quat = Rotation.from_euler('Z',
+                                                   world_space_marker_rotation.as_euler('ZYX')[0])
+        self.origin_quat = (self.camera_quat *
+                            yaw_only_marker_quat *
+                            origin['rotation'])
+        self.origin_position = (self.camera_quat.apply(marker_dict[origin['id']]['position'])
+                                - self.origin_quat.apply(origin['position']))
         origin_queue.put({'origin_position': self.origin_position,
                           'origin_quat': self.origin_quat,
                           'camera_quat': self.camera_quat})
@@ -287,7 +284,6 @@ class Tracker:
                 continue
             else:
                 measured_points, keypoints = measured_out
-                measured_points = self.camera_quat.apply(measured_points)
                 world_measured_points = self.camera_quat.apply(measured_points)
                 table_measured_points = self.world_to_table_space(world_measured_points)
 

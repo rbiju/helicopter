@@ -25,13 +25,18 @@ class MarkerModel(ABC):
     @abstractmethod
     def marker_offset(self) -> np.ndarray:
         """
-        Returns: np array representing marker offset relative to center of model
+        Returns: np array representing marker coordinates with model center at origin
 
         """
         raise NotImplementedError
 
     @property
     def marker_rotation(self) -> Rotation:
+        """
+
+        Returns: Rotation representing marker rotation from default (normal vector facing -x)
+
+        """
         return Rotation.from_quat(np.array([0, 0, 0, 1.0]))
 
 class ModelRegistry:
@@ -62,7 +67,11 @@ model_registry = ModelRegistry()
 
 class GameTableModel(MarkerModel, ABC):
     def __init__(self):
+        """
+        Game table marker is mounted
+        """
         super().__init__()
+        self.marker_size_offset = 0.025
 
     def mesh(self) -> trimesh.Trimesh:
         obj_path: str = 'assets/objects/table/table.obj'
@@ -80,11 +89,30 @@ class GameTableModelTopSide(GameTableModel):
     def id(self) -> int:
         return 0
 
+    def marker_rotation(self) -> Rotation:
+        return Rotation.from_euler('Y', [90], degrees=True)
+
     def marker_offset(self) -> np.ndarray:
-        return np.array([-0.33, 0.58, 0.0])
+        return np.array([-0.355 + self.marker_size_offset,
+                         -0.685 + self.marker_size_offset,
+                         0.0 - self.marker_size_offset])
+
+@model_registry.register()
+class GameTableModelShortSide(GameTableModel):
+    def __init__(self):
+        super().__init__()
+
+    @property
+    def id(self) -> int:
+        return 1
 
     def marker_rotation(self) -> Rotation:
-        return Rotation.from_euler('Y', [-90], degrees=True)
+        return Rotation.from_euler('Z', [90], degrees=True)
+
+    def marker_offset(self) -> np.ndarray:
+        return np.array([-0.355,
+                         -0.685 - self.marker_size_offset,
+                         0.025 - self.marker_size_offset])
 
 
 @model_registry.register()
@@ -94,23 +122,9 @@ class GameTableModelLongSide(GameTableModel):
 
     @property
     def id(self) -> int:
-        return 1
-
-    def marker_offset(self) -> np.ndarray:
-        return np.array([-0.355, 0.605, 0.025])
-
-    def marker_rotation(self) -> Rotation:
-        return Rotation.from_euler('Z', [-90], degrees=True)
-
-
-@model_registry.register()
-class GameTableModelShortSide(GameTableModel):
-    def __init__(self):
-        super().__init__()
-
-    @property
-    def id(self) -> int:
         return 2
 
     def marker_offset(self) -> np.ndarray:
-        return np.array([-0.355, 0.605, 0.025])
+        return np.array([-0.355 - self.marker_size_offset,
+                         -0.685,
+                         0.025 - self.marker_size_offset])

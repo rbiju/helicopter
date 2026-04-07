@@ -78,14 +78,13 @@ class ARUCOMarkerDetector(MarkerDetector):
             _parameters.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
             _parameters.cornerRefinementWinSize = 5
             _parameters.cornerRefinementMaxIterations = 100
-            _parameters.cornerRefinementMinAccuracy = 0.001
+            _parameters.cornerRefinementMinAccuracy = 0.01
             _parameters.minMarkerPerimeterRate = 0.01
             _parameters.minMarkerDistanceRate = 0.05
             _parameters.adaptiveThreshWinSizeMin = 3
             _parameters.adaptiveThreshWinSizeMax = 53
             _parameters.adaptiveThreshWinSizeStep = 5
             _parameters.adaptiveThreshConstant = 5
-            _parameters.polygonalApproxAccuracyRate = 0.03
             _parameters.errorCorrectionRate = 0.6
         else:
             _parameters = parameters
@@ -103,7 +102,7 @@ class ARUCOMarkerDetector(MarkerDetector):
 
         img_points = marker_corners[0].astype(np.float32)
 
-        success, rvec, tvec = cv2.solvePnP(
+        success, rvecs, tvecs, _ = cv2.solvePnPGeneric(
             obj_points,
             img_points,
             self.intrinsic_matrix,
@@ -112,30 +111,24 @@ class ARUCOMarkerDetector(MarkerDetector):
         )
 
         if not success:
-            return False, Rotation.from_rotvec(np.array([0, 0, 0.0])), np.array([0, 0, 0.0])
+            return False, Rotation.from_rotvec(np.zeros(3)), np.zeros(3)
 
-        R, _ = cv2.Rodrigues(rvec)
+        flip_180 = Rotation.from_euler('x', 180, degrees=True)
 
-        flip_180 = np.array([
-            [1, 0, 0],
-            [0, -1, 0],
-            [0, 0, -1]
-        ], dtype=np.float64)
+        rvec_out = (Rotation.from_rotvec(rvecs[0].flatten()) * flip_180).as_rotvec()
+        tvec_out = tvecs[0].flatten()
 
-        R_offset = R @ flip_180
-
-        rvec, _ = cv2.Rodrigues(R_offset)
-        rvec = rvec.flatten()
-        rvec = COB_MATRIX @ rvec
-
-        translation = COB_MATRIX @ tvec.flatten()
-        rotation = Rotation.from_rotvec(rvec)
+        rotation = Rotation.from_rotvec(COB_MATRIX @ rvec_out.flatten())
+        translation = COB_MATRIX @ tvec_out.flatten()
 
         return True, rotation, translation
 
     def detect_markers(self, img) -> list[DetectedMarker]:
         corner_sets, ids, _ = self.detector.detectMarkers(img)
         detections = []
+        if ids is None:
+            return detections
+
         for idx, corners in zip(ids, corner_sets):
             success, rotation_RGB, position_RGB = self.get_marker_position(marker_corners=corners)
             if success:

@@ -85,11 +85,11 @@ def merge_yolo_datasets(source_dirs, output_dir, split_ratio=0.8):
 
 if __name__ == "__main__":
     inputs = [
-        # "/home/ray/datasets/helicopter/point_detection/tracking/set01",
-        # "/home/ray/datasets/helicopter/point_detection/tracking/set02",
-        # "/home/ray/datasets/helicopter/point_detection/tracking/set03",
-        # "/home/ray/datasets/helicopter/point_detection/tracking/set04",
-        # "/home/ray/datasets/helicopter/point_detection/tracking/set05",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set01",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set02",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set03",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set04",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set05",
         "/home/ray/datasets/helicopter/point_detection/tracking/set06",
         "/home/ray/datasets/helicopter/point_detection/tracking/set07",
         "/home/ray/datasets/helicopter/point_detection/tracking/set08",
@@ -105,6 +105,8 @@ if __name__ == "__main__":
         "/home/ray/datasets/helicopter/point_detection/tracking/set18",
         "/home/ray/datasets/helicopter/point_detection/tracking/set19",
         "/home/ray/datasets/helicopter/point_detection/tracking/set20",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set21",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set22",
     ]
 
     output = "/home/ray/datasets/helicopter/point_detection/tracking/master"

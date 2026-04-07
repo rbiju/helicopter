@@ -43,7 +43,6 @@ class FlightConductor:
         if self.aircraft is None:
             self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
 
-        # First flight plan should always be IDLE so physics model can turn off gravity
         self.oracle.active_flight_plan.activate(
             quaternion=self.aircraft.quaternion,
             translation=self.aircraft.position,

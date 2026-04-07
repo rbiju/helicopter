@@ -162,7 +162,7 @@ class FlightVisualizer(Visualizer):
         # world to table space
         object_table_space_rotation = self.origin_quat.inv() * object_world_space_rotation
         object_table_space_position = (self.origin_quat.inv().apply(object_world_space_position -
-                                                                   self.origin_position) +
+                                                                   self.origin_position) -
                                        object_table_space_rotation.apply(offset_position))
 
         return object_table_space_rotation, object_table_space_position

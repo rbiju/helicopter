@@ -16,10 +16,10 @@ if __name__ == '__main__':
                    autoexpose=False,
                    exposure_time=2400)
 
-    print('Starting detection in 5 seconds...')
-    time.sleep(5)
+    print('Starting detection in 3 seconds...')
+    time.sleep(3)
 
-    dataset_name = 'set20'
+    dataset_name = 'set24'
     data_path = Path("/home/ray/datasets/helicopter/point_detection/tracking") / dataset_name / 'images'
     if not os.path.exists(data_path):
         print(f"Making directory {str(data_path)}")
@@ -35,7 +35,7 @@ if __name__ == '__main__':
         video = camera.process_frames(frames)
 
         images.append(video.ir_image.copy())
-        time.sleep(0.5)
+        time.sleep(1.0)
 
     camera.stop()
 

@@ -5,10 +5,10 @@ from ultralytics import YOLO
 if __name__ == "__main__":
     model = YOLO("yolo26n.pt")
 
-    model_dir = Path("/home/ray/yolo_models/helicopter/track_20260402_0")
+    model_dir = Path("/home/ray/yolo_models/helicopter/track_20260406_0")
     model.train(
         data="/home/ray/datasets/helicopter/point_detection/tracking/tracking.yaml",
-        epochs=300,
+        epochs=500,
         imgsz=1280,
         batch=10,
         device=0,
@@ -26,7 +26,6 @@ if __name__ == "__main__":
         mosaic=1.0,
         close_mosaic=25,
         mixup=0.1,
-        lr0=2e-3,
         cos_lr=True
     )
 

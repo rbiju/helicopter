@@ -5,6 +5,12 @@ from scipy.spatial.transform import Rotation
 from helicopter.utils import Profiler, Quitter, KeyListener
 from helicopter.vision import D435i
 
+COB_MATRIX = np.array([
+    [0, 0, 1],
+    [-1, 0, 0],
+    [0, -1, 0]
+])
+
 
 def get_aruco_poses(image, intrinsics, marker_size_meters, _detector):
     _corners, _ids, rejected = _detector.detectMarkers(image)
@@ -18,7 +24,7 @@ def get_aruco_poses(image, intrinsics, marker_size_meters, _detector):
         [0, 0, 1]
     ], dtype=np.float32)
 
-    dist_coeffs = np.array(intrinsics.coeffs, dtype=np.float64)
+    dist_coeffs = np.array(intrinsics.coeffs, dtype=np.float64).flatten()
 
     half_size = marker_size_meters / 2.0
     obj_points = np.array([
@@ -33,6 +39,7 @@ def get_aruco_poses(image, intrinsics, marker_size_meters, _detector):
 
     for corner in _corners:
         img_points = corner[0].astype(np.float32)
+
         success, _rvecs, _tvecs, _ = cv2.solvePnPGeneric(
             obj_points,
             img_points,
@@ -41,25 +48,12 @@ def get_aruco_poses(image, intrinsics, marker_size_meters, _detector):
             flags=cv2.SOLVEPNP_IPPE_SQUARE
         )
 
+        flip_180 = Rotation.from_euler('x', 180, degrees=True)
+
         if success and len(_rvecs) > 0:
-            best_rvec = _rvecs[0]
-            best_tvec = _tvecs[0]
-
-            if len(_rvecs) > 1:
-                R0, _ = cv2.Rodrigues(_rvecs[0])
-
-                flip_180 = np.array([
-                    [1, 0, 0],
-                    [0, -1, 0],
-                    [0, 0, -1]
-                ], dtype=np.float64)
-
-                R_offset = R0 @ flip_180
-
-                best_rvec, _ = cv2.Rodrigues(R_offset)
-
-            rvecs_out.append(best_rvec)
-            tvecs_out.append(best_tvec)
+            rvec_out = (Rotation.from_rotvec(_rvecs[0].flatten()) * flip_180).as_rotvec()
+            rvecs_out.append(rvec_out)
+            tvecs_out.append(_tvecs[0])
         else:
             rvecs_out.append(None)
             tvecs_out.append(None)
@@ -76,7 +70,7 @@ if __name__ == '__main__':
                    enable_rgb=True,
                    projector_power=0.,
                    autoexpose=False,
-                   exposure_time=2400,
+                   exposure_time=3200,
                    autoexpose_rgb=False,
                    exposure_time_rgb=500)
 
@@ -85,14 +79,14 @@ if __name__ == '__main__':
     parameters.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
     parameters.cornerRefinementWinSize = 5
     parameters.cornerRefinementMaxIterations = 100
-    parameters.cornerRefinementMinAccuracy = 0.001
+    parameters.cornerRefinementMinAccuracy = 0.01
     parameters.minMarkerPerimeterRate = 0.01
     parameters.minMarkerDistanceRate = 0.05
     parameters.adaptiveThreshWinSizeMin = 3
     parameters.adaptiveThreshWinSizeMax = 53
     parameters.adaptiveThreshWinSizeStep = 5
     parameters.adaptiveThreshConstant = 5
-    parameters.polygonalApproxAccuracyRate = 0.03
+    # parameters.polygonalApproxAccuracyRate = 0.03
     parameters.errorCorrectionRate = 0.6
 
     detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
@@ -150,10 +144,9 @@ if __name__ == '__main__':
                             )
 
                             if int(idx[0]) not in marker_dict:
-                                marker_dict[int(idx[0])] = {'position': tvec.flatten(),
-                                                            'orientation': Rotation.from_rotvec(rvec.flatten())
+                                marker_dict[int(idx[0])] = {'position': COB_MATRIX @ tvec.flatten(),
+                                                            'orientation': Rotation.from_rotvec(COB_MATRIX @ rvec.flatten())
                                                             .as_rotvec(degrees=True)}
-
 
                 profiler.end("Draw")
                 profiler.end("E2E")

@@ -88,7 +88,8 @@ def render_wrapper(ctx: MPContext, ready_event: Event):
                               aircraft_lock=ctx.aircraft_lock)
         ready_event.set()
         ctx.start_event.wait()
-        visualizer.loop()
+        visualizer.loop(command_sm=ctx.command_sm,
+                        lock=ctx.shared_memory_lock)
     finally:
         ctx.shutdown_event.set()
         visualizer.cleanup()
@@ -101,19 +102,6 @@ class Fly(Task):
         self.image_dimension = image_dimension
 
     def run(self, configuration_path: str):
-        """
-        Sequence:
-
-        1. Aircraft state manager gets made, passed to all three objects
-        2. Vision thread captures first image, camera orientation during init, passes them to visualizer
-        3. All three finish init
-        4. Main loop starts
-            a) Tracker starts to estimate state
-            b) controller begins to calculate commands once rc is ready to send, grabs most recent state from aircraft
-            c) controller sends most recent sent command to tracker
-        5. On kill signal, all three enter cleanup and shut down
-
-        """
         start_event = mp.Event()
         shutdown_event = mp.Event()
         vision_ready = mp.Event()
