@@ -76,9 +76,7 @@ class TrackingPointHandler:
             if len(self.init_points) < 1:
                 self.add_point(point)
             else:
-                # Depth noise is isolated to first dim, so just check for Y and Z
-                # I think this is fine since the helicopter is facing side-on during init
-                norm = np.linalg.norm(self.init_points_coords[:, 1:] - point[1:], axis=1)
+                norm = np.linalg.norm(self.init_points_coords - point, axis=1)
                 closest_point = np.argmin(norm)
                 if norm[closest_point] > self.detector.marker_tolerance:
                     self.add_point(point)

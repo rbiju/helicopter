@@ -155,15 +155,11 @@ class FlightVisualizer(Visualizer):
             Rotation and translation for object in table space, ready for rendering
 
         """
-        # conversion to world space
-        object_world_space_rotation = self.camera_quat * object_rotation * offset_rotation
-        object_world_space_position = self.camera_quat.apply(object_position)
+        marker_table_pos = self.origin_quat.inv().apply(object_position - self.origin_position)
+        marker_table_rot = self.origin_quat.inv() * object_rotation
 
-        # world to table space
-        object_table_space_rotation = self.origin_quat.inv() * object_world_space_rotation
-        object_table_space_position = (self.origin_quat.inv().apply(object_world_space_position -
-                                                                   self.origin_position) -
-                                       object_table_space_rotation.apply(offset_position))
+        object_table_space_rotation = marker_table_rot * offset_rotation.inv()
+        object_table_space_position = marker_table_pos - object_table_space_rotation.apply(offset_position)
 
         return object_table_space_rotation, object_table_space_position
 

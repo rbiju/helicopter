@@ -33,7 +33,7 @@ if __name__ == "__main__":
     origin_queue = Queue()
     origin_queue.put({'id': 1,
                       'position': np.array([0, 0, 0]),
-                      'rotation': Rotation.from_euler('Z', [90], degrees=True)})
+                      'rotation': Rotation.from_euler('z', [90], degrees=True)})
     lock = Lock()
 
     try:

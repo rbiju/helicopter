@@ -60,6 +60,7 @@ class Tracker:
 
         self.first_frame = False
         self.first_frame_time = 0.0
+        self.first_frame_system_time = 0.0
 
         self.kill_signal = kill_signal
 
@@ -183,7 +184,7 @@ class Tracker:
         except queue.Full:
             raise RuntimeError('Render init led to timeout')
 
-        world_space_marker_rotation = self.camera_quat * marker_dict[origin_dict['id']]['rotation'] * origin_dict['rotation']
+        world_space_marker_rotation = self.camera_quat * marker_dict[origin_dict['id']]['rotation'] * origin_dict['rotation'].inv()
         yaw_only_marker_quat = Rotation.from_euler('z',
                                                    world_space_marker_rotation.as_euler('zyx')[0])
         self.origin_quat = (self.camera_quat *
@@ -228,6 +229,7 @@ class Tracker:
                 if not self.first_frame:
                     self.first_frame = True
                     self.first_frame_time = vision_time
+                    self.first_frame_system_time = time.perf_counter()
 
                 vision_time = vision_time - self.first_frame_time
 

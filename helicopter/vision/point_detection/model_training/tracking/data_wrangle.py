@@ -107,6 +107,9 @@ if __name__ == "__main__":
         "/home/ray/datasets/helicopter/point_detection/tracking/set20",
         "/home/ray/datasets/helicopter/point_detection/tracking/set21",
         "/home/ray/datasets/helicopter/point_detection/tracking/set22",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set23",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set24",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set25",
     ]
 
     output = "/home/ray/datasets/helicopter/point_detection/tracking/master"
