@@ -26,12 +26,13 @@ Tracker:
         conf: 0.15
     matcher:
       _target_: helicopter.vision.tracking.TrianglePointMatcher
-      n: 10
+      n: 500
+      k: 50
       reference_points_path: 'assets/point_clouds/green_syma.npy'
     max_icp_iters: 10
   marker_detector:
     _target_: helicopter.vision.point_detection.ARUCOMarkerDetector
-    marker_size_meters: 0.0427
+    marker_size_meters: 0.05
   camera:
     _target_: helicopter.vision.D435i
     enable_motion: true

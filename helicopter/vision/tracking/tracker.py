@@ -45,10 +45,10 @@ class Tracker:
         self.vision_queue = queue.Queue(maxsize=5)
 
         # camera space is in raw camera axes
-        # world space is gravity aligned, zero yaw with origin coincident with IR sensor
+        # world space is gravity aligned, zero yaw and origin coincident with IR sensor
         # table space has center as origin, X-Y aligned with edges (short-long), Z aligned with gravity
         self.camera_quat: Rotation = Rotation.from_rotvec(np.array([0, 0, 0.0]))    # for going from camera space to world space
-        self.origin_position: np.ndarray = np.array([0.0, 0.0, 0.0])    # location of center of table in world space
+        self.origin_position: np.ndarray = np.array([0.0, 0.0, 0.0])    # location of center of table in camera space
         self.origin_quat: Rotation = Rotation.from_rotvec(np.array([0, 0, 0.0]))    # full quat for camera --> table
         self.initialized = False
         self.is_running = False
@@ -63,13 +63,7 @@ class Tracker:
 
         self.kill_signal = kill_signal
 
-    def get_origin_position(self, rotations: list[Rotation], lengths: list[np.ndarray]) -> np.ndarray:
-        current_position = np.array([0.0, 0.0, 0.0])
-        for rotation, length in zip(rotations, lengths):
-            current_position += length
-        pass
-
-    def world_to_table_space(self, points: np.ndarray) -> np.ndarray:
+    def camera_to_table_space(self, points: np.ndarray) -> np.ndarray:
         p_shifted = points - self.origin_position
         point_table = self.origin_quat.inv().apply(p_shifted)
 
@@ -185,18 +179,17 @@ class Tracker:
         # ------------------------------------------------------------
 
         try:
-            origin = origin_queue.get(timeout=10.0)
+            origin_dict = origin_queue.get(timeout=10.0)
         except queue.Full:
             raise RuntimeError('Render init led to timeout')
 
-        world_space_marker_rotation = self.camera_quat * (marker_dict[origin['id']]['rotation'])
-        yaw_only_marker_quat = Rotation.from_euler('Z',
-                                                   world_space_marker_rotation.as_euler('ZYX')[0])
+        world_space_marker_rotation = self.camera_quat * marker_dict[origin_dict['id']]['rotation'] * origin_dict['rotation']
+        yaw_only_marker_quat = Rotation.from_euler('z',
+                                                   world_space_marker_rotation.as_euler('zyx')[0])
         self.origin_quat = (self.camera_quat *
-                            yaw_only_marker_quat *
-                            origin['rotation'])
-        self.origin_position = (self.camera_quat.apply(marker_dict[origin['id']]['position'])
-                                - self.origin_quat.apply(origin['position']))
+                            yaw_only_marker_quat)
+        self.origin_position = (self.camera_quat.apply(marker_dict[origin_dict['id']]['position'])
+                                - yaw_only_marker_quat.apply(origin_dict['position']))
         origin_queue.put({'origin_position': self.origin_position,
                           'origin_quat': self.origin_quat,
                           'camera_quat': self.camera_quat})
@@ -206,15 +199,15 @@ class Tracker:
         # ------------------------------------------------------------
 
         self.profiler.start('Init_Matching')
-        world_space_coords = self.camera_quat.apply(self.point_handler.init_points_coords)
-        r, t = self.point_handler.matcher.get_alignment(world_space_coords)
+        table_space_coords = self.camera_to_table_space(self.point_handler.init_points_coords)
+        r, t = self.point_handler.matcher.get_alignment(table_space_coords)
         self.profiler.end('Init_Matching')
 
         if self.aircraft is None:
             self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
 
-        self.aircraft.quaternion = self.origin_quat.inv() * r
-        self.aircraft.position = self.world_to_table_space(t)
+        self.aircraft.quaternion = r
+        self.aircraft.position = t
 
     def loop(self, command_sm: SharedMemory, lock: Lock):
         command_buffer = np.ndarray(shape=(CommandBufferConstants.N,),
@@ -284,8 +277,7 @@ class Tracker:
                 continue
             else:
                 measured_points, keypoints = measured_out
-                world_measured_points = self.camera_quat.apply(measured_points)
-                table_measured_points = self.world_to_table_space(world_measured_points)
+                table_measured_points = self.camera_to_table_space(measured_points)
 
                 q = self.aircraft.quaternion
                 t = self.aircraft.position.copy()

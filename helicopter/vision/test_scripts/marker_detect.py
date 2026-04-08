@@ -72,14 +72,14 @@ if __name__ == '__main__':
                    autoexpose=False,
                    exposure_time=3200,
                    autoexpose_rgb=False,
-                   exposure_time_rgb=500)
+                   exposure_time_rgb=1500)
 
     aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
     parameters = cv2.aruco.DetectorParameters()
     parameters.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
     parameters.cornerRefinementWinSize = 5
     parameters.cornerRefinementMaxIterations = 100
-    parameters.cornerRefinementMinAccuracy = 0.01
+    parameters.cornerRefinementMinAccuracy = 0.1
     parameters.minMarkerPerimeterRate = 0.01
     parameters.minMarkerDistanceRate = 0.05
     parameters.adaptiveThreshWinSizeMin = 3

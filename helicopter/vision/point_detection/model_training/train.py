@@ -12,6 +12,7 @@ if __name__ == "__main__":
         imgsz=1280,
         batch=10,
         device=0,
+        box=12.0,
         save_dir=str(model_dir),
         optimizer='MuSGD',
         dropout=0.1,
@@ -26,6 +27,7 @@ if __name__ == "__main__":
         mosaic=1.0,
         close_mosaic=25,
         mixup=0.1,
+        lr0=2e-1,
         cos_lr=True
     )
 

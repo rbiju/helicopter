@@ -34,7 +34,7 @@ class MarkerModel(ABC):
     def marker_rotation(self) -> Rotation:
         """
 
-        Returns: Rotation representing marker rotation from default (normal vector facing -x)
+        Returns: Rotation representing marker rotation to bring back to default (normal vector facing -x)
 
         """
         return Rotation.from_quat(np.array([0, 0, 0, 1.0]))
@@ -90,7 +90,7 @@ class GameTableModelTopSide(GameTableModel):
         return 0
 
     def marker_rotation(self) -> Rotation:
-        return Rotation.from_euler('Y', [90], degrees=True)
+        return Rotation.from_euler('y', [-90], degrees=True)
 
     def marker_offset(self) -> np.ndarray:
         return np.array([-0.355 + self.marker_size_offset,
@@ -107,7 +107,7 @@ class GameTableModelShortSide(GameTableModel):
         return 1
 
     def marker_rotation(self) -> Rotation:
-        return Rotation.from_euler('Z', [90], degrees=True)
+        return Rotation.from_euler('z', [-90], degrees=True)
 
     def marker_offset(self) -> np.ndarray:
         return np.array([-0.355,
