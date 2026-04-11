@@ -1,8 +1,8 @@
 import cv2
 import numpy as np
-from scipy.spatial.transform import Rotation
 
 from helicopter.utils import Profiler, Quitter, KeyListener
+from helicopter.vision.point_detection import AprilTagMarkerDetector
 from helicopter.vision import D435i
 
 COB_MATRIX = np.array([
@@ -10,55 +10,6 @@ COB_MATRIX = np.array([
     [-1, 0, 0],
     [0, -1, 0]
 ])
-
-
-def get_aruco_poses(image, intrinsics, marker_size_meters, _detector):
-    _corners, _ids, rejected = _detector.detectMarkers(image)
-
-    if _ids is None:
-        return None, None, None, None, None, None
-
-    camera_matrix = np.array([
-        [intrinsics.fx, 0, intrinsics.ppx],
-        [0, intrinsics.fy, intrinsics.ppy],
-        [0, 0, 1]
-    ], dtype=np.float32)
-
-    dist_coeffs = np.array(intrinsics.coeffs, dtype=np.float64).flatten()
-
-    half_size = marker_size_meters / 2.0
-    obj_points = np.array([
-        [-half_size, half_size, 0],
-        [half_size, half_size, 0],
-        [half_size, -half_size, 0],
-        [-half_size, -half_size, 0]
-    ], dtype=np.float32)
-
-    rvecs_out = []
-    tvecs_out = []
-
-    for corner in _corners:
-        img_points = corner[0].astype(np.float32)
-
-        success, _rvecs, _tvecs, _ = cv2.solvePnPGeneric(
-            obj_points,
-            img_points,
-            camera_matrix,
-            dist_coeffs,
-            flags=cv2.SOLVEPNP_IPPE_SQUARE
-        )
-
-        flip_180 = Rotation.from_euler('x', 180, degrees=True)
-
-        if success and len(_rvecs) > 0:
-            rvec_out = (Rotation.from_rotvec(_rvecs[0].flatten()) * flip_180).as_rotvec()
-            rvecs_out.append(rvec_out)
-            tvecs_out.append(_tvecs[0])
-        else:
-            rvecs_out.append(None)
-            tvecs_out.append(None)
-
-    return _corners, _ids, rvecs_out, tvecs_out, camera_matrix, dist_coeffs
 
 
 if __name__ == '__main__':
@@ -72,25 +23,10 @@ if __name__ == '__main__':
                    autoexpose=False,
                    exposure_time=3200,
                    autoexpose_rgb=False,
-                   exposure_time_rgb=300)
+                   exposure_time_rgb=500)
 
-    aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-    parameters = cv2.aruco.DetectorParameters()
-    parameters.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
-    parameters.cornerRefinementWinSize = 5
-    parameters.cornerRefinementMaxIterations = 100
-    parameters.cornerRefinementMinAccuracy = 0.1
-    parameters.minMarkerPerimeterRate = 0.01
-    parameters.minMarkerDistanceRate = 0.05
-    parameters.adaptiveThreshWinSizeMin = 3
-    parameters.adaptiveThreshWinSizeMax = 53
-    parameters.adaptiveThreshWinSizeStep = 5
-    parameters.adaptiveThreshConstant = 5
-    # parameters.polygonalApproxAccuracyRate = 0.03
-    parameters.errorCorrectionRate = 0.6
-
-    detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
-    MARKER_SIZE_METERS = 0.0427
+    detector = AprilTagMarkerDetector()
+    detector.activate(camera.color_intrinsics, camera.color_ir_extrinsics)
 
     listener = KeyListener()
     quitter = Quitter(listener=listener)
@@ -101,7 +37,7 @@ if __name__ == '__main__':
         frame_count = 0
         marker_dict = {}
         quitter.start()
-        print("Starting ArUco detection")
+        print("Starting Marker detection")
 
         while frame_count < 100 and not quitter.quit:
             quitter.process()
@@ -116,37 +52,30 @@ if __name__ == '__main__':
                 profiler.start('E2E')
                 profiler.start("Detect")
 
-                corners, ids, rvecs, tvecs, cam_mat, dist = get_aruco_poses(
-                    video.color_image,
-                    camera.intrinsics,
-                    MARKER_SIZE_METERS,
-                    detector
-                )
+                detected_markers = detector.detect_markers(video.color_image)
 
                 profiler.end("Detect")
 
                 profiler.start("Draw")
                 canvas = cv2.cvtColor(video.color_image, cv2.COLOR_RGB2BGR)
 
-                if ids is not None:
-                    cv2.aruco.drawDetectedMarkers(canvas, corners, ids)
+                if len(detected_markers) > 0:
+                    axis_length = detector.marker_size_meters * 0.75
+                    for marker in detected_markers:
+                        rvec = marker.unaligned_rotation.as_rotvec()
+                        tvec = np.array(marker.unaligned_position, dtype=np.float32).reshape(3, 1)
+                        cv2.drawFrameAxes(
+                            canvas,
+                            detector.intrinsic_matrix,
+                            detector.dist_coeffs,
+                            rvec,
+                            tvec,
+                            axis_length
+                        )
 
-                    axis_length = MARKER_SIZE_METERS * 0.75
-                    for idx, rvec, tvec in zip(ids, rvecs, tvecs):
-                        if rvec is not None and tvec is not None:
-                            cv2.drawFrameAxes(
-                                canvas,
-                                cam_mat,
-                                dist,
-                                rvec,
-                                tvec,
-                                axis_length
-                            )
-
-                            if int(idx[0]) not in marker_dict:
-                                marker_dict[int(idx[0])] = {'position': COB_MATRIX @ tvec.flatten(),
-                                                            'orientation': Rotation.from_rotvec(COB_MATRIX @ rvec.flatten())
-                                                            .as_rotvec(degrees=True)}
+                        if marker.id not in marker_dict:
+                            marker_dict[marker.id] = {'position': marker.position,
+                                                      'orientation': marker.rotation.as_rotvec(degrees=True)}
 
                 profiler.end("Draw")
                 profiler.end("E2E")
@@ -160,7 +89,7 @@ if __name__ == '__main__':
     print(profiler)
     print(marker_dict)
 
-    output_path = "aruco_tracking.mp4"
+    output_path = "apriltag_tracking.mp4"
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, 30.0, (imgsz[1], imgsz[0]), isColor=True)
 

@@ -54,22 +54,24 @@ class D435i:
         self.enable_motion = enable_motion
 
         # Sensor setup
-        serial = self.get_device_serial()
+        self.serial = self.get_device_serial()
         ctx = rs.context()
-        device = self.get_device_from_serial(ctx, serial)
+        device = self.get_device_from_serial(ctx, self.serial)
         depth_sensor = device.first_depth_sensor()
         depth_sensor.set_option(rs.option.visual_preset, depth_preset)
         self.depth_scale = depth_sensor.get_depth_scale()
         self.set_ir_exposure(depth_sensor, autoexposure=autoexpose, exposure_time=exposure_time)
         self.set_projector_power(depth_sensor, projector_power)
 
-        self.color_ir_extrinsics = None
+        self._color_ir_extrinsics = None
+        self._color_intrinsics = None
         if enable_rgb:
             color_sensor = device.first_color_sensor()
             self.set_color_exposure(color_sensor,
                                     autoexposure=autoexpose_rgb,
                                     exposure_time=exposure_time_rgb)
-            self.color_ir_extrinsics = self.get_color_to_ir_extrinsics()
+            _ = self.color_intrinsics
+            _ = self.color_ir_extrinsics
 
         self.global_time = global_time
 
@@ -85,9 +87,9 @@ class D435i:
 
         self.enable_motion = enable_motion
         if enable_motion:
-            self.imu_pipeline, self.imu_config = self.get_imu_pipeline(serial)
+            self.imu_pipeline, self.imu_config = self.get_imu_pipeline(self.serial)
 
-        self.pipeline, self.config, self.intrinsics = self.get_camera_pipeline(serial, enable_rgb)
+        self.pipeline, self.config, self.intrinsics = self.get_camera_pipeline(self.serial, enable_rgb)
 
         self.align = rs.align(rs.stream.infrared)
 
@@ -97,6 +99,28 @@ class D435i:
         self.last_gyro = None
 
         self.time_queue = deque(maxlen=10)
+
+    @property
+    def color_intrinsics(self):
+        if not self.enable_rgb:
+            raise RuntimeError("Color Stream was not enabled. Cannot retrieve color intrinsics.")
+        if self._color_intrinsics is None:
+            self._color_intrinsics = self.get_intrinsics(self.serial,
+                                                         rs.stream.color,
+                                                         stream_index=0,
+                                                         width=self.COLOR_RESOLUTION[1],
+                                                         height=self.COLOR_RESOLUTION[0],
+                                                         fps=self.COLOR_RATE,
+                                                         _format=rs.format.rgb8)
+        return self._color_intrinsics
+
+    @property
+    def color_ir_extrinsics(self):
+        if not self.enable_rgb:
+            raise RuntimeError("Color Stream was not enabled. Cannot retrieve color --> IR extrinsics.")
+        if self._color_ir_extrinsics is None:
+            self._color_ir_extrinsics = self.get_color_to_ir_extrinsics()
+        return self._color_ir_extrinsics
 
     @property
     def last_imu_time(self):

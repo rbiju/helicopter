@@ -3,24 +3,24 @@ Tracker:
   _partial_: True
   camera:
     _target_: helicopter.vision.D435i
-    enable_motion: true
-    enable_rgb: true
+    enable_motion: True
+    enable_rgb: True
     video_rate: 30
     video_resolution:
       - 720
       - 1280
     projector_power: 0.0
-    autoexpose: false
+    autoexpose: False
     exposure_time: 3200
-    autoexpose_rgb: false
-    exposure_time_rgb: 1000
+    autoexpose_rgb: False
+    exposure_time_rgb: 500
     depth_preset: 3
     ema_accel: 1.0
   point_handler:
     _target_: helicopter.vision.tracking.TrackingPointHandler
     detector:
       _target_: helicopter.vision.point_detection.YOLOPointDetector
-      marker_tolerance: 0.005
+      marker_tolerance: 0.01
       distance_threshold: 4.0
       marker_std_dev: 0.005
       margin: 2
@@ -28,7 +28,7 @@ Tracker:
         _target_: helicopter.vision.point_detection.HelicopterYOLO
         model:
           _target_: ultralytics.YOLO
-          model: '/home/ray/yolo_models/helicopter/track_20260408_1/weights/best.engine'
+          model: '/home/ray/yolo_models/helicopter/track_20260409_1/weights/best.engine'
           task: "detect"
         preprocessor:
           _target_:  helicopter.vision.point_detection.GPUImagePreprocessor
@@ -38,7 +38,7 @@ Tracker:
         imgsz:
           - 720
           - 1280
-        conf: 0.15
+        conf: 0.1
     matcher:
       _target_: helicopter.vision.tracking.TrianglePointMatcher
       n: 500
@@ -46,8 +46,8 @@ Tracker:
       reference_points_path: 'assets/point_clouds/green_syma.npy'
     max_icp_iters: 10
   marker_detector:
-    _target_: helicopter.vision.point_detection.ARUCOMarkerDetector
-    marker_size_meters: 0.05
+    _target_: helicopter.vision.point_detection.AprilTagMarkerDetector
+    marker_size_meters: 0.04
   ukf_factory:
     _target_: helicopter.vision.UKFFactory
     dt: 0.005

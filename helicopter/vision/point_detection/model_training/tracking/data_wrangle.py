@@ -31,6 +31,7 @@ def organize_labels(_export_path: str):
         moved_count += 1
     print(f"\nSuccess! Moved {moved_count} label files into their respective folders.")
 
+
 def merge_yolo_datasets(source_dirs, output_dir, split_ratio=0.8):
     output_path = Path(output_dir)
 
@@ -45,14 +46,12 @@ def merge_yolo_datasets(source_dirs, output_dir, split_ratio=0.8):
         d.mkdir(parents=True, exist_ok=True)
 
     valid_exts = {'.png'}
-
     total_files = 0
 
     print(f"Processing {len(source_dirs)} directories...")
 
     for source in source_dirs:
         source_path = Path(source)
-
         img_source = source_path / 'images'
         lbl_source = source_path / 'labels'
 
@@ -60,23 +59,19 @@ def merge_yolo_datasets(source_dirs, output_dir, split_ratio=0.8):
             print(f"Skipping {source}: Missing 'images' or 'labels' subdirectory.")
             continue
 
-        # Gather all images
-        images = [f for f in img_source.iterdir() if f.suffix.lower() in valid_exts]
+        valid_images = [
+            f for f in img_source.iterdir()
+            if f.suffix.lower() in valid_exts and (lbl_source / f"{f.stem}.txt").exists()
+        ]
 
-        for img_file in images:
-            label_file = lbl_source / f"{img_file.stem}.txt"
+        random.shuffle(valid_images)
+        split_idx = int(len(valid_images) * split_ratio)
 
-            if not label_file.exists():
-                print(f"Warning: Label not found for {img_file.name}, skipping.")
-                continue
+        for i, img_file in enumerate(valid_images):
+            dest_type = 'train' if i < split_idx else 'val'
 
-            is_train = random.random() < split_ratio
-
-            dest_img_key = 'train_img' if is_train else 'val_img'
-            dest_lbl_key = 'train_lbl' if is_train else 'val_lbl'
-
-            shutil.copy2(img_file, dirs[dest_img_key] / img_file.name)
-            shutil.copy2(label_file, dirs[dest_lbl_key] / label_file.name)
+            shutil.copy2(img_file, dirs[f'{dest_type}_img'] / img_file.name)
+            shutil.copy2(lbl_source / f"{img_file.stem}.txt", dirs[f'{dest_type}_lbl'] / f"{img_file.stem}.txt")
 
             total_files += 1
 
@@ -110,6 +105,7 @@ if __name__ == "__main__":
         "/home/ray/datasets/helicopter/point_detection/tracking/set23",
         "/home/ray/datasets/helicopter/point_detection/tracking/set24",
         "/home/ray/datasets/helicopter/point_detection/tracking/set25",
+        "/home/ray/datasets/helicopter/point_detection/tracking/set26",
     ]
 
     output = "/home/ray/datasets/helicopter/point_detection/tracking/master"

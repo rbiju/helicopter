@@ -19,13 +19,16 @@ if __name__ == '__main__':
     print('Starting detection in 3 seconds...')
     time.sleep(3)
 
-    dataset_name = 'set25'
-    data_path = Path("/home/ray/datasets/helicopter/point_detection/tracking") / dataset_name / 'images'
-    if not os.path.exists(data_path):
-        print(f"Making directory {str(data_path)}")
-        os.mkdir(data_path)
+    dataset_name = 'set27'
+    dataset_path = Path("/home/ray/datasets/helicopter/point_detection/tracking") / dataset_name
+    if not os.path.exists(dataset_path):
+        print(f"Making directory {str(dataset_path)}")
+        os.mkdir(dataset_path)
+        os.mkdir(dataset_path / 'images')
     else:
-        raise RuntimeError("Directory ", str(data_path), " already exists.")
+        raise RuntimeError("Directory ", str(dataset_path), " already exists.")
+
+    data_path = dataset_path / 'images'
 
     print(f'Collecting data for {dataset_name}')
     camera.start()

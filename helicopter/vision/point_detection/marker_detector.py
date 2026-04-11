@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
@@ -22,6 +22,8 @@ class DetectedMarker:
     id: int
     position: np.ndarray
     rotation: Rotation
+    unaligned_position: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 0.0]))
+    unaligned_rotation: Rotation = field(default_factory=lambda: Rotation.from_rotvec([0.0, 0.0, 0.0]))
 
 
 class MarkerDetector(ABC):
@@ -144,15 +146,21 @@ class ARUCOMarkerDetector(MarkerDetector):
 
 
 class AprilTagMarkerDetector(MarkerDetector):
-    def __init__(self, marker_size_meters: float = 0.0427,
+    def __init__(self, marker_size_meters: float = 0.04,
                  families: str = "tag25h9"):
         super().__init__(marker_size_meters)
-        self.detector = Detector(families=families)
+        self.detector = Detector(
+            families=families,
+            quad_decimate=1.0,
+            refine_edges=1,
+            decode_sharpening=0.25
+        )
 
     def detect_markers(self, img) -> list[DetectedMarker]:
         gray_img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
         undistorted_img = cv2.undistort(gray_img, self.intrinsic_matrix, self.dist_coeffs)
+        undistorted_img = np.ascontiguousarray(undistorted_img, dtype=np.uint8)
         camera_params = (self.rs_intrinsics.fx, self.rs_intrinsics.fy, self.rs_intrinsics.ppx, self.rs_intrinsics.ppy)
         # noinspection PyTypeChecker
         detections: list[Detection] = self.detector.detect(
@@ -164,10 +172,24 @@ class AprilTagMarkerDetector(MarkerDetector):
 
         results = []
         for tag in detections:
-            position, rotation = self.align_rgb_to_ir(rotation_RGB=Rotation.from_matrix(tag.pose_R),
-                                                      position_RGB=tag.pose_t)
+            u, s, vt = np.linalg.svd(tag.pose_R)
+            valid_rotation = np.dot(u, vt)
+
+            if np.linalg.det(valid_rotation) < 0:
+                u[:, 2] *= -1
+                valid_rotation = np.dot(u, vt)
+
+            position, rotation = self.align_rgb_to_ir(rotation_RGB=Rotation.from_matrix(valid_rotation),
+                                                      position_RGB=tag.pose_t.flatten())
+
+            rotation = Rotation.from_rotvec(COB_MATRIX @ rotation.as_rotvec())
+            position = COB_MATRIX @ position
+
+            unaligned_rotation = Rotation.from_rotvec(COB_MATRIX @
+                                                      Rotation.from_matrix(valid_rotation).as_rotvec())
             results.append(DetectedMarker(id=tag.tag_id,
                                           position=position,
-                                          rotation=rotation))
-
+                                          rotation=rotation,
+                                          unaligned_position=tag.pose_t,
+                                          unaligned_rotation=unaligned_rotation))
         return results

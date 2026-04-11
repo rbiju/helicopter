@@ -38,7 +38,7 @@ class Tracker:
         self.camera = camera
         self.ukf: ErrorStateSquareRootUnscentedKalmanFilter = ukf_factory.filter()
 
-        self.marker_detector.activate(rs_intrinsics=self.camera.intrinsics,
+        self.marker_detector.activate(rs_intrinsics=self.camera.color_intrinsics,
                                       rs_extrinsics=self.camera.color_ir_extrinsics)
 
         self.vision_thread = threading.Thread(target=self.vision_loop, daemon=True)
@@ -127,10 +127,10 @@ class Tracker:
         # ------------------------------------------------------------
         # |                         POINTS                           |
         # ------------------------------------------------------------
-        marker_iters = 400
+        point_iters = 400
         print("\nInitializing helicopter orientation. Do not move aircraft.")
         counter = 0
-        while counter < marker_iters:
+        while counter < point_iters:
             counter += 1
             frames = self.camera.pipeline.wait_for_frames()
             video = self.camera.process_frames(frames)
@@ -152,7 +152,7 @@ class Tracker:
         # ------------------------------------------------------------
         # |                         MARKERS                          |
         # ------------------------------------------------------------
-        marker_iters = 100
+        marker_iters = 200
         print("\nInitializing marker orientations.")
         counter = 0
         marker_dict = {}
@@ -166,8 +166,9 @@ class Tracker:
             self.profiler.end('Marker_Detection')
             if len(detections) > 0:
                 for detection in detections:
-                    marker_dict[detection.id] = {'rotation': detection.rotation,
-                                              'position': detection.position,}
+                    if detection.id not in marker_dict:
+                        marker_dict[detection.id] = {'rotation': detection.rotation,
+                                                  'position': detection.position,}
 
         if not marker_dict:
             raise RuntimeError('Failed to find any markers.')

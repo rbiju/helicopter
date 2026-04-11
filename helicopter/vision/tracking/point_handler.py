@@ -76,7 +76,9 @@ class TrackingPointHandler:
             if len(self.init_points) < 1:
                 self.add_point(point)
             else:
-                norm = np.linalg.norm(self.init_points_coords - point, axis=1)
+                # Depth noise is isolated to first dim, so just check for Y and Z
+                # I think this is fine if the tolerance is tight enough
+                norm = np.linalg.norm(self.init_points_coords[:, 1:] - point[1:], axis=1)
                 closest_point = np.argmin(norm)
                 if norm[closest_point] > self.detector.marker_tolerance:
                     self.add_point(point)
