@@ -27,7 +27,7 @@ def get_refined_keypoints(ir_frame, _boxes, margin=2):
         if roi.size == 0:
             continue
 
-        _, roi_clean = cv2.threshold(roi, 60, 255, cv2.THRESH_TOZERO)
+        _, roi_clean = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
         M = cv2.moments(roi_clean, binaryImage=False)
 

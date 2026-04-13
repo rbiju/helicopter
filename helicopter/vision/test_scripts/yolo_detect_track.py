@@ -93,7 +93,7 @@ if __name__ == '__main__':
                    enable_rgb=True,
                    projector_power=0.,
                    autoexpose=False,
-                   exposure_time=3200,
+                   exposure_time=2400,
                    autoexpose_rgb=False,
                    exposure_time_rgb=1000,
                    depth_preset=3)
