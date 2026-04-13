@@ -17,14 +17,6 @@ from .base import Visualizer
 from .marker_registry import MUTUALLY_EXCLUSIVE_IDS, MarkerModel, model_registry, GameTableModel
 
 
-CAM_TO_BODY_MATRIX = np.array([
-    [0., -1., 0.],
-    [0., 0., -1.],
-    [1., 0., 0.]
-])
-coordinate_transform = Rotation.from_matrix(CAM_TO_BODY_MATRIX)
-
-
 @HydraConfigurable
 class FlightVisualizer(Visualizer):
     def __init__(self, aircraft_sm: SharedMemory,
@@ -184,12 +176,14 @@ class FlightVisualizer(Visualizer):
             self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
 
         marker_dict = marker_queue.get()
+        origin_dict = []
         for marker_id in marker_dict.keys():
             mesh_obj: MarkerModel = model_registry[marker_id]
             if isinstance(mesh_obj, GameTableModel):
-                if marker_id in self.board_pieces:
-                    origin_dict = {'id': marker_id, 'position': mesh_obj.marker_offset, 'rotation': mesh_obj.marker_rotation}
-                    origin_queue.put(origin_dict)
+                origin_dict.append({'id': marker_id,
+                                    'position': mesh_obj.marker_offset,
+                                    'rotation': mesh_obj.marker_rotation})
+        origin_queue.put(origin_dict)
 
         time.sleep(1.0)
 
@@ -198,19 +192,25 @@ class FlightVisualizer(Visualizer):
         self.origin_position = origin_dict_tracker['origin_position']
         self.camera_quat = origin_dict_tracker['camera_quat']
 
+        table_loaded = False
         for marker_id in marker_dict.keys():
             rotation = marker_dict[marker_id]['rotation']
             position = marker_dict[marker_id]['position']
-            if marker_id in self.board_pieces:
+            if marker_id in model_registry:
                 mesh_obj: MarkerModel = model_registry[marker_id]
                 mesh = mesh_obj.mesh()
                 if isinstance(mesh_obj, GameTableModel):
-                    mesh_handle = self.add_mesh(mesh, f'/game_table/{marker_id}')
+                    if not table_loaded:
+                        mesh_handle = self.add_mesh(mesh, f'/game_table/{marker_id}')
+                        table_loaded = True
+                    else:
+                        continue
                 else:
-                    table_space_rotation, table_space_position = self.camera_to_table_space(object_rotation=rotation,
-                                                                                            object_position=position,
-                                                                                            offset_rotation=mesh_obj.marker_rotation,
-                                                                                            offset_position=mesh_obj.marker_offset)
+                    (table_space_rotation,
+                     table_space_position) = self.camera_to_table_space(object_rotation=rotation,
+                                                                        object_position=position,
+                                                                        offset_rotation=mesh_obj.marker_rotation,
+                                                                        offset_position=mesh_obj.marker_offset)
                     mesh_handle = self.add_mesh(mesh, f'/aruco_mesh/{marker_id}',
                                                 position=table_space_position,
                                                 orientation=table_space_rotation.as_quat(canonical=True))

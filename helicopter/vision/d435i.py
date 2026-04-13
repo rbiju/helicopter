@@ -92,6 +92,9 @@ class D435i:
         self.pipeline, self.config, self.intrinsics = self.get_camera_pipeline(self.serial, enable_rgb)
 
         self.align = rs.align(rs.stream.infrared)
+        self.temporal_filter = rs.temporal_filter()
+        self.temporal_filter.set_option(rs.option.filter_smooth_alpha, 0.4)
+        self.temporal_filter.set_option(rs.option.filter_smooth_delta, 20)
 
         self.ema_accel = ema_accel
         self.ema_gyro = ema_gyro
@@ -319,7 +322,7 @@ class D435i:
             else:
                 print(f"{stream.stream_type()} | FPS: {stream.fps()} | Format: {stream.format()}")
 
-    def process_frames(self, frames: rs.composite_frame):
+    def process_frames(self, frames: rs.composite_frame, temporal_filter: bool = False):
         aligned = self.align.process(frames)
 
         depth_frame = aligned.get_depth_frame()
@@ -328,6 +331,8 @@ class D435i:
         color_frame = aligned.get_color_frame()
 
         if depth_frame:
+            if temporal_filter:
+                depth_frame = self.temporal_filter.process(depth_frame)
             depth_image = np.asanyarray(depth_frame.get_data()).copy()
             depth_image = depth_image * self.depth_scale
             ts_depth = float(depth_frame.get_timestamp()) / 1000.

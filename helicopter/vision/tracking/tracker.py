@@ -65,7 +65,8 @@ class Tracker:
         self.kill_signal = kill_signal
 
     def camera_to_table_space(self, points: np.ndarray) -> np.ndarray:
-        p_shifted = points - self.origin_position
+        world_space_points = self.camera_quat.apply(points)
+        p_shifted = world_space_points - self.origin_position
         point_table = self.origin_quat.inv().apply(p_shifted)
 
         return point_table
@@ -127,7 +128,7 @@ class Tracker:
         # ------------------------------------------------------------
         # |                         POINTS                           |
         # ------------------------------------------------------------
-        point_iters = 400
+        point_iters = 250
         print("\nInitializing helicopter orientation. Do not move aircraft.")
         counter = 0
         while counter < point_iters:
@@ -159,7 +160,7 @@ class Tracker:
         while counter < marker_iters:
             counter += 1
             frames = self.camera.pipeline.wait_for_frames()
-            video = self.camera.process_frames(frames)
+            video = self.camera.process_frames(frames, temporal_filter=True)
 
             self.profiler.start('Marker_Detection')
             detections = self.marker_detector.detect_markers(video.color_image)
@@ -185,6 +186,15 @@ class Tracker:
         except queue.Full:
             raise RuntimeError('Render init led to timeout')
 
+        found_origin = False
+        for marker_info in origin_dict:
+            if marker_info['id'] in marker_dict:
+                found_origin = True
+                origin_dict = marker_info
+                break
+        if not found_origin:
+            raise RuntimeError('Failed to find any origin markers.')
+
         world_space_marker_rotation = self.camera_quat * marker_dict[origin_dict['id']]['rotation'] * origin_dict['rotation'].inv()
         yaw_only_marker_quat = Rotation.from_euler('z',
                                                    world_space_marker_rotation.as_euler('zyx')[0])
@@ -201,15 +211,16 @@ class Tracker:
         # ------------------------------------------------------------
 
         self.profiler.start('Init_Matching')
-        table_space_coords = self.camera_to_table_space(self.point_handler.init_points_coords)
+        table_space_coords = self.camera_to_table_space(self.point_handler.initial_points())
         r, t = self.point_handler.matcher.get_alignment(table_space_coords)
+        r_refined, t_refined = self.point_handler.refine_alignment(r, t, table_space_coords)
         self.profiler.end('Init_Matching')
 
         if self.aircraft is None:
             self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
 
-        self.aircraft.quaternion = r
-        self.aircraft.position = t
+        self.aircraft.quaternion = r_refined
+        self.aircraft.position = t_refined
 
     def loop(self, command_sm: SharedMemory, lock: Lock):
         command_buffer = np.ndarray(shape=(CommandBufferConstants.N,),

@@ -5,7 +5,7 @@ from ultralytics import YOLO
 if __name__ == "__main__":
     model = YOLO("yolo26n.pt")
 
-    model_dir = Path("/home/ray/yolo_models/helicopter/track_20260412_1")
+    model_dir = Path("/home/ray/yolo_models/helicopter/track_20260413_0")
     model.train(
         data="/home/ray/datasets/helicopter/point_detection/tracking/tracking.yaml",
         epochs=450,
@@ -16,14 +16,14 @@ if __name__ == "__main__":
         cls=3.0,
         save_dir=str(model_dir),
         optimizer='MuSGD',
-        hsv_s=0.1,
-        hsv_v=0.1,
+        hsv_s=0.5,
+        hsv_v=0.5,
         flipud=0.5,
         fliplr=0.5,
-        scale=0.,
-        perspective=0.0,
+        scale=0.2,
+        perspective=1e-5,
         mosaic=1.0,
-        # close_mosaic=25,
+        close_mosaic=25,
         cos_lr=True,
         max_det=15
     )

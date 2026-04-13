@@ -71,7 +71,7 @@ class GameTableModel(MarkerModel, ABC):
         Game table marker is mounted
         """
         super().__init__()
-        self.marker_size_offset = 0.025
+        self.marker_size_offset = 0.035
 
     def mesh(self) -> trimesh.Trimesh:
         obj_path: str = 'assets/objects/table/table.obj'
@@ -95,7 +95,7 @@ class GameTableModelTopSide(GameTableModel):
     def marker_offset(self) -> np.ndarray:
         return np.array([-0.355 + self.marker_size_offset,
                          -0.685 + self.marker_size_offset,
-                         0.0 - self.marker_size_offset])
+                         0.025])
 
 @model_registry.register()
 class GameTableModelShortSide(GameTableModel):

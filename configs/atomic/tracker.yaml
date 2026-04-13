@@ -11,7 +11,7 @@ Tracker:
       - 1280
     projector_power: 0.0
     autoexpose: False
-    exposure_time: 3200
+    exposure_time: 2400
     autoexpose_rgb: False
     exposure_time_rgb: 500
     depth_preset: 3
@@ -28,7 +28,7 @@ Tracker:
         _target_: helicopter.vision.point_detection.HelicopterYOLO
         model:
           _target_: ultralytics.YOLO
-          model: '/home/ray/yolo_models/helicopter/track_20260409_1/weights/best.engine'
+          model: '/home/ray/yolo_models/helicopter/track_20260413_0/weights/best.engine'
           task: "detect"
         preprocessor:
           _target_:  helicopter.vision.point_detection.GPUImagePreprocessor
@@ -44,7 +44,11 @@ Tracker:
       n: 500
       k: 50
       reference_points_path: 'assets/point_clouds/green_syma.npy'
-    max_icp_iters: 10
+    icp:
+      _target_: helicopter.vision.tracking.ICP
+      distance_threshold: 1e-1
+      etol: 3e-3
+      max_iterations: 10
   marker_detector:
     _target_: helicopter.vision.point_detection.AprilTagMarkerDetector
     marker_size_meters: 0.04

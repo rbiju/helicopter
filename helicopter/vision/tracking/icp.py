@@ -60,7 +60,7 @@ class ICP:
         return sample_to_ref_idx, valid_mask
 
     @partial(jax.jit, static_argnums=(0,))
-    def iterate(self, q_old: Rotation, t_old, sample_points, reference_points):
+    def iterate(self, q_old: Rotation, t_old, sample_points, reference_points, valid_input_mask):
         transformed_reference_points = self.apply(q_old, t_old, reference_points)
 
         def cond_fn(state):
@@ -70,15 +70,20 @@ class ICP:
         def body_fn(state):
             error, iter_count, q, t = state
 
-            min_idxs, valid_mask = self.get_correspondence(transformed_reference_points, sample_points)
+            min_idxs, corr_mask = self.get_correspondence(transformed_reference_points, sample_points)
+            combined_mask = jnp.logical_and(corr_mask, valid_input_mask)
+
             matched_reference = reference_points[min_idxs]
 
-            q_new, t_new = self.kabsch(matched_reference, sample_points, weights=valid_mask)
+            safe_matched_ref = jnp.where(combined_mask[:, None], matched_reference, 0.0)
+            safe_sample_pts = jnp.where(combined_mask[:, None], sample_points, 0.0)
+
+            q_new, t_new = self.kabsch(safe_matched_ref, safe_sample_pts, weights=combined_mask)
 
             transformed_ref = self.apply(q_new, t_new, matched_reference)
 
-            diff = jnp.linalg.norm(transformed_ref - sample_points, axis=-1)
-            error_new = jnp.sum(diff * valid_mask)
+            diff = jnp.linalg.norm(transformed_ref - safe_sample_pts, axis=-1)
+            error_new = jnp.sum(jnp.where(combined_mask, diff, 0.0))
 
             return error_new, iter_count + 1, q_new, t_new
 
@@ -88,7 +93,8 @@ class ICP:
                                                                        body_fun=body_fn,
                                                                        init_val=init_state)
 
-        final_transformed_refs = q_final.apply(reference_points) + t_final
-        final_min_idxs, final_valid_mask = self.get_correspondence(final_transformed_refs, sample_points)
+        final_transformed_refs = self.apply(q_final, t_final, reference_points)
+        final_min_idxs, final_corr_mask = self.get_correspondence(final_transformed_refs, sample_points)
+        final_valid_mask = jnp.logical_and(final_corr_mask, valid_input_mask)
 
         return final_min_idxs, final_valid_mask, q_final, t_final
