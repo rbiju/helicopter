@@ -77,6 +77,7 @@ class GameTableModel(MarkerModel, ABC):
         obj_path: str = 'assets/objects/table/table.obj'
 
         mesh = trimesh.load_mesh(obj_path)
+        mesh.apply_translation(np.array([0.0, 0.0, -0.05]))
         return mesh
 
 
@@ -95,7 +96,7 @@ class GameTableModelTopSide(GameTableModel):
     def marker_offset(self) -> np.ndarray:
         return np.array([-0.355 + self.marker_size_offset,
                          -0.685 + self.marker_size_offset,
-                         0.025])
+                         0.0])
 
 @model_registry.register()
 class GameTableModelShortSide(GameTableModel):
@@ -112,7 +113,7 @@ class GameTableModelShortSide(GameTableModel):
     def marker_offset(self) -> np.ndarray:
         return np.array([-0.355,
                          -0.685 - self.marker_size_offset,
-                         0.025 - self.marker_size_offset])
+                         - self.marker_size_offset])
 
 
 @model_registry.register()
@@ -127,4 +128,4 @@ class GameTableModelLongSide(GameTableModel):
     def marker_offset(self) -> np.ndarray:
         return np.array([-0.355 - self.marker_size_offset,
                          -0.685,
-                         0.025 - self.marker_size_offset])
+                         - self.marker_size_offset])

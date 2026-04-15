@@ -128,13 +128,13 @@ class Tracker:
         # ------------------------------------------------------------
         # |                         POINTS                           |
         # ------------------------------------------------------------
-        point_iters = 250
+        point_iters = 200
         print("\nInitializing helicopter orientation. Do not move aircraft.")
         counter = 0
         while counter < point_iters:
             counter += 1
             frames = self.camera.pipeline.wait_for_frames()
-            video = self.camera.process_frames(frames)
+            video = self.camera.process_frames(frames, temporal_filter=True)
             self.profiler.start("Init_Detection")
             measure_out = self.point_handler.get_measured_points(ir_frame=video.ir_image,
                                                                  depth_frame=video.depth_image,
@@ -218,6 +218,11 @@ class Tracker:
 
         if self.aircraft is None:
             self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
+
+        print(r.as_rotvec(degrees=True))
+        print(r_refined.as_rotvec(degrees=True))
+        print(repr(self.point_handler.initial_points()))
+        print(repr(table_space_coords))
 
         self.aircraft.quaternion = r_refined
         self.aircraft.position = t_refined

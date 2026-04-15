@@ -1,88 +1,9 @@
 import cv2
-import numpy as np
 from ultralytics import YOLO
 
 from helicopter.utils import Profiler, Quitter, KeyListener
 from helicopter.vision import D435i
-from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor
-
-from helicopter.vision.test_scripts.yolo_detect import get_refined_keypoints
-
-
-def get_points_coords(depth_frame, keypoints, intrinsics):
-    if not keypoints:
-        return None
-
-    h, w = depth_frame.shape
-
-    valid_depths = []
-    valid_uvs = []
-    valid_radii = []
-
-    valid_kps = []
-    invalid_kps = []
-    for kp in keypoints:
-        cx, cy = kp.pt
-        radius = kp.size / 2
-
-        ix, iy = int(cx), int(cy)
-
-        if ix < 0 or ix >= w or iy < 0 or iy >= h:
-            invalid_kps.append(kp)
-            continue
-
-        safe_r = int(radius * 0.8)
-        if safe_r < 1:
-            safe_r = 1
-
-        x0, x1 = max(0, ix - safe_r), min(w, ix + safe_r + 1)
-        y0, y1 = max(0, iy - safe_r), min(h, iy + safe_r + 1)
-
-        roi = depth_frame[y0:y1, x0:x1]
-
-        valid_pixels = roi[roi > 0]
-
-        if len(valid_pixels) < roi.size * 0.7:
-            invalid_kps.append(kp)
-            continue
-
-        depth = np.mean(valid_pixels)
-        d_std = np.std(valid_pixels)
-
-        if d_std > 0.005:
-            invalid_kps.append(kp)
-            continue
-
-        if depth <= 0:
-            invalid_kps.append(kp)
-            continue
-
-        if depth > 5.0:
-            invalid_kps.append(kp)
-            continue
-
-        valid_depths.append(depth)
-        valid_uvs.append((cx, cy))
-        valid_radii.append(radius)
-
-        valid_kps.append(kp)
-
-    if not valid_depths:
-        return None
-
-    depths = np.array(valid_depths)
-    uvs = np.array(valid_uvs)
-
-    fx, fy = intrinsics.fx, intrinsics.fy
-    ppx, ppy = intrinsics.ppx, intrinsics.ppy
-
-    z_cam = depths
-    x_cam = (uvs[:, 0] - ppx) * z_cam / fx
-    y_cam = (uvs[:, 1] - ppy) * z_cam / fy
-
-    final_points = np.column_stack((z_cam, -x_cam, -y_cam))
-
-    return final_points, valid_kps, invalid_kps
+from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor, YOLOPointDetector
 
 
 if __name__ == '__main__':
@@ -104,6 +25,11 @@ if __name__ == '__main__':
                                                              brightness_factor=1.0),
                            imgsz=imgsz,
                            conf=0.1)
+    detector = YOLOPointDetector(model=model,
+                                 marker_tolerance=0.015,
+                                 distance_threshold=4.0,
+                                 marker_std_dev=0.003,
+                                 margin=1)
     listener = KeyListener()
     quitter = Quitter(listener=listener)
 
@@ -130,12 +56,12 @@ if __name__ == '__main__':
                 profiler.end("Inference")
 
                 profiler.start('Keypoints')
-                circles = get_refined_keypoints(video.ir_image, boxes, margin=1)
+                keypoints = detector.get_refined_keypoints(video.ir_image, boxes)
                 profiler.end("Keypoints")
                 profiler.end("Detect")
 
                 profiler.start("Deproject")
-                points = get_points_coords(video.depth_image, circles, camera.intrinsics)
+                points, valid, invalid = detector.get_points_coords(video.depth_image, keypoints, camera.intrinsics)
                 profiler.end("Deproject")
                 profiler.end("E2E")
 
@@ -144,7 +70,6 @@ if __name__ == '__main__':
                 if points is None:
                     detected_images.append(canvas)
                 else:
-                    coords, valid, invalid = points
                     canvas = cv2.drawKeypoints(canvas, invalid, None,
                                                color=(0, 0, 255),
                                                flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)

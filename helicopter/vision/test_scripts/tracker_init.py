@@ -32,13 +32,13 @@ if __name__ == "__main__":
     marker_queue = Queue()
     origin_queue = Queue()
     origin_queue.put([{'id': 0,
-                      'position': np.array([0, 0, 0]),
+                      'position': np.array([0.035, 0.035, 0]),
                       'rotation': Rotation.from_euler('y', [90], degrees=True)},
                       {'id': 1,
-                       'position': np.array([0, 0, -0.025]),
+                       'position': np.array([0, 0, -0.035]),
                        'rotation': Rotation.from_euler('z', [90], degrees=True)},
                       {'id': 2,
-                       'position': np.array([0, 0, -0.025]),
+                       'position': np.array([0, 0, -0.035]),
                        'rotation': Rotation.from_euler('z', [0], degrees=True)},
                       ])
     lock = Lock()

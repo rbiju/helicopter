@@ -73,10 +73,13 @@ def propagate(s, dt, commands, ground=False):
     pos_new = pos_old + vel_rotated * dt
 
     # Velocity
-    gravity = jnp.where(ground, jnp.array([0.0, 0, 0]), quat_new.inv().apply(G_WORLD))
+    gravity = quat_new.inv().apply(G_WORLD)
     thrust = thrust * MAX_THRUST * battery + pitch * MAX_TAIL_THRUST * battery
     drag = DRAG * vel_old
-    F_net = gravity + thrust - drag
+    F_net_body = gravity + thrust - drag
+    F_net_world_frame = quat_new.apply(F_net_body)
+    normal = jnp.where(ground, quat_new.inv().apply(jnp.array([0.0, 0, -F_net_world_frame[2]])), jnp.array([0.0, 0.0, 0.0]))
+    F_net = F_net_body + normal
     acc_coriolis = jnp.cross(omega_old, vel_old)
 
     vel_new = vel_old + ((F_net / MASS) - acc_coriolis) * dt

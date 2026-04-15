@@ -20,15 +20,20 @@ class PointDetector(ABC):
     def detect(self, ir_frame: np.ndarray) -> list[cv2.KeyPoint]:
         raise NotImplementedError
 
-    def get_points_coords(self, depth_frame, keypoints, intrinsics) -> np.ndarray:
+    def get_points_coords(self, depth_frame,
+                          keypoints,
+                          intrinsics) -> tuple[np.ndarray, list[cv2.KeyPoint], list[cv2.KeyPoint]]:
         if len(keypoints) == 0:
-            return np.empty((0, 3))
+            return np.empty((0, 3)), [], []
 
         h, w = depth_frame.shape
 
         valid_depths = []
         valid_centers = []
         valid_radii = []
+
+        valid_kps = []
+        invalid_kps = []
 
         for kp in keypoints:
             cx, cy = kp.pt
@@ -37,6 +42,7 @@ class PointDetector(ABC):
             ix, iy = int(cx), int(cy)
 
             if ix < 0 or ix >= w or iy < 0 or iy >= h:
+                invalid_kps.append(kp)
                 continue
 
             safe_r = int(radius * 0.8)
@@ -50,25 +56,36 @@ class PointDetector(ABC):
 
             valid_pixels = roi[roi > 0]
 
-            if len(valid_pixels) < roi.size * 0.7:
+            if len(valid_pixels) < max(5, int(roi.size * 0.2)):
+                invalid_kps.append(kp)
                 continue
 
-            depth = np.mean(valid_pixels)
-            d_std = np.std(valid_pixels)
+            p10, p90 = np.percentile(valid_pixels, [10, 90])
+            core_pixels = valid_pixels[(valid_pixels >= p10) & (valid_pixels <= p90)]
+
+            if len(core_pixels) == 0:
+                invalid_kps.append(kp)
+                continue
+
+            depth = np.median(core_pixels)
+            d_std = np.std(core_pixels)
 
             # Corresponds to marker size
             if d_std > self.marker_std_dev:
+                invalid_kps.append(kp)
                 continue
 
             if depth > self.distance_threshold or depth <= 0:
+                invalid_kps.append(kp)
                 continue
 
             valid_depths.append(depth)
             valid_centers.append((cx, cy))
             valid_radii.append(radius)
+            valid_kps.append(kp)
 
         if not valid_depths:
-            return np.empty((0, 3))
+            return np.empty((0, 3)), [], []
 
         depths = np.array(valid_depths)
         centers = np.array(valid_centers)
@@ -78,7 +95,7 @@ class PointDetector(ABC):
             point = rs.rs2_deproject_pixel_to_point(intrinsics, pixel=[center[0], center[1]], depth=depth)
             points.append(np.array([point[2], -point[0], -point[1]]))
 
-        return np.vstack(points)
+        return np.vstack(points), valid_kps, invalid_kps
 
 
 class BlobPointDetector(PointDetector):
@@ -132,17 +149,16 @@ class YOLOPointDetector(PointDetector):
         self.model = model
         self.margin = margin
 
-    @staticmethod
-    def get_refined_keypoints(ir_frame, boxes, margin=2) -> Sequence[cv2.KeyPoint]:
+    def get_refined_keypoints(self, ir_frame, boxes) -> Sequence[cv2.KeyPoint]:
         if len(boxes) == 0:
             return []
 
         h, w = ir_frame.shape
 
-        x1 = np.clip(boxes[:, 0] - margin, 0, w).astype(int)
-        y1 = np.clip(boxes[:, 1] - margin, 0, h).astype(int)
-        x2 = np.clip(boxes[:, 2] + margin, 0, w).astype(int)
-        y2 = np.clip(boxes[:, 3] + margin, 0, h).astype(int)
+        x1 = np.clip(boxes[:, 0] - self.margin, 0, w).astype(int)
+        y1 = np.clip(boxes[:, 1] - self.margin, 0, h).astype(int)
+        x2 = np.clip(boxes[:, 2] + self.margin, 0, w).astype(int)
+        y2 = np.clip(boxes[:, 3] + self.margin, 0, h).astype(int)
 
         keypoints = []
 
@@ -170,5 +186,5 @@ class YOLOPointDetector(PointDetector):
 
     def detect(self, ir_frame: np.ndarray) -> Sequence[cv2.KeyPoint]:
         boxes = self.model(ir_frame)
-        keypoints = self.get_refined_keypoints(ir_frame, boxes, margin=self.margin)
+        keypoints = self.get_refined_keypoints(ir_frame, boxes)
         return keypoints

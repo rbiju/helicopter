@@ -114,7 +114,7 @@ class MeasurementPointHandler:
     def get_measured_points(self, ir_frame: np.ndarray, depth_frame: np.ndarray,
                             intrinsics: pyrealsense2.intrinsics) -> tuple[np.ndarray, list[cv2.KeyPoint]] | None:
         keypoints = self.detector.detect(ir_frame)
-        marker_coords = self.detector.get_points_coords(depth_frame, keypoints, intrinsics)
+        marker_coords, _, _ = self.detector.get_points_coords(depth_frame, keypoints, intrinsics)
 
         if len(marker_coords) <= 0:
             return None
