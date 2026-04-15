@@ -160,7 +160,7 @@ class Tracker:
         while counter < marker_iters:
             counter += 1
             frames = self.camera.pipeline.wait_for_frames()
-            video = self.camera.process_frames(frames, temporal_filter=True)
+            video = self.camera.process_frames(frames)
 
             self.profiler.start('Marker_Detection')
             detections = self.marker_detector.detect_markers(video.color_image)

@@ -130,7 +130,7 @@ if __name__ == '__main__':
                 profiler.end("Inference")
 
                 profiler.start('Keypoints')
-                circles = get_refined_keypoints(video.ir_image, boxes, margin=2)
+                circles = get_refined_keypoints(video.ir_image, boxes, margin=1)
                 profiler.end("Keypoints")
                 profiler.end("Detect")
 
