@@ -56,7 +56,7 @@ class HelicopterModel(Model):
         mesh.apply_translation(-centroid)
         mesh.apply_scale(4.56e-5)
 
-        rotation = Rotation.from_euler('XZ', [np.pi / 2, np.pi])
+        rotation = Rotation.from_euler('xz', [np.pi / 2, np.pi])
         transform = self.transformation_matrix(rotation, np.array([0.0, 0.0, 0.0]))
         mesh.apply_transform(transform)
 
