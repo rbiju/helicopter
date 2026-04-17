@@ -1,16 +1,34 @@
 Tracker:
   _target_: helicopter.vision.tracking.Tracker
   _partial_: True
+  camera:
+    _target_: helicopter.vision.D435i
+    enable_motion: True
+    enable_rgb: True
+    video_rate: 30
+    video_resolution:
+      - 720
+      - 1280
+    projector_power: 0.0
+    autoexpose: False
+    exposure_time: 2400
+    autoexpose_rgb: False
+    exposure_time_rgb: 500
+    depth_preset: 4
+    ema_accel: 1.0
   point_handler:
     _target_: helicopter.vision.tracking.TrackingPointHandler
     detector:
       _target_: helicopter.vision.point_detection.YOLOPointDetector
-      marker_std_dev: 0.01
+      marker_tolerance: 0.01
+      distance_threshold: 4.0
+      marker_std_dev: 0.0005
+      margin: 1
       model:
         _target_: helicopter.vision.point_detection.HelicopterYOLO
         model:
           _target_: ultralytics.YOLO
-          model: '/home/ray/yolo_models/helicopter/track_20260324_1/weights/best.engine'
+          model: '/home/ray/yolo_models/helicopter/track_20260413_0/weights/best.engine'
           task: "detect"
         preprocessor:
           _target_:  helicopter.vision.point_detection.GPUImagePreprocessor
@@ -20,23 +38,21 @@ Tracker:
         imgsz:
           - 720
           - 1280
-        conf: 0.05
+        conf: 0.1
     matcher:
       _target_: helicopter.vision.tracking.TrianglePointMatcher
-      n: 10
+      n: 5000
+      k: 100
+      inlier_threshold: 0.005
       reference_points_path: 'assets/point_clouds/green_syma.npy'
-    max_icp_iters: 10
-  camera:
-    _target_: helicopter.vision.D435i
-    enable_motion: true
-    video_rate: 30
-    video_resolution:
-      - 720
-      - 1280
-    projector_power: 0.0
-    autoexpose: false
-    exposure_time: 2000
-    ema_accel: 1.0
+    icp:
+      _target_: helicopter.vision.tracking.ICP
+      distance_threshold: 1e-1
+      etol: 3e-3
+      max_iterations: 10
+  marker_detector:
+    _target_: helicopter.vision.point_detection.AprilTagMarkerDetector
+    marker_size_meters: 0.04
   ukf_factory:
     _target_: helicopter.vision.UKFFactory
     dt: 0.005
@@ -61,3 +77,16 @@ Tracker:
       dp_y: 1.0e-2
       dp_z: 1.0e-2
   simulation_fps: 250.
+FlightVisualizer:
+  _target_: helicopter.visualize.FlightVisualizer
+  _partial_: True
+FlightConductor:
+  _target_: helicopter.orchestration.FlightConductor
+  _partial_: True
+  oracle:
+    _target_: helicopter.orchestration.Oracle
+    flight_plan_sequence:
+      - _target_: helicopter.orchestration.ManualFlightPlan
+        flight_time: 120.0
+  remote:
+    _target_: helicopter.utils.SymaRemoteControl

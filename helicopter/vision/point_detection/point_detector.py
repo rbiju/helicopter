@@ -67,7 +67,7 @@ class PointDetector(ABC):
                 invalid_kps.append(kp)
                 continue
 
-            depth = np.median(core_pixels)
+            depth = np.mean(core_pixels)
             d_std = np.std(core_pixels)
 
             # Corresponds to marker size

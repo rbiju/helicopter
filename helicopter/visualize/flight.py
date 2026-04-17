@@ -14,14 +14,13 @@ from helicopter.aircraft import Aircraft, FlightState
 from helicopter.utils import HelicopterModel, CommandBufferConstants
 
 from .base import Visualizer
-from .marker_registry import MUTUALLY_EXCLUSIVE_IDS, MarkerModel, model_registry, GameTableModel
+from .marker_registry import MarkerModel, model_registry, GameTableModel
 
 
 @HydraConfigurable
 class FlightVisualizer(Visualizer):
     def __init__(self, aircraft_sm: SharedMemory,
                  kill_signal: Event,
-                 board_pieces: list[int],
                  plot_maxlen: int = 300,
                  fps: float = 30.0):
         super().__init__()
@@ -29,8 +28,6 @@ class FlightVisualizer(Visualizer):
                                           dtype=Aircraft.dtype,
                                           buffer=aircraft_sm.buf)
         self.aircraft = None
-
-        self.board_pieces = self.validate_board_pieces(board_pieces)
 
         self.server.initial_camera.position = (-0.25, -0.5, 0.1)
         self.server.initial_camera.look_at = (0.0, 0.0, 0.0)
@@ -51,8 +48,7 @@ class FlightVisualizer(Visualizer):
         self.land_button = self.server.gui.add_button('Kill Flight')
         self.land_button.on_click(lambda _: self.kill_flight())
 
-        helicopter_mesh = HelicopterModel().mesh()
-        self.helicopter_handle = self.add_mesh(helicopter_mesh, '/camera')
+        self.helicopter_handle = None
         self.models = {}
 
         self.timestamps = deque(maxlen=plot_maxlen)
@@ -87,7 +83,7 @@ class FlightVisualizer(Visualizer):
 
                     )
                     self.plot_handles[plot_name] = handle
-                    self.plot_data[plot_name].update({line: deque(maxlen=plot_maxlen) for line in lines})
+                    self.plot_data[plot_name] = {line: deque(maxlen=plot_maxlen) for line in lines}
 
         self.status_badge = self.server.gui.add_markdown("")
 
@@ -124,15 +120,6 @@ class FlightVisualizer(Visualizer):
             f"</div>"
         )
 
-    @staticmethod
-    def validate_board_pieces(board_pieces: list[int]):
-        for marker_set in MUTUALLY_EXCLUSIVE_IDS.keys():
-            mut_ex_markers = MUTUALLY_EXCLUSIVE_IDS[marker_set]
-            if len(set(mut_ex_markers).intersection(board_pieces)) > 1:
-                raise RuntimeError(f'Multiple markers from mutually exclusive set {marker_set} found')
-
-        return board_pieces
-
     def camera_to_table_space(self, object_rotation: Rotation, object_position: np.ndarray,
                               offset_rotation: Rotation, offset_position: np.ndarray):
         """
@@ -147,17 +134,16 @@ class FlightVisualizer(Visualizer):
             Rotation and translation for object in table space, ready for rendering
 
         """
-        marker_table_pos = self.origin_quat.inv().apply(object_position - self.origin_position)
-        marker_table_rot = self.origin_quat.inv() * object_rotation
+        table_space_position = self.origin_quat.inv().apply(self.camera_quat.apply(object_position)
+                                                            - self.origin_position) + offset_position
 
-        object_table_space_rotation = marker_table_rot * offset_rotation.inv()
-        object_table_space_position = marker_table_pos - object_table_space_rotation.apply(offset_position)
+        world_space_orientation = self.camera_quat * object_rotation * offset_rotation.inv()
+        table_space_orientation = self.origin_quat.inv() * world_space_orientation
 
-        return object_table_space_rotation, object_table_space_position
+        return table_space_orientation, table_space_position
 
     def update_helicopter(self, quat: Rotation, translation: np.ndarray):
-        total_rotation = self.camera_quat * quat
-        self.helicopter_handle.wxyz = total_rotation.as_quat(canonical=True, scalar_first=True)
+        self.helicopter_handle.wxyz = quat.as_quat(canonical=True, scalar_first=True)
         self.helicopter_handle.position = translation
 
         if np.linalg.norm(translation - self.last_position) > 0.005:
@@ -175,10 +161,15 @@ class FlightVisualizer(Visualizer):
         if self.aircraft is None:
             self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
 
+        helicopter_mesh = HelicopterModel().mesh()
+        self.helicopter_handle = self.add_mesh(helicopter_mesh, name="/helicopter",
+                                               orientation=self.aircraft.quaternion,
+                                               position=self.aircraft.position)
+
         marker_dict = marker_queue.get()
         origin_dict = []
         for marker_id in marker_dict.keys():
-            mesh_obj: MarkerModel = model_registry[marker_id]
+            mesh_obj: MarkerModel = model_registry.get_class(marker_id)()
             if isinstance(mesh_obj, GameTableModel):
                 origin_dict.append({'id': marker_id,
                                     'position': mesh_obj.marker_offset,
@@ -196,8 +187,8 @@ class FlightVisualizer(Visualizer):
         for marker_id in marker_dict.keys():
             rotation = marker_dict[marker_id]['rotation']
             position = marker_dict[marker_id]['position']
-            if marker_id in model_registry:
-                mesh_obj: MarkerModel = model_registry[marker_id]
+            if marker_id in model_registry.list_registered_classes():
+                mesh_obj: MarkerModel = model_registry.get_class(marker_id)()
                 mesh = mesh_obj.mesh()
                 if isinstance(mesh_obj, GameTableModel):
                     if not table_loaded:

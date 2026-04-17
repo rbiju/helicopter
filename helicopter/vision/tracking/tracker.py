@@ -219,13 +219,18 @@ class Tracker:
         if self.aircraft is None:
             self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
 
-        print(r.as_rotvec(degrees=True))
-        print(r_refined.as_rotvec(degrees=True))
-        print(repr(self.point_handler.initial_points()))
-        print(repr(table_space_coords))
+        print(self.camera_quat.as_rotvec())
+        print(self.origin_quat.as_rotvec())
+        print(self.origin_position)
 
-        self.aircraft.quaternion = r_refined
-        self.aircraft.position = t_refined
+        yaw_only_helicopter_quat = Rotation.from_euler('z',
+                                                   r_refined.as_euler('zyx')[0])
+        grounded_helicopter_position = np.array([t_refined[0], t_refined[1], 0.0])
+
+        self.aircraft.quaternion = yaw_only_helicopter_quat
+        self.aircraft.position = grounded_helicopter_position
+
+        print(repr(self.aircraft.get_state_vector()))
 
     def loop(self, command_sm: SharedMemory, lock: Lock):
         command_buffer = np.ndarray(shape=(CommandBufferConstants.N,),

@@ -1,0 +1,3 @@
+FlightVisualizer:
+  _target_: helicopter.visualize.FlightVisualizer
+  _partial_: True

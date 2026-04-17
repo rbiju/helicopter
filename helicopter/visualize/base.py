@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.spatial.transform import Rotation
 
 import trimesh
 import viser
@@ -24,12 +25,12 @@ class Visualizer:
                                                   visible=False)
 
     def add_mesh(self, mesh: trimesh.Trimesh, name: str,
-                 orientation: np.ndarray = np.array([1.0, 0, 0, 0]),
+                 orientation: Rotation = Rotation.identity(),
                  position: np.ndarray = np.array([0.0, 0.0, 0.0])):
         mesh_handle = self.server.scene.add_mesh_trimesh(
             name=name,
             mesh=mesh,
-            wxyz=orientation,
+            wxyz=orientation.as_quat(scalar_first=True),
             position=position,
         )
         return mesh_handle

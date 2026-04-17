@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -10,12 +11,17 @@ MUTUALLY_EXCLUSIVE_IDS = {"GameTable": [0, 1, 2]}
 
 class MarkerModel(ABC):
     def __init__(self):
-        pass
+        self.objects_dir = Path(__file__).resolve().parents[2] / 'assets' / 'objects'
+        self.obj_file = None
 
     @property
     @abstractmethod
     def id(self) -> int:
         raise NotImplementedError
+
+    @property
+    def obj_path(self) -> int:
+        return self.objects_dir / self.obj_file
 
     @abstractmethod
     def mesh(self) -> trimesh.Trimesh:
@@ -39,6 +45,7 @@ class MarkerModel(ABC):
         """
         return Rotation.from_quat(np.array([0, 0, 0, 1.0]))
 
+
 class ModelRegistry:
     def __init__(self):
         self._classes = {}
@@ -47,9 +54,13 @@ class ModelRegistry:
         def decorator(cls):
             if not issubclass(cls, MarkerModel):
                 raise ValueError("Only MarkerModel objects should be registered here.")
-            key = cls.id
+
+            dummy_instance = cls()
+            key = dummy_instance.id
+
             if key in self._classes:
                 raise ValueError(f"Model with id '{key}' already registered.")
+
             self._classes[key] = cls
             return cls
 
@@ -72,11 +83,10 @@ class GameTableModel(MarkerModel, ABC):
         """
         super().__init__()
         self.marker_size_offset = 0.035
+        self.obj_file = 'table/table.obj'
 
     def mesh(self) -> trimesh.Trimesh:
-        obj_path: str = 'assets/objects/table/table.obj'
-
-        mesh = trimesh.load_mesh(obj_path)
+        mesh = trimesh.load_mesh(str(self.obj_path))
         mesh.apply_translation(np.array([0.0, 0.0, -0.05]))
         return mesh
 
@@ -90,9 +100,11 @@ class GameTableModelTopSide(GameTableModel):
     def id(self) -> int:
         return 0
 
+    @property
     def marker_rotation(self) -> Rotation:
         return Rotation.from_euler('y', [90], degrees=True)
 
+    @property
     def marker_offset(self) -> np.ndarray:
         return np.array([-0.355 + self.marker_size_offset,
                          -0.685 + self.marker_size_offset,
@@ -107,9 +119,11 @@ class GameTableModelShortSide(GameTableModel):
     def id(self) -> int:
         return 1
 
+    @property
     def marker_rotation(self) -> Rotation:
         return Rotation.from_euler('z', [90], degrees=True)
 
+    @property
     def marker_offset(self) -> np.ndarray:
         return np.array([-0.355,
                          -0.685 - self.marker_size_offset,
@@ -125,6 +139,7 @@ class GameTableModelLongSide(GameTableModel):
     def id(self) -> int:
         return 2
 
+    @property
     def marker_offset(self) -> np.ndarray:
         return np.array([-0.355 - self.marker_size_offset,
                          -0.685,

@@ -7,11 +7,12 @@ from .flightplan import FlightPlan
 
 class Oracle:
     """
-    Glues together different flight plans, tracks flying state, and communicates with the orchestrator on flight status
+    Glues together different flight plans,
+    tracks flying state,
+    and communicates with the orchestrator on flight status
     """
-    def __init__(self, flight_plan_sequence: list[FlightPlan], tick_radius: float = 0.01):
+    def __init__(self, flight_plan_sequence: list[FlightPlan]):
         self.flight_plan_sequence = flight_plan_sequence
-        self.tick_radius = tick_radius
 
         self.active_idx = 0
         self.finished = False

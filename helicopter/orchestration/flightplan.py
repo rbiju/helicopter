@@ -151,7 +151,7 @@ class ManualFlightPlan(FlightPlan):
     def __init__(self, flight_time: float = 120.0):
         super().__init__()
         self.start_time = 0
-        self.hover_time = flight_time
+        self.flight_time = flight_time
 
     def flight_state(self, timestamp: float) -> FlightState:
         return FlightState.MANUAL
@@ -165,6 +165,6 @@ class ManualFlightPlan(FlightPlan):
 
     def tick(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
         depleted = False
-        if (timestamp - self.start_time) > self.hover_time:
+        if (timestamp - self.start_time) > self.flight_time:
             depleted = True
         return depleted
