@@ -1,7 +1,7 @@
 Measure:
   _target_: helicopter.tasks.Measure
   ukf_factory:
-    _target_: helicopter.vision.UKFFactory
+    _target_: helicopter.vision.measurement.MeasurementUKFFactory
     dt: 0.005
     N: 15
     alpha: 0.1
@@ -56,5 +56,5 @@ Measure:
             imgsz: [480, 640]
           model:
             _target_: ultralytics.YOLO
-            model: "/home/ray/yolo_models/helicopter/measure_20260203/weights/best.engine"
+            model: "/home/ray/yolo_models/helicopter/measure_20260227/weights/best.engine"
             task: "detect"

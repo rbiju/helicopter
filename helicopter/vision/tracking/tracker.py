@@ -11,12 +11,13 @@ from scipy.spatial.transform import Rotation
 
 from helicopter.configuration import HydraConfigurable
 from helicopter.aircraft import Aircraft
-from helicopter.vision import D435i, ErrorStateSquareRootUnscentedKalmanFilter, UKFFactory
+from helicopter.vision import D435i, ErrorStateSquareRootUnscentedKalmanFilter
 from helicopter.vision.point_detection import MarkerDetector
 from helicopter.utils import PointQueue, Profiler, CommandBufferConstants
 
 from .point_handler import TrackingPointHandler
 from .filter_functions import propagate, transition_fn, measurement_fn, compose_fn
+from .ukf_factory import TrackerUKFFactory
 
 
 @HydraConfigurable
@@ -25,7 +26,7 @@ class Tracker:
                  point_handler: TrackingPointHandler,
                  marker_detector: MarkerDetector,
                  camera: D435i,
-                 ukf_factory: UKFFactory,
+                 ukf_factory: TrackerUKFFactory,
                  kill_signal: Event,
                  simulation_fps: float = 250.):
         self.aircraft_buffer = np.ndarray(shape=(Aircraft.N,),
@@ -88,6 +89,7 @@ class Tracker:
     def initialize(self,
                    marker_queue: Queue,
                    origin_queue: Queue,
+                   orientation_ready: Event,
                    aircraft_lock: Lock):
         self.camera.start()
 
@@ -219,9 +221,9 @@ class Tracker:
         if self.aircraft is None:
             self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
 
-        print(self.camera_quat.as_rotvec())
-        print(self.origin_quat.as_rotvec())
-        print(self.origin_position)
+        print(repr(self.camera_quat.as_rotvec()))
+        print(repr(self.origin_quat.as_rotvec()))
+        print(repr(self.origin_position))
 
         yaw_only_helicopter_quat = Rotation.from_euler('z',
                                                    r_refined.as_euler('zyx')[0])
@@ -230,7 +232,10 @@ class Tracker:
         self.aircraft.quaternion = yaw_only_helicopter_quat
         self.aircraft.position = grounded_helicopter_position
 
+        orientation_ready.set()
+
         print(repr(self.aircraft.get_state_vector()))
+        print(repr(table_space_coords))
 
     def loop(self, command_sm: SharedMemory, lock: Lock):
         command_buffer = np.ndarray(shape=(CommandBufferConstants.N,),

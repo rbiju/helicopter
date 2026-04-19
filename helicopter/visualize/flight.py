@@ -36,7 +36,7 @@ class FlightVisualizer(Visualizer):
             "/grid",
             width=5.0,
             height=5.0,
-            position=np.array([0.0, 0.0, -0.15]),
+            position=np.array([0.0, 0.0, -0.05]),
             cell_size=0.1,
             cell_color=(0, 255, 0),
             cell_thickness=0.5,
@@ -157,19 +157,16 @@ class FlightVisualizer(Visualizer):
             )
             self.path_counter += 1
 
-    def initialize(self, marker_queue: Queue, origin_queue: Queue, aircraft_lock: Lock):
-        if self.aircraft is None:
-            self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
-
-        helicopter_mesh = HelicopterModel().mesh()
-        self.helicopter_handle = self.add_mesh(helicopter_mesh, name="/helicopter",
-                                               orientation=self.aircraft.quaternion,
-                                               position=self.aircraft.position)
-
+    def initialize(self, marker_queue: Queue,
+                   origin_queue: Queue,
+                   orientation_ready: Event,
+                   aircraft_lock: Lock):
         marker_dict = marker_queue.get()
         origin_dict = []
         for marker_id in marker_dict.keys():
-            mesh_obj: MarkerModel = model_registry.get_class(marker_id)()
+            mesh_obj: MarkerModel = model_registry.get_class(marker_id)
+            if mesh_obj is None:
+                continue
             if isinstance(mesh_obj, GameTableModel):
                 origin_dict.append({'id': marker_id,
                                     'position': mesh_obj.marker_offset,
@@ -188,7 +185,9 @@ class FlightVisualizer(Visualizer):
             rotation = marker_dict[marker_id]['rotation']
             position = marker_dict[marker_id]['position']
             if marker_id in model_registry.list_registered_classes():
-                mesh_obj: MarkerModel = model_registry.get_class(marker_id)()
+                mesh_obj: MarkerModel = model_registry.get_class(marker_id)
+                if mesh_obj is None:
+                    continue
                 mesh = mesh_obj.mesh()
                 if isinstance(mesh_obj, GameTableModel):
                     if not table_loaded:
@@ -207,7 +206,14 @@ class FlightVisualizer(Visualizer):
                                                 orientation=table_space_rotation.as_quat(canonical=True))
                 self.models[marker_id] = mesh_handle
 
-        self.update_helicopter(self.aircraft.quaternion, self.aircraft.position)
+        if self.aircraft is None:
+            self.aircraft = Aircraft(buffer=self.aircraft_buffer, lock=aircraft_lock)
+
+        orientation_ready.wait()
+        helicopter_mesh = HelicopterModel().mesh()
+        self.helicopter_handle = self.add_mesh(helicopter_mesh, name="/helicopter",
+                                               orientation=self.aircraft.quaternion,
+                                               position=self.aircraft.position)
         print("Visualizer initialized")
 
     def loop(self, command_sm: SharedMemory, lock: Lock):

@@ -67,7 +67,10 @@ class ModelRegistry:
         return decorator
 
     def get_class(self, key):
-        return self._classes.get(key)
+        if key not in self._classes:
+            return None
+        else:
+            return self._classes.get(key)()
 
     def list_registered_classes(self):
         return list(self._classes.keys())

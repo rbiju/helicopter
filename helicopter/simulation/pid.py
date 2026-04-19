@@ -23,23 +23,23 @@ class Helicopter:
         self.I_tensor = np.diag([2e-4, 2e-4, 1e-4])
         self.I_inv = np.linalg.inv(self.I_tensor)
 
-        self.rotor_max_thrust = 0.80
-        self.tail_rotor_max_thrust = 0.125
-        self.tail_moment_arm = 1e-1
+        self.rotor_max_thrust = 0.50
+        self.tail_rotor_max_thrust = 0.1
+        self.tail_moment_arm = 12e-2
 
         self.thrust_time_constant = 0.05
         self.pitch_time_constant = 0.05
         self.yaw_time_constant = 0.03
 
-        self.drag_x = 0.1
-        self.drag_y = 0.4
-        self.drag_z = 0.25
+        self.drag_x = 0.05
+        self.drag_y = 0.05
+        self.drag_z = 0.1
 
         self.Kp_POS, self.Ki_POS, self.Kd_POS = throttle_gains.p, throttle_gains.i, throttle_gains.d
         self.Kp_PITCH, self.Ki_PITCH, self.Kd_PITCH = pitch_gains.p, pitch_gains.i, pitch_gains.d
         self.Kp_YAW, self.Ki_YAW, self.Kd_YAW = yaw_gains.p, yaw_gains.i, yaw_gains.d
 
-        self.spring_constant_gyroscope = np.array([0.25, 0.01, 0.0])
+        self.spring_constant_gyroscope = np.array([0.05, 0.05, 0.0])
         self.angular_damping = np.array([0.05, 0.025, 1e-4])
 
         self.loiter_radius = 2e-2

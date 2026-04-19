@@ -38,8 +38,8 @@ if __name__ == "__main__":
 
     mock_buffer = np.ndarray(shape=(Aircraft.N,), dtype=np.float64, buffer=aircraft_sm.buf)
     mock_aircraft = Aircraft(buffer=mock_buffer, lock=lock)
-    mock_aircraft.position = np.array([0.0085546, -0.42317, 0])
-    mock_aircraft.quaternion = Rotation.identity()
+    mock_aircraft.position = np.array([-0.02399,    -0.46966,           0])
+    mock_aircraft.quaternion = Rotation.from_quat(np.array([0, 0, -0.23423, 0.97218]))
 
     kill_event = Event()
 
@@ -74,9 +74,9 @@ if __name__ == "__main__":
     print(f"Received intermediate origins: {extracted_origins}")
 
     tracker_origin_data = {
-        'camera_quat': Rotation.from_rotvec(np.array([0.0019705, 0.26787, -0])),
-        'origin_quat': Rotation.from_rotvec(np.array([-0.22452, 0.20253, -1.6772])),
-        'origin_position': np.array([1.9577, -0.15717, -0.89866])
+        'camera_quat': Rotation.from_rotvec(np.array([0.0011907,      0.2682,          -0])),
+        'origin_quat': Rotation.from_rotvec(np.array([-0.22463,     0.20258,     -1.6717])),
+        'origin_position': np.array([1.9425,    -0.11558,    -0.92961])
     }
     origin_queue.put(tracker_origin_data)
 

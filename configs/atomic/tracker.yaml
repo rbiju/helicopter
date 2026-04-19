@@ -49,12 +49,12 @@ Tracker:
       _target_: helicopter.vision.tracking.ICP
       distance_threshold: 1e-1
       etol: 3e-3
-      max_iterations: 10
+      max_iterations: 100
   marker_detector:
     _target_: helicopter.vision.point_detection.AprilTagMarkerDetector
     marker_size_meters: 0.04
   ukf_factory:
-    _target_: helicopter.vision.UKFFactory
+    _target_: helicopter.vision.tracking.TrackerUKFFactory
     dt: 0.005
     N: 15
     alpha: 0.1

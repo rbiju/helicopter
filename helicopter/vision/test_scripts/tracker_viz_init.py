@@ -80,7 +80,6 @@ if __name__ == "__main__":
         else:
             print('Both initialized successfully')
 
-        print('Both initialized successfully')
     finally:
         tracker.cleanup()
         visualizer.cleanup()

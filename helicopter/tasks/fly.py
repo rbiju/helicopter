@@ -27,7 +27,9 @@ class MPContext:
     origin_queue: mp.Queue
     aircraft_lock: Lock
     shared_memory_lock: Lock
+    orientation_ready: Event
     kill_signal: Event
+    init_only: bool = False
 
 
 def control_wrapper(ctx: MPContext):
@@ -42,8 +44,12 @@ def control_wrapper(ctx: MPContext):
     try:
         conductor.initialize(aircraft_lock=ctx.aircraft_lock)
         ctx.start_event.set()
-        conductor.loop(command_sm=ctx.command_sm,
-                       lock=ctx.shared_memory_lock)
+        if ctx.init_only:
+            print('Initialization completed. Waiting for 30 seconds...')
+            time.sleep(30.0)
+        else:
+            conductor.loop(command_sm=ctx.command_sm,
+                           lock=ctx.shared_memory_lock)
     finally:
         ctx.shutdown_event.set()
         conductor.cleanup()
@@ -60,11 +66,15 @@ def vision_wrapper(ctx: MPContext, ready_event: Event):
     try:
         tracker.initialize(marker_queue=ctx.marker_queue,
                            origin_queue=ctx.origin_queue,
+                           orientation_ready=ctx.orientation_ready,
                            aircraft_lock=ctx.aircraft_lock, )
         ready_event.set()
         ctx.start_event.wait()
-        tracker.loop(command_sm=ctx.command_sm,
-                     lock=ctx.shared_memory_lock)
+        if ctx.init_only:
+            time.sleep(30.0)
+        else:
+            tracker.loop(command_sm=ctx.command_sm,
+                         lock=ctx.shared_memory_lock)
     finally:
         ctx.shutdown_event.set()
         tracker.cleanup()
@@ -85,11 +95,15 @@ def render_wrapper(ctx: MPContext, ready_event: Event):
     try:
         visualizer.initialize(marker_queue=ctx.marker_queue,
                               origin_queue=ctx.origin_queue,
+                              orientation_ready=ctx.orientation_ready,
                               aircraft_lock=ctx.aircraft_lock)
         ready_event.set()
         ctx.start_event.wait()
-        visualizer.loop(command_sm=ctx.command_sm,
-                        lock=ctx.shared_memory_lock)
+        if ctx.init_only:
+            time.sleep(30.0)
+        else:
+            visualizer.loop(command_sm=ctx.command_sm,
+                            lock=ctx.shared_memory_lock)
     finally:
         ctx.shutdown_event.set()
         visualizer.cleanup()
@@ -97,15 +111,18 @@ def render_wrapper(ctx: MPContext, ready_event: Event):
 
 @HydraConfigurable
 class Fly(Task):
-    def __init__(self, image_dimension: list[int]):
+    def __init__(self, init_only: bool = False):
         super().__init__()
-        self.image_dimension = image_dimension
+        self.init_only = init_only
 
     def run(self, configuration_path: str):
+        mp.set_start_method('spawn')
+
         start_event = mp.Event()
         shutdown_event = mp.Event()
         vision_ready = mp.Event()
         render_ready = mp.Event()
+        orientation_ready = mp.Event()
 
         with SharedMemoryManager() as smm:
             aircraft_dummy = np.zeros(shape=(Aircraft.N,), dtype=np.float64)
@@ -127,7 +144,9 @@ class Fly(Task):
                             origin_queue=origin_queue,
                             aircraft_lock=aircraft_lock,
                             shared_memory_lock=sm_lock,
-                            kill_signal=kill_signal)
+                            kill_signal=kill_signal,
+                            orientation_ready=orientation_ready,
+                            init_only=self.init_only,)
 
 
             vision_process = mp.Process(target=vision_wrapper,
@@ -142,7 +161,7 @@ class Fly(Task):
             render_ready.wait()
 
             try:
-                print("Starting process loops")
+                print("Starting control process")
                 control_wrapper(ctx=ctx)
 
             except KeyboardInterrupt:
