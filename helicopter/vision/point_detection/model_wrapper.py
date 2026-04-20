@@ -7,22 +7,15 @@ from .preprocessor import ImagePreprocessor, GPUImagePreprocessor
 
 
 class HelicopterYOLO(torch.nn.Module):
-    def __init__(self, model: YOLO, preprocessor: ImagePreprocessor = GPUImagePreprocessor(),
-                 imgsz: tuple[int, int] | list[int] = (480, 640), conf: float = 0.25):
+    def __init__(self, model: YOLO,
+                 preprocessor: ImagePreprocessor = GPUImagePreprocessor(),
+                 conf: float = 0.25):
         super().__init__()
         self.model = model
         self.preprocessor = preprocessor
         self.conf = conf
 
-        if isinstance(imgsz, list):
-            if len(imgsz) == 2:
-                self.imgsz = tuple(imgsz)
-            else:
-                raise ValueError('imgsz should be a list of length 2')
-        elif isinstance(imgsz, tuple):
-            self.imgsz = imgsz
-        else:
-            raise ValueError('imgsz should be a list or tuple of length 2')
+        self.imgsz = preprocessor.imgsz
 
         dummy_in = np.random.rand(*self.imgsz)
         dummy_tensor = self.preprocessor.preprocess(dummy_in)

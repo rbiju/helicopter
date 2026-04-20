@@ -48,7 +48,7 @@ class FlightConductor:
             translation=self.aircraft.position,
             timestamp=0.0
         )
-        self.aircraft.flight_state = self.oracle.active_flight_state
+        self.aircraft.flight_state = self.oracle.active_flight_state(timestamp=0.0)
 
     def loop(self, command_sm: SharedMemory, lock: Lock):
         """

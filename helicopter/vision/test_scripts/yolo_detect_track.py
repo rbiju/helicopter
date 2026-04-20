@@ -19,14 +19,13 @@ if __name__ == '__main__':
                    exposure_time_rgb=1000,
                    depth_preset=3)
 
-    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/track_20260412_0/weights/best.engine',
+    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/track_20260413_0/weights/best.engine',
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(imgsz=imgsz,
                                                              brightness_factor=1.0),
-                           imgsz=imgsz,
                            conf=0.1)
     detector = YOLOPointDetector(model=model,
-                                 marker_tolerance=0.015,
+                                 marker_tolerance=0.01,
                                  distance_threshold=4.0,
                                  marker_std_dev=0.003,
                                  margin=1)

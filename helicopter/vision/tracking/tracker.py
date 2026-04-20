@@ -51,6 +51,7 @@ class Tracker:
         self.camera_quat: Rotation = Rotation.from_rotvec(np.array([0, 0, 0.0]))    # for going from camera space to world space
         self.origin_position: np.ndarray = np.array([0.0, 0.0, 0.0])    # location of center of table in camera space
         self.origin_quat: Rotation = Rotation.from_rotvec(np.array([0, 0, 0.0]))    # full quat for camera --> table
+        self.vertical_offset: np.ndarray = np.array([0.0, 0.0, 0.0])
         self.initialized = False
         self.is_running = False
 
@@ -66,6 +67,7 @@ class Tracker:
         self.kill_signal = kill_signal
 
     def camera_to_table_space(self, points: np.ndarray) -> np.ndarray:
+        points = points - self.vertical_offset
         world_space_points = self.camera_quat.apply(points)
         p_shifted = world_space_points - self.origin_position
         point_table = self.origin_quat.inv().apply(p_shifted)
@@ -216,6 +218,7 @@ class Tracker:
         table_space_coords = self.camera_to_table_space(self.point_handler.initial_points())
         r, t = self.point_handler.matcher.get_alignment(table_space_coords)
         r_refined, t_refined = self.point_handler.refine_alignment(r, t, table_space_coords)
+        self.vertical_offset = np.array([0, 0, t_refined[2]])
         self.profiler.end('Init_Matching')
 
         if self.aircraft is None:
@@ -224,10 +227,11 @@ class Tracker:
         print(repr(self.camera_quat.as_rotvec()))
         print(repr(self.origin_quat.as_rotvec()))
         print(repr(self.origin_position))
+        print(repr(self.vertical_offset))
 
         yaw_only_helicopter_quat = Rotation.from_euler('z',
                                                    r_refined.as_euler('zyx')[0])
-        grounded_helicopter_position = np.array([t_refined[0], t_refined[1], 0.0])
+        grounded_helicopter_position = t_refined - self.vertical_offset
 
         self.aircraft.quaternion = yaw_only_helicopter_quat
         self.aircraft.position = grounded_helicopter_position

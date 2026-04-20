@@ -49,12 +49,15 @@ if __name__ == "__main__":
 
     marker_queue = Queue()
     origin_queue = Queue()
+    orientation_ready = Event()
+    orientation_ready.set()
 
     vis_thread = Thread(
         target=thread_runner,
         args=(visualizer.initialize, {
             'marker_queue': marker_queue,
             'origin_queue': origin_queue,
+            'orientation_ready': orientation_ready,
             'aircraft_lock': lock
         }),
         daemon=True

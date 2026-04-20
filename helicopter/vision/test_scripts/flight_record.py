@@ -1,0 +1,129 @@
+from pathlib import Path
+import numpy as np
+from scipy.spatial.transform import Rotation
+import pandas as pd
+
+from ultralytics import YOLO
+
+from helicopter.utils import KeyListener, ManualController, SymaRemoteControl, Profiler
+from helicopter.vision import D435i
+from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor, YOLOPointDetector
+from helicopter.vision.tracking import TrianglePointMatcher
+
+
+camera_quat = Rotation.from_rotvec(np.array([  0.0030239,     0.26798,          -0]))
+origin_quat = Rotation.from_rotvec(np.array([    -0.2257,     0.20235,     -1.6911]))
+origin_position = np.array([     1.9695,    -0.15849,    -0.94255])
+vertical_offset = np.array([          0,           0,    -0.10962])
+
+
+def camera_to_table_space(_points: np.ndarray) -> np.ndarray:
+    _points = _points - vertical_offset
+    world_space_points = camera_quat.apply(_points)
+    p_shifted = world_space_points - origin_position
+    point_table = origin_quat.inv().apply(p_shifted)
+
+    return point_table
+
+
+if __name__ == '__main__':
+    profiler = Profiler()
+    imgsz = [720, 1280]
+    camera = D435i(video_resolution=imgsz,
+                   video_rate=30,
+                   projector_power=0.,
+                   autoexpose=False,
+                   exposure_time=2400,
+                   depth_preset=3)
+
+    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/track_20260413_0/weights/best.engine',
+                                      task='detect'),
+                           preprocessor=GPUImagePreprocessor(imgsz=imgsz,
+                                                             brightness_factor=1.0),
+                           conf=0.1)
+    detector = YOLOPointDetector(model=model,
+                                 marker_tolerance=0.01,
+                                 distance_threshold=4.0,
+                                 marker_std_dev=0.003,
+                                 margin=1)
+    listener = KeyListener()
+    controller = ManualController(listener=listener)
+    rc = SymaRemoteControl(port='/dev/ttyUSB0', baudrate=115200)
+
+    try:
+        camera.start()
+        listener.start()
+        point_record = []
+        commands = []
+        first_video_time = None
+        most_recent_command = controller.convert_to_float()
+        print("Starting Flight Recording")
+        frame_count = 0
+        while frame_count < 100 and not controller.quit:
+            frames = camera.pipeline.wait_for_frames()
+            video = camera.process_frames(frames)
+            if first_video_time is None:
+                first_video_time = video.depth_ts
+
+            controller.process()
+            if controller.quit:
+                break
+            command = controller.format()
+            sent = rc.send_command(command)
+            if sent:
+                most_recent_command = controller.convert_to_float()
+
+            commands.append((video.depth_ts - first_video_time, most_recent_command))
+
+            frame_count += 1
+            if video.ir_image is not None:
+                profiler.start('E2E')
+                profiler.start("Inference")
+                profiler.start("Detect")
+
+                boxes = model(video.ir_image)
+                profiler.end("Inference")
+
+                profiler.start('Keypoints')
+                keypoints = detector.get_refined_keypoints(video.ir_image, boxes)
+                profiler.end("Keypoints")
+                profiler.end("Detect")
+
+                profiler.start("Deproject")
+                points, valid, invalid = detector.get_points_coords(video.depth_image,
+                                                                    keypoints,
+                                                                    camera.intrinsics)
+                table_space_points = camera_to_table_space(points)
+                point_record.append((video.depth_ts - first_video_time, table_space_points))
+                profiler.end("Deproject")
+                profiler.end("E2E")
+
+    finally:
+        controller.reset()
+        rc.send_command(controller.format())
+        camera.stop()
+        listener.stop()
+
+    save_location = Path(__file__).parents[3] / 'notebooks' / 'flight_recordings' / 'recording.csv'
+    point_matcher = TrianglePointMatcher(n=1000, k=100)
+
+    df_dict = {'timestamp': [],
+               'command': [],
+               'position': []}
+    for i in range(len(commands)):
+        timestamp = commands[i][0]
+        command = commands[i][1]
+        points = point_record[i][1]
+        profiler.start('Point_Matching')
+        position = point_matcher.get_alignment(points)[1]
+        profiler.end('Point_Matching')
+        df_dict['timestamp'].append(timestamp)
+        df_dict['command'].append(command)
+        df_dict['position'].append(position.tolist())
+
+    print(profiler)
+
+    df = pd.DataFrame(df_dict)
+    df.to_csv(str(save_location), index=False)
+
+    print('done')

@@ -25,7 +25,7 @@ Tracker:
       _target_: helicopter.vision.point_detection.YOLOPointDetector
       marker_tolerance: 0.01
       distance_threshold: 4.0
-      marker_std_dev: 0.0005
+      marker_std_dev: 0.003
       margin: 1
       model:
         _target_: helicopter.vision.point_detection.HelicopterYOLO
@@ -38,9 +38,6 @@ Tracker:
           imgsz:
             - 720
             - 1280
-        imgsz:
-          - 720
-          - 1280
         conf: 0.1
     matcher:
       _target_: helicopter.vision.tracking.TrianglePointMatcher
@@ -86,6 +83,8 @@ FlightVisualizer:
 FlightConductor:
   _target_: helicopter.orchestration.FlightConductor
   _partial_: True
+  controller:
+    _target_: helicopter.controller.ManualFlightController
   oracle:
     _target_: helicopter.orchestration.Oracle
     flight_plan_sequence:

@@ -14,7 +14,8 @@ class SimulationAnimator:
         self.CMD_IDX = slice(1, 4)
         self.ARROW_IDX = slice(4, 10)
 
-    def arrow_generator(self, df):
+    @staticmethod
+    def arrow_generator(df):
         i = 0
         heading = quaternion.quaternion(0., 1.0, 0.0, 0.0)
         while i < len(df):

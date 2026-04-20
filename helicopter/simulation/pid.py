@@ -1,6 +1,7 @@
 from dataclasses import dataclass
-
 import math
+import time
+
 import numpy as np
 import quaternion
 import scipy
@@ -23,17 +24,17 @@ class Helicopter:
         self.I_tensor = np.diag([2e-4, 2e-4, 1e-4])
         self.I_inv = np.linalg.inv(self.I_tensor)
 
-        self.rotor_max_thrust = 0.50
+        self.rotor_max_thrust = 0.6
         self.tail_rotor_max_thrust = 0.1
         self.tail_moment_arm = 12e-2
 
         self.thrust_time_constant = 0.05
         self.pitch_time_constant = 0.05
-        self.yaw_time_constant = 0.03
+        self.yaw_time_constant = 0.05
 
-        self.drag_x = 0.05
-        self.drag_y = 0.05
-        self.drag_z = 0.1
+        self.drag_x = 0.01
+        self.drag_y = 0.01
+        self.drag_z = 0.05
 
         self.Kp_POS, self.Ki_POS, self.Kd_POS = throttle_gains.p, throttle_gains.i, throttle_gains.d
         self.Kp_PITCH, self.Ki_PITCH, self.Kd_PITCH = pitch_gains.p, pitch_gains.i, pitch_gains.d
@@ -61,13 +62,6 @@ class Helicopter:
                         'omega_x', 'omega_y', 'omega_z',
                         'error_height', 'error_dist', 'error_heading',
                         'thrust', 'pitch', 'yaw']
-
-    @staticmethod
-    def parse_gain(gain):
-        if gain:
-            return gain
-        else:
-            return PIDGains(0., 0., 0.)
 
     @staticmethod
     def rotate_to_body_frame(vector_body: np.ndarray, q_body_to_world: quaternion.quaternion) -> np.ndarray:
@@ -217,15 +211,16 @@ class Helicopter:
     def solve(self, t_span, t_eval, setpoint):
         s = np.zeros(19)
         s[6] = 1.0
+        start = time.perf_counter()
         sol = scipy.integrate.solve_ivp(fun=self.diff_eq, method='RK23', t_span=t_span, t_eval=t_eval,
                                         y0=s, args=(setpoint,),
                                         rtol=1e-2, atol=1e-4)
-
+        end = time.perf_counter()
         # noinspection All
         df_data = np.hstack((sol.t[:, np.newaxis], sol.y.T))
         df = pd.DataFrame(df_data, columns=self.columns)
 
-        return df
+        return df, end - start
 
 
 if __name__ == '__main__':
@@ -241,6 +236,6 @@ if __name__ == '__main__':
     _t_span = (0., 8.)
     _t_eval = np.linspace(_t_span[0], _t_span[1], int((_t_span[1] - _t_span[0]) * 25))
     _setpoint = np.array([1., 1., 1.])
-    _df = helicopter.solve(_t_span, _t_eval, _setpoint)
+    _, elapsed = helicopter.solve(_t_span, _t_eval, _setpoint)
 
-    print('done')
+    print(f'Solve_IVP took {elapsed}')

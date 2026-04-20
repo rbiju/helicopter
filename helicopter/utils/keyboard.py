@@ -117,6 +117,12 @@ class ManualController(KeyConsumer):
         self.yaw = 63
         self.trim = 63
 
+    def convert_to_float(self):
+        thrust = self.throttle / 127.
+        pitch = (self.pitch - 63.) / 128. * 2
+        yaw = (self.yaw - 63.) / 128. * 2
+        return [thrust, pitch, yaw]
+
     def format(self) -> list[int]:
         return [self.channel,
                 self.yaw,

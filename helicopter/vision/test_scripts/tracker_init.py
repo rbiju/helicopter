@@ -31,6 +31,7 @@ if __name__ == "__main__":
 
     marker_queue = Queue()
     origin_queue = Queue()
+    orientation_ready = Event()
     origin_queue.put([{'id': 0,
                       'position': np.array([-0.355 + 0.035, -0.685 + 0.035, 0]),
                       'rotation': Rotation.from_euler('y', [90], degrees=True)},
@@ -46,7 +47,8 @@ if __name__ == "__main__":
     try:
         tracker.initialize(marker_queue=marker_queue,
                            origin_queue=origin_queue,
-                           aircraft_lock=lock, )
+                           orientation_ready=orientation_ready,
+                           aircraft_lock=lock,)
         print('initialized')
     finally:
         tracker.cleanup()
