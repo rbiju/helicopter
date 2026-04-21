@@ -60,8 +60,8 @@ class PointDetector(ABC):
                 invalid_kps.append(kp)
                 continue
 
-            p10, p90 = np.percentile(valid_pixels, [10, 90])
-            core_pixels = valid_pixels[(valid_pixels >= p10) & (valid_pixels <= p90)]
+            lower_p, upper_p = np.percentile(valid_pixels, [25, 75])
+            core_pixels = valid_pixels[(valid_pixels >= lower_p) & (valid_pixels <= upper_p)]
 
             if len(core_pixels) == 0:
                 invalid_kps.append(kp)

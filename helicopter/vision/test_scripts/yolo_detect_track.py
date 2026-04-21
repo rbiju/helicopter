@@ -17,17 +17,17 @@ if __name__ == '__main__':
                    exposure_time=2400,
                    autoexpose_rgb=False,
                    exposure_time_rgb=1000,
-                   depth_preset=3)
+                   depth_preset=4)
 
     model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/track_20260413_0/weights/best.engine',
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(imgsz=imgsz,
                                                              brightness_factor=1.0),
-                           conf=0.1)
+                           conf=0.15)
     detector = YOLOPointDetector(model=model,
                                  marker_tolerance=0.01,
                                  distance_threshold=4.0,
-                                 marker_std_dev=0.003,
+                                 marker_std_dev=0.01,
                                  margin=1)
     listener = KeyListener()
     quitter = Quitter(listener=listener)
@@ -38,7 +38,7 @@ if __name__ == '__main__':
         frame_count = 0
         quitter.start()
         print("Starting detection")
-        while frame_count < 100 and not quitter.quit:
+        while frame_count < 250 and not quitter.quit:
             quitter.process()
             if quitter.quit:
                 break

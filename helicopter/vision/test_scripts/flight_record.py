@@ -1,7 +1,9 @@
 from pathlib import Path
+
 import numpy as np
 from scipy.spatial.transform import Rotation
 import pandas as pd
+from tqdm import tqdm
 
 from ultralytics import YOLO
 
@@ -34,7 +36,7 @@ if __name__ == '__main__':
                    projector_power=0.,
                    autoexpose=False,
                    exposure_time=2400,
-                   depth_preset=3)
+                   depth_preset=4)
 
     model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/track_20260413_0/weights/best.engine',
                                       task='detect'),
@@ -44,7 +46,7 @@ if __name__ == '__main__':
     detector = YOLOPointDetector(model=model,
                                  marker_tolerance=0.01,
                                  distance_threshold=4.0,
-                                 marker_std_dev=0.003,
+                                 marker_std_dev=0.01,
                                  margin=1)
     listener = KeyListener()
     controller = ManualController(listener=listener)
@@ -59,7 +61,7 @@ if __name__ == '__main__':
         most_recent_command = controller.convert_to_float()
         print("Starting Flight Recording")
         frame_count = 0
-        while frame_count < 100 and not controller.quit:
+        while frame_count < 250 and not controller.quit:
             frames = camera.pipeline.wait_for_frames()
             video = camera.process_frames(frames)
             if first_video_time is None:
@@ -104,26 +106,33 @@ if __name__ == '__main__':
         camera.stop()
         listener.stop()
 
-    save_location = Path(__file__).parents[3] / 'notebooks' / 'flight_recordings' / 'recording.csv'
-    point_matcher = TrianglePointMatcher(n=1000, k=100)
+    to_save = input('Save Flight Recording? (y/n) \n')
+    if to_save.lower() == 'y':
+        save_location = Path(__file__).parents[3] / 'notebooks' / 'flight_recordings' / 'recording.csv'
+        point_matcher = TrianglePointMatcher(n=1000, k=50)
 
-    df_dict = {'timestamp': [],
-               'command': [],
-               'position': []}
-    for i in range(len(commands)):
-        timestamp = commands[i][0]
-        command = commands[i][1]
-        points = point_record[i][1]
-        profiler.start('Point_Matching')
-        position = point_matcher.get_alignment(points)[1]
-        profiler.end('Point_Matching')
-        df_dict['timestamp'].append(timestamp)
-        df_dict['command'].append(command)
-        df_dict['position'].append(position.tolist())
+        df_dict = {'timestamp': [],
+                   'command': [],
+                   'position': [],}
 
-    print(profiler)
+        print('Computing flight states')
+        for i in tqdm(range(len(commands))):
+            timestamp = commands[i][0]
+            command = commands[i][1]
+            points = point_record[i][1]
+            if len(points) < 3:
+                print('not enough points')
+            else:
+                profiler.start('Point_Matching')
+                helicopter_state = point_matcher.get_alignment(points)
+                profiler.end('Point_Matching')
+                df_dict['timestamp'].append(timestamp)
+                df_dict['command'].append(command)
+                df_dict['position'].append(helicopter_state[1].tolist())
 
-    df = pd.DataFrame(df_dict)
-    df.to_csv(str(save_location), index=False)
+        print(profiler)
+
+        df = pd.DataFrame(df_dict)
+        df.to_csv(str(save_location), index=False)
 
     print('done')
