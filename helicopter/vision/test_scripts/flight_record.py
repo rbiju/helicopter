@@ -1,3 +1,5 @@
+import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -12,11 +14,10 @@ from helicopter.vision import D435i
 from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor, YOLOPointDetector
 from helicopter.vision.tracking import TrianglePointMatcher
 
-
-camera_quat = Rotation.from_rotvec(np.array([  0.0030239,     0.26798,          -0]))
-origin_quat = Rotation.from_rotvec(np.array([    -0.2257,     0.20235,     -1.6911]))
-origin_position = np.array([     1.9695,    -0.15849,    -0.94255])
-vertical_offset = np.array([          0,           0,    -0.10962])
+camera_quat = Rotation.from_rotvec(np.array([   0.008092,     0.25825,          -0]))
+origin_quat = Rotation.from_rotvec(np.array([   -0.21642,     0.19777,     -1.7128]))
+origin_position = np.array([     2.0493,    -0.16535,    -0.92545])
+vertical_offset = np.array([          0,           0,    -0.12224])
 
 
 def camera_to_table_space(_points: np.ndarray) -> np.ndarray:
@@ -26,6 +27,34 @@ def camera_to_table_space(_points: np.ndarray) -> np.ndarray:
     point_table = origin_quat.inv().apply(p_shifted)
 
     return point_table
+
+
+class RemoteControlThread(threading.Thread):
+    def __init__(self, _rc):
+        super().__init__(daemon=True)
+        self.rc = _rc
+        self.command = None
+        self.running = True
+        self.lock = threading.Lock()
+
+    def set_command(self, cmd):
+        with self.lock:
+            self.command = cmd
+
+    def run(self):
+        while self.running:
+            cmd_to_send = None
+            with self.lock:
+                cmd_to_send = self.command
+
+            if cmd_to_send:
+                self.rc.send_command(cmd_to_send)
+            else:
+                time.sleep(0.005)
+
+    def stop(self):
+        self.running = False
+        self.join()
 
 
 if __name__ == '__main__':
@@ -52,28 +81,34 @@ if __name__ == '__main__':
     controller = ManualController(listener=listener)
     rc = SymaRemoteControl(port='/dev/ttyUSB0', baudrate=115200)
 
+    rc_thread = RemoteControlThread(rc)
+
     try:
         camera.start()
         listener.start()
+        rc_thread.start()
+
         point_record = []
         commands = []
         first_video_time = None
         most_recent_command = controller.convert_to_float()
         print("Starting Flight Recording")
         frame_count = 0
-        while frame_count < 250 and not controller.quit:
+
+        while frame_count < 300 and not controller.quit:
             frames = camera.pipeline.wait_for_frames()
             video = camera.process_frames(frames)
+
             if first_video_time is None:
                 first_video_time = video.depth_ts
 
             controller.process()
             if controller.quit:
                 break
+
             command = controller.format()
-            sent = rc.send_command(command)
-            if sent:
-                most_recent_command = controller.convert_to_float()
+            rc_thread.set_command(command)
+            most_recent_command = controller.convert_to_float()
 
             commands.append((video.depth_ts - first_video_time, most_recent_command))
 
@@ -102,7 +137,8 @@ if __name__ == '__main__':
 
     finally:
         controller.reset()
-        rc.send_command(controller.format())
+        rc_thread.set_command(controller.format())
+        rc_thread.stop()
         camera.stop()
         listener.stop()
 
@@ -113,15 +149,16 @@ if __name__ == '__main__':
 
         df_dict = {'timestamp': [],
                    'command': [],
-                   'position': [],}
+                   'position': [], }
 
         print('Computing flight states')
         for i in tqdm(range(len(commands))):
             timestamp = commands[i][0]
             command = commands[i][1]
             points = point_record[i][1]
+
             if len(points) < 3:
-                print('not enough points')
+                continue
             else:
                 profiler.start('Point_Matching')
                 helicopter_state = point_matcher.get_alignment(points)

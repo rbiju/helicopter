@@ -12,8 +12,9 @@ IDX_O = slice(7, 10)
 IDX_V = slice(10, 13)
 IDX_BATTERY = slice(13, 14)
 IDX_TRIM = slice(14, 15)
-IDX_STATE = slice(15, 16)
-IDX_TIME = slice(16, 17)
+IDX_ACTUAL_THRUST = slice(15, 16)
+IDX_STATE = slice(16, 17)
+IDX_TIME = slice(17, 18)
 
 
 class FlightState(Enum):
@@ -42,8 +43,8 @@ class FlightState(Enum):
 
 
 class Aircraft:
-    N: int = 16
-    STATE_N: int = 15
+    N: int = 18
+    STATE_N: int = 16
     dtype = np.float64
 
     def __init__(self, buffer: np.ndarray = None, lock: ProcessLock = None):
@@ -119,6 +120,16 @@ class Aircraft:
             self._buffer[IDX_TRIM] = np.array([value], dtype=self.dtype)
 
     @property
+    def actual_thrust(self) -> float:
+        with self._lock:
+            return float(self._buffer[IDX_ACTUAL_THRUST][0])
+
+    @actual_thrust.setter
+    def actual_thrust(self, value: float):
+        with self._lock:
+            self._buffer[IDX_ACTUAL_THRUST] = np.array([value], dtype=self.dtype)
+
+    @property
     def flight_state(self) -> FlightState:
         with self._lock:
             state_val = int(self._buffer[IDX_STATE][0])
@@ -145,7 +156,8 @@ class Aircraft:
 
     def set_state_vector(self, state_vector: np.ndarray):
         if state_vector.shape != (self.STATE_N,):
-            raise ValueError(f"Provided vector of shape {state_vector.shape} does not match size of buffer: {self.STATE_N}")
+            raise ValueError(f"Provided vector of shape {state_vector.shape} "
+                             f"does not match size of buffer: {self.STATE_N}")
         with self._lock:
             np.copyto(self._buffer[:self.STATE_N], state_vector)
 
@@ -156,9 +168,14 @@ class Aircraft:
     @property
     def state_dict(self) -> dict[str, np.ndarray]:
         with self._lock:
-            return {'Position': self.position,
-                    'Velocity': self.velocity,
-                    'Orientation': Rotation.as_quat(self.quaternion, canonical=True),
-                    'Angular Velocity': self.angular_velocity,
-                    'Timestamp': self.timestamp,
-                    'Flight State': self.flight_state,}
+            return {
+                'Position': self._buffer[IDX_P].copy(),
+                'Velocity': self._buffer[IDX_V].copy(),
+                'Orientation': self._buffer[IDX_Q].copy(),
+                'Angular Velocity': self._buffer[IDX_O].copy(),
+                'Battery': float(self._buffer[IDX_BATTERY][0]),
+                'Trim': float(self._buffer[IDX_TRIM][0]),
+                'Actual Thrust': float(self._buffer[IDX_ACTUAL_THRUST][0]),
+                'Flight State': FlightState(int(self._buffer[IDX_STATE][0])),
+                'Timestamp': float(self._buffer[IDX_TIME][0])
+            }
