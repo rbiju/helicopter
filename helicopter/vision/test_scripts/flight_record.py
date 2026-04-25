@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from ultralytics import YOLO
 
-from helicopter.utils import KeyListener, ManualController, SymaRemoteControl, Profiler
+from helicopter.utils import RemoteState, SymaRemoteRecorder, Profiler
 from helicopter.vision import D435i
 from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor, YOLOPointDetector
 from helicopter.vision.tracking import TrianglePointMatcher
@@ -29,28 +29,28 @@ def camera_to_table_space(_points: np.ndarray) -> np.ndarray:
     return point_table
 
 
-class RemoteControlThread(threading.Thread):
-    def __init__(self, _rc):
+class RemoteRecorderThread(threading.Thread):
+    def __init__(self, _remote_state: RemoteState):
         super().__init__(daemon=True)
-        self.rc = _rc
-        self.command = None
+        self.remote_state = _remote_state
         self.running = True
         self.lock = threading.Lock()
 
-    def set_command(self, cmd):
-        with self.lock:
-            self.command = cmd
-
     def run(self):
         while self.running:
-            cmd_to_send = None
-            with self.lock:
-                cmd_to_send = self.command
+            _commands = self.remote_state.recorder.read_command()
 
-            if cmd_to_send:
-                self.rc.send_command(cmd_to_send)
-            else:
-                time.sleep(0.005)
+            if len(_commands) == 5:
+                with self.lock:
+                    self.remote_state.throttle = _commands[3]
+                    self.remote_state.yaw = _commands[2]
+                    self.remote_state.pitch = _commands[1]
+
+            time.sleep(0.001)
+
+    def convert_to_float(self):
+        with self.lock:
+            return self.remote_state.convert_to_float()
 
     def stop(self):
         self.running = False
@@ -77,40 +77,29 @@ if __name__ == '__main__':
                                  distance_threshold=4.0,
                                  marker_std_dev=0.01,
                                  margin=1)
-    listener = KeyListener()
-    controller = ManualController(listener=listener)
-    rc = SymaRemoteControl(port='/dev/ttyUSB0', baudrate=115200)
 
-    rc_thread = RemoteControlThread(rc)
+    remote_state = RemoteState(recorder=SymaRemoteRecorder())
+    rc_thread = RemoteRecorderThread(remote_state)
 
     try:
         camera.start()
-        listener.start()
         rc_thread.start()
 
         point_record = []
         commands = []
         first_video_time = None
-        most_recent_command = controller.convert_to_float()
         print("Starting Flight Recording")
         frame_count = 0
 
-        while frame_count < 300 and not controller.quit:
+        while frame_count < 300:
             frames = camera.pipeline.wait_for_frames()
             video = camera.process_frames(frames)
 
             if first_video_time is None:
                 first_video_time = video.depth_ts
 
-            controller.process()
-            if controller.quit:
-                break
-
-            command = controller.format()
-            rc_thread.set_command(command)
-            most_recent_command = controller.convert_to_float()
-
-            commands.append((video.depth_ts - first_video_time, most_recent_command))
+            command = rc_thread.convert_to_float()
+            commands.append((video.depth_ts - first_video_time, command))
 
             frame_count += 1
             if video.ir_image is not None:
@@ -136,11 +125,8 @@ if __name__ == '__main__':
                 profiler.end("E2E")
 
     finally:
-        controller.reset()
-        rc_thread.set_command(controller.format())
         rc_thread.stop()
         camera.stop()
-        listener.stop()
 
     to_save = input('Save Flight Recording? (y/n) \n')
     if to_save.lower() == 'y':

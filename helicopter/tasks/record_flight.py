@@ -1,0 +1,165 @@
+from functools import partial
+from pathlib import Path
+from queue import Queue
+import threading
+from threading import Event, Lock
+import time
+
+import numpy as np
+import pandas as pd
+from scipy.spatial.transform import Rotation
+from tqdm import tqdm
+
+from helicopter.aircraft.base import Aircraft
+from helicopter.configuration import HydraConfigurable, LocalHydraConfiguration
+from helicopter.vision.tracking import Tracker, TrianglePointMatcher
+from helicopter.utils import RemoteState, SymaRemoteRecorder, Profiler
+
+from .base import Task
+
+
+class FakeSharedMemory:
+    def __init__(self, size: int):
+        self.buf = bytearray(size)
+    def close(self):
+        pass
+    def unlink(self):
+        pass
+
+class RemoteRecorderThread(threading.Thread):
+    def __init__(self, _remote_state: RemoteState):
+        super().__init__(daemon=True)
+        self.remote_state = _remote_state
+        self.running = True
+        self.lock = threading.Lock()
+
+    def run(self):
+        while self.running:
+            _commands = self.remote_state.recorder.read_command()
+
+            if len(_commands) == 5:
+                with self.lock:
+                    self.remote_state.throttle = _commands[3]
+                    self.remote_state.yaw = _commands[2]
+                    self.remote_state.pitch = _commands[1]
+
+            time.sleep(0.001)
+
+    def convert_to_float(self):
+        with self.lock:
+            return self.remote_state.convert_to_float()
+
+    def stop(self):
+        self.running = False
+        self.join()
+
+
+@HydraConfigurable
+class RecordFlight(Task):
+    def __init__(self):
+        super().__init__()
+
+        aircraft_dummy = np.zeros(shape=(Aircraft.N,), dtype=np.float64)
+        aircraft_sm = FakeSharedMemory(size=aircraft_dummy.nbytes)
+        kill_event = Event()
+
+        config = LocalHydraConfiguration('/home/ray/projects/helicopter/configs/atomic/tracker.yaml')
+        tracker: partial = Tracker.from_hydra_configuration(config)
+        self.tracker: Tracker = tracker(aircraft_sm=aircraft_sm,
+                                        kill_signal=kill_event, )
+
+        self.profiler = Profiler()
+
+    def run(self, **kwargs):
+        marker_queue = Queue()
+        origin_queue = Queue()
+        orientation_ready = Event()
+        origin_queue.put([{'id': 0,
+                           'position': np.array([-0.355 + 0.035, -0.685 + 0.035, 0]),
+                           'rotation': Rotation.from_euler('y', [90], degrees=True)},
+                          {'id': 1,
+                           'position': np.array([-0.355, -0.685 - 0.035, -0.035]),
+                           'rotation': Rotation.from_euler('z', [90], degrees=True)},
+                          {'id': 2,
+                           'position': np.array([-0.355, -0.685, -0.035]),
+                           'rotation': Rotation.from_euler('z', [0], degrees=True)},
+                          ])
+
+        lock = Lock()
+
+        self.tracker.initialize(marker_queue=marker_queue,
+                           origin_queue=origin_queue,
+                           orientation_ready=orientation_ready,
+                           aircraft_lock=lock, )
+
+        remote_state = RemoteState(recorder=SymaRemoteRecorder())
+        rc_thread = RemoteRecorderThread(remote_state)
+
+        point_record = []
+        commands = []
+        first_video_time = None
+        print("Starting Flight Recording")
+        frame_count = 0
+
+        try:
+            while frame_count < 300:
+                frames = self.tracker.camera.pipeline.wait_for_frames()
+                video = self.tracker.camera.process_frames(frames)
+
+                if first_video_time is None:
+                    first_video_time = video.depth_ts
+
+                command = rc_thread.convert_to_float()
+                commands.append((video.depth_ts - first_video_time, command))
+
+                frame_count += 1
+                if video.ir_image is not None:
+                    self.profiler.start('E2E')
+
+                    self.profiler.start("Inference")
+                    keypoints = self.tracker.point_handler.detector.detect(video.ir_frame)
+                    self.profiler.end("Inference")
+                    self.profiler.start("Deproject")
+                    points, _, _ = (
+                        self.tracker.point_handler.detector.get_points_coords(video.depth_frame,
+                                                                              keypoints,
+                                                                              self.tracker.camera.intrinsics))
+                    self.profiler.end("Deproject")
+
+                    table_space_points = self.tracker.camera_to_table_space(points)
+                    point_record.append((video.depth_ts - first_video_time, table_space_points))
+                    self.profiler.end("Deproject")
+                    self.profiler.end("E2E")
+        finally:
+            self.tracker.cleanup()
+            rc_thread.stop()
+
+        to_save = input('Save Flight Recording? (y/n) \n')
+        if to_save.lower() == 'y':
+            save_location = Path(__file__).parents[3] / 'notebooks' / 'flight_recordings' / 'recording.csv'
+            point_matcher = TrianglePointMatcher(n=1000, k=50)
+
+            df_dict = {'timestamp': [],
+                       'command': [],
+                       'position': [], }
+
+            print('Computing flight states')
+            for i in tqdm(range(len(commands))):
+                timestamp = commands[i][0]
+                command = commands[i][1]
+                points = point_record[i][1]
+
+                if len(points) < 3:
+                    continue
+                else:
+                    self.profiler.start('Point_Matching')
+                    helicopter_state = point_matcher.get_alignment(points)
+                    self.profiler.end('Point_Matching')
+                    df_dict['timestamp'].append(timestamp)
+                    df_dict['command'].append(command)
+                    df_dict['position'].append(helicopter_state[1].tolist())
+
+            print(self.profiler)
+
+            df = pd.DataFrame(df_dict)
+            df.to_csv(str(save_location), index=False)

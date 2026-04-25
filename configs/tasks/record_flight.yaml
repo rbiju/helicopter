@@ -1,0 +1,2 @@
+RecordFlight:
+  _target_: helicopter.tasks.RecordFlight
