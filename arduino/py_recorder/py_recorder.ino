@@ -35,18 +35,18 @@ void loop() {
       byte pitch = data1;
       byte yaw = data0 - (int(trim_val) - 63) / 3;
 
-      Serial.print("CH:"); Serial.print(channel);
-      Serial.print(" YAW:"); Serial.print(yaw);
-      Serial.print(" PITCH:"); Serial.print(pitch);
-      Serial.print(" THR:"); Serial.print(throttle);
-      Serial.print(" TRIM:"); Serial.println(trim_val);
+//       Serial.print("CH:"); Serial.print(channel);
+//       Serial.print(" YAW:"); Serial.print(yaw);
+//       Serial.print(" PITCH:"); Serial.print(pitch);
+//       Serial.print(" THR:"); Serial.print(throttle);
+//       Serial.print(" TRIM:"); Serial.println(trim_val);
 
-//       Serial.write(READY_ACK)
-//       Serial.write(channel);
-//       Serial.write(yaw);
-//       Serial.write(pitch);
-//       Serial.write(throttle);
-//       Serial.write(trim_val);
+      Serial.write(READY_ACK);
+      Serial.write(channel);
+      Serial.write(yaw);
+      Serial.write(pitch);
+      Serial.write(throttle);
+      Serial.write(trim_val);
     }
 
     IrReceiver.resume();

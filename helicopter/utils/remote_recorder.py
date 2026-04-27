@@ -23,8 +23,8 @@ class RemoteState:
         self.recorder = recorder
 
         self.throttle = 0
-        self.yaw = 0
-        self.pitch = 0
+        self.yaw = 63
+        self.pitch = 63
         self.trim = 0
 
     def update(self, commands: list[int]):
@@ -36,6 +36,6 @@ class RemoteState:
 
     def convert_to_float(self):
         thrust = self.throttle / 127.
-        pitch = ((127 - self.pitch) - 63.) / 128. * 2
-        yaw = ((127 - self.yaw) - 63.) / 128. * 2
+        pitch = ((128 - (self.pitch + 1)) - 64.) / 128. * 2
+        yaw = ((128 - (self.yaw + 1)) - 64.) / 128. * 2
         return [thrust, pitch, yaw]

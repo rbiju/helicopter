@@ -83,7 +83,7 @@ class D435i:
             print('Emitter always on enabled')
             depth_sensor.set_option(rs.option.emitter_always_on, 1)
 
-        depth_sensor.set_option(rs.option.frames_queue_size, 16)
+        depth_sensor.set_option(rs.option.frames_queue_size, 1)
 
         self.enable_motion = enable_motion
         if enable_motion:
@@ -91,7 +91,6 @@ class D435i:
 
         self.pipeline, self.config, self.intrinsics = self.get_camera_pipeline(self.serial, enable_rgb)
 
-        self.align = rs.align(rs.stream.infrared)
         self.temporal_filter = rs.temporal_filter()
         self.temporal_filter.set_option(rs.option.filter_smooth_alpha, 0.4)
         self.temporal_filter.set_option(rs.option.filter_smooth_delta, 20)
@@ -292,14 +291,15 @@ class D435i:
         return pipeline, config
 
     def start(self):
+        global_time_val = 1 if self.global_time else 0
+
         if self.enable_motion:
             imu_profile = self.imu_pipeline.start(self.imu_config)
             device = imu_profile.get_device()
-            motion_sensor = device.first_motion_sensor()
-            if self.global_time:
-                motion_sensor.set_option(rs.option.global_time_enabled, 1)
-            else:
-                motion_sensor.set_option(rs.option.global_time_enabled, 0)
+
+            for sensor in device.query_sensors():
+                if sensor.supports(rs.option.global_time_enabled):
+                    sensor.set_option(rs.option.global_time_enabled, global_time_val)
 
             print("--- Active Motion Streams ---")
             for stream in imu_profile.get_streams():
@@ -307,12 +307,10 @@ class D435i:
 
         profile = self.pipeline.start(self.config)
         device = profile.get_device()
-        depth_sensor = device.first_depth_sensor()
 
-        if self.global_time:
-            depth_sensor.set_option(rs.option.global_time_enabled, 1)
-        else:
-            depth_sensor.set_option(rs.option.global_time_enabled, 0)
+        for sensor in device.query_sensors():
+            if sensor.supports(rs.option.global_time_enabled):
+                sensor.set_option(rs.option.global_time_enabled, global_time_val)
 
         print("--- Active Video Streams ---")
         for stream in profile.get_streams():
@@ -323,12 +321,10 @@ class D435i:
                 print(f"{stream.stream_type()} | FPS: {stream.fps()} | Format: {stream.format()}")
 
     def process_frames(self, frames: rs.composite_frame, temporal_filter: bool = False):
-        aligned = self.align.process(frames)
-
-        depth_frame = aligned.get_depth_frame()
+        depth_frame = frames.get_depth_frame()
         laser_state = (depth_frame.get_frame_metadata(rs.frame_metadata_value.frame_laser_power_mode) == 1)
-        ir_frame = aligned.get_infrared_frame(1)
-        color_frame = aligned.get_color_frame()
+        ir_frame = frames.get_infrared_frame(1)
+        color_frame = frames.get_color_frame()
 
         if depth_frame:
             if temporal_filter:

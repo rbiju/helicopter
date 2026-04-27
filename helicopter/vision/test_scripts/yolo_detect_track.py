@@ -17,7 +17,7 @@ if __name__ == '__main__':
                    exposure_time=2400,
                    autoexpose_rgb=False,
                    exposure_time_rgb=1000,
-                   depth_preset=4)
+                   depth_preset=3)
 
     model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/track_20260413_0/weights/best.engine',
                                       task='detect'),
@@ -26,8 +26,8 @@ if __name__ == '__main__':
                            conf=0.15)
     detector = YOLOPointDetector(model=model,
                                  marker_tolerance=0.01,
-                                 distance_threshold=4.0,
-                                 marker_std_dev=0.01,
+                                 distance_threshold=3.0,
+                                 marker_std_dev=0.003,
                                  margin=1)
     listener = KeyListener()
     quitter = Quitter(listener=listener)

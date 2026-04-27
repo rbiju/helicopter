@@ -1,2 +1,3 @@
 RecordFlight:
   _target_: helicopter.tasks.RecordFlight
+  filename: 'pitch_tuning'

@@ -56,7 +56,7 @@ class RemoteRecorderThread(threading.Thread):
 
 @HydraConfigurable
 class RecordFlight(Task):
-    def __init__(self):
+    def __init__(self, filename: str = 'recording'):
         super().__init__()
 
         aircraft_dummy = np.zeros(shape=(Aircraft.N,), dtype=np.float64)
@@ -69,6 +69,7 @@ class RecordFlight(Task):
                                         kill_signal=kill_event, )
 
         self.profiler = Profiler()
+        self.filename = filename + '.csv'
 
     def run(self, **kwargs):
         marker_queue = Queue()
@@ -108,7 +109,7 @@ class RecordFlight(Task):
                 video = self.tracker.camera.process_frames(frames)
 
                 if first_video_time is None:
-                    first_video_time = video.depth_ts
+                    first_video_time = video.ir_ts
 
                 frame_count += 1
                 if video.ir_image is not None:
@@ -125,19 +126,20 @@ class RecordFlight(Task):
                     self.profiler.end("Deproject")
 
                     table_space_points = self.tracker.camera_to_table_space(points)
-                    point_record.append((video.depth_ts - first_video_time, table_space_points))
+                    point_record.append((video.ir_ts - first_video_time, table_space_points))
                     command = rc_thread.convert_to_float()
-                    commands.append((video.depth_ts - first_video_time, command))
+                    commands.append((video.ir_ts - first_video_time, command))
 
                     self.profiler.end("E2E")
+                    time.sleep(0.00001)
         finally:
             self.tracker.cleanup()
             rc_thread.stop()
 
         to_save = input('Save Flight Recording? (y/n) \n')
         if to_save.lower() == 'y':
-            save_location = Path(__file__).parents[2] / 'notebooks' / 'flight_recordings' / 'recording.csv'
-            point_matcher = TrianglePointMatcher(n=1000, k=100)
+            save_location = Path(__file__).parents[2] / 'notebooks' / 'flight_recordings' / self.filename
+            point_matcher = TrianglePointMatcher(n=2500, k=100)
 
             df_dict = {'timestamp': [],
                        'command': [],
