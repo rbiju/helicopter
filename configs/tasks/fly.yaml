@@ -21,11 +21,12 @@ Tracker:
     ema_accel: 1.0
   point_handler:
     _target_: helicopter.vision.tracking.TrackingPointHandler
+    init_std_dev: 0.0001
     detector:
       _target_: helicopter.vision.point_detection.YOLOPointDetector
       marker_tolerance: 0.01
       distance_threshold: 4.0
-      marker_std_dev: 0.003
+      marker_std_dev: 0.01
       margin: 1
       model:
         _target_: helicopter.vision.point_detection.HelicopterYOLO

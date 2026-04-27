@@ -22,7 +22,13 @@ class PointDetector(ABC):
 
     def get_points_coords(self, depth_frame,
                           keypoints,
-                          intrinsics) -> tuple[np.ndarray, list[cv2.KeyPoint], list[cv2.KeyPoint]]:
+                          intrinsics,
+                          std_dev: float = None) -> tuple[np.ndarray, list[cv2.KeyPoint], list[cv2.KeyPoint]]:
+        if std_dev is None:
+            marker_std_dev = self.marker_std_dev
+        else:
+            marker_std_dev = std_dev
+
         if len(keypoints) == 0:
             return np.empty((0, 3)), [], []
 
@@ -71,7 +77,7 @@ class PointDetector(ABC):
             d_std = np.std(core_pixels)
 
             # Corresponds to marker size
-            if d_std > self.marker_std_dev:
+            if d_std > marker_std_dev:
                 invalid_kps.append(kp)
                 continue
 

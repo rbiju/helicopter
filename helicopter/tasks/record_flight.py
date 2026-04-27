@@ -95,6 +95,7 @@ class RecordFlight(Task):
         remote_state = RemoteState(recorder=SymaRemoteRecorder())
         rc_thread = RemoteRecorderThread(remote_state)
 
+        rc_thread.start()
         point_record = []
         commands = []
         first_video_time = None
@@ -109,26 +110,25 @@ class RecordFlight(Task):
                 if first_video_time is None:
                     first_video_time = video.depth_ts
 
-                command = rc_thread.convert_to_float()
-                commands.append((video.depth_ts - first_video_time, command))
-
                 frame_count += 1
                 if video.ir_image is not None:
                     self.profiler.start('E2E')
 
                     self.profiler.start("Inference")
-                    keypoints = self.tracker.point_handler.detector.detect(video.ir_frame)
+                    keypoints = self.tracker.point_handler.detector.detect(video.ir_image)
                     self.profiler.end("Inference")
                     self.profiler.start("Deproject")
                     points, _, _ = (
-                        self.tracker.point_handler.detector.get_points_coords(video.depth_frame,
+                        self.tracker.point_handler.detector.get_points_coords(video.depth_image,
                                                                               keypoints,
                                                                               self.tracker.camera.intrinsics))
                     self.profiler.end("Deproject")
 
                     table_space_points = self.tracker.camera_to_table_space(points)
                     point_record.append((video.depth_ts - first_video_time, table_space_points))
-                    self.profiler.end("Deproject")
+                    command = rc_thread.convert_to_float()
+                    commands.append((video.depth_ts - first_video_time, command))
+
                     self.profiler.end("E2E")
         finally:
             self.tracker.cleanup()
@@ -136,8 +136,8 @@ class RecordFlight(Task):
 
         to_save = input('Save Flight Recording? (y/n) \n')
         if to_save.lower() == 'y':
-            save_location = Path(__file__).parents[3] / 'notebooks' / 'flight_recordings' / 'recording.csv'
-            point_matcher = TrianglePointMatcher(n=1000, k=50)
+            save_location = Path(__file__).parents[2] / 'notebooks' / 'flight_recordings' / 'recording.csv'
+            point_matcher = TrianglePointMatcher(n=1000, k=100)
 
             df_dict = {'timestamp': [],
                        'command': [],

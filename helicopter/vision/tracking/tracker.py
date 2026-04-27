@@ -142,7 +142,8 @@ class Tracker:
             self.profiler.start("Init_Detection")
             measure_out = self.point_handler.get_measured_points(ir_frame=video.ir_image,
                                                                  depth_frame=video.depth_image,
-                                                                 intrinsics=self.camera.intrinsics)
+                                                                 intrinsics=self.camera.intrinsics,
+                                                                 std_dev=self.point_handler.init_std_dev)
             self.profiler.end("Init_Detection")
 
             if measure_out is not None:
@@ -157,6 +158,7 @@ class Tracker:
         # ------------------------------------------------------------
         # |                         MARKERS                          |
         # ------------------------------------------------------------
+
         marker_iters = 200
         print("\nInitializing marker orientations.")
         counter = 0
@@ -206,9 +208,12 @@ class Tracker:
                             yaw_only_marker_quat)
         self.origin_position = (self.camera_quat.apply(marker_dict[origin_dict['id']]['position'])
                                 - yaw_only_marker_quat.apply(origin_dict['position']))
-        origin_queue.put({'origin_position': self.origin_position,
+
+        coordinate_transform_dict = {'origin_position': self.origin_position,
                           'origin_quat': self.origin_quat,
-                          'camera_quat': self.camera_quat})
+                          'camera_quat': self.camera_quat}
+
+        origin_queue.put(coordinate_transform_dict)
 
         # ------------------------------------------------------------
         # |                        AIRCRAFT                          |

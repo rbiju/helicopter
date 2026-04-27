@@ -18,12 +18,14 @@ class TrackingPointHandler:
                  detector: PointDetector,
                  matcher: TrianglePointMatcher,
                  icp: ICP,
+                 init_std_dev: float = 0.0005,
                  max_queue_size: int = 50) -> None:
         self.detector = detector
         self.matcher = matcher
         self.icp = icp
 
         self.init_points : dict[int, PointQueue] = {}
+        self.init_std_dev = init_std_dev
         self.maxlen = max_queue_size
 
         self._next_id : int = 0
@@ -85,10 +87,12 @@ class TrackingPointHandler:
                     closest_key = keys[closest_idx]
                     self.init_points[closest_key].enqueue(point)
 
-    def get_measured_points(self, ir_frame: np.ndarray, depth_frame: np.ndarray,
-                            intrinsics: pyrealsense2.intrinsics) -> tuple[np.ndarray, list[cv2.KeyPoint]] | None:
+    def get_measured_points(self, ir_frame: np.ndarray,
+                            depth_frame: np.ndarray,
+                            intrinsics: pyrealsense2.intrinsics,
+                            std_dev: float = None) -> tuple[np.ndarray, list[cv2.KeyPoint]] | None:
         keypoints = self.detector.detect(ir_frame)
-        marker_coords, _, _ = self.detector.get_points_coords(depth_frame, keypoints, intrinsics)
+        marker_coords, _, _ = self.detector.get_points_coords(depth_frame, keypoints, intrinsics, std_dev)
 
         if len(marker_coords) <= 0:
             return None
