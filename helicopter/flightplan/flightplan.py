@@ -21,11 +21,11 @@ class FlightPlan(ABC):
         return self._waypoints[0]
 
     @abstractmethod
-    def compute_error(self, quaternion: Rotation, translation: np.ndarray):
+    def compute_error(self, quaternion: Rotation, position: np.ndarray):
         raise NotImplementedError
 
     @abstractmethod
-    def activate(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
+    def activate(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
         raise NotImplementedError
 
     def _advance_waypoint(self):
@@ -36,7 +36,7 @@ class FlightPlan(ABC):
             return True
 
     @abstractmethod
-    def tick(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
+    def tick(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
         raise NotImplementedError
 
 
@@ -82,20 +82,20 @@ class ConstantHeadingFlightPlan(FlightPlan, ABC):
         return np.array([e_throttle, e_pitch, e_yaw])
 
 
-class IdleFlightPlan(FlightPlan, ABC):
+class IdleFlightPlan(FlightPlan):
     def __init__(self):
         super().__init__()
 
     def flight_state(self, timestamp: float) -> FlightState:
         return FlightState.IDLE
 
-    def compute_error(self, quaternion: Rotation, translation: np.ndarray):
+    def compute_error(self, quaternion: Rotation, position: np.ndarray):
         return np.array([0.0, 0.0, 0.0])
 
-    def activate(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
+    def activate(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
         pass
 
-    def tick(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
+    def tick(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
         return True
 
 
@@ -113,14 +113,14 @@ class TakeOffFlightPlan(WaypointFollowingFlightPlan):
         else:
             return FlightState.TAKEOFF
 
-    def activate(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
-        self._waypoints.append(translation + np.array([0, 0, self.takeoff_height]))
+    def activate(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
+        self._waypoints.append(position + np.array([0, 0, self.takeoff_height]))
         self.start_time = timestamp
         self.activated = True
 
-    def tick(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
+    def tick(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
         depleted = False
-        if np.linalg.norm(translation - self.waypoint) < self.tick_radius:
+        if np.linalg.norm(position - self.waypoint) < self.tick_radius:
             depleted = self._advance_waypoint()
         return depleted
 
@@ -134,13 +134,13 @@ class HoverFlightPlan(ConstantHeadingFlightPlan):
     def flight_state(self, timestamp: float) -> FlightState:
         return FlightState.HOVER
 
-    def activate(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
+    def activate(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
         self.reference_heading = Rotation.as_rotvec(quaternion)[2]
         self.start_time = timestamp
-        self._waypoints.append(translation)
+        self._waypoints.append(position)
         self.activated = True
 
-    def tick(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
+    def tick(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
         depleted = False
         if (timestamp - self.start_time) > self.hover_time:
             depleted = self._advance_waypoint()
@@ -159,11 +159,11 @@ class ManualFlightPlan(FlightPlan):
     def compute_error(self, r: Rotation, t: np.ndarray):
         return np.array([0.0, 0.0, 0.0])
 
-    def activate(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
+    def activate(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
         self.activated = True
         self.start_time = timestamp
 
-    def tick(self, quaternion: Rotation, translation: np.ndarray, timestamp: float):
+    def tick(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
         depleted = False
         if (timestamp - self.start_time) > self.flight_time:
             depleted = True

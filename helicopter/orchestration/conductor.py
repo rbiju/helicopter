@@ -6,7 +6,7 @@ import numpy as np
 from helicopter.configuration import HydraConfigurable
 from helicopter.aircraft import Aircraft
 from helicopter.controller import FlightController
-from helicopter.utils import Profiler, SymaRemoteControl, CommandBufferConstants
+from helicopter.utils import Profiler, CommandBufferConstants
 
 from .oracle import Oracle
 
@@ -16,14 +16,12 @@ class FlightConductor:
     def __init__(self, aircraft_sm: SharedMemory,
                  controller: FlightController,
                  oracle: Oracle,
-                 remote: SymaRemoteControl,
                  kill_signal: Event) -> None:
         """
 
         Args:
             controller: The Brain
             oracle: Glues together and manages flight plans
-            remote: Owns communication with the aircraft
         """
         self.aircraft_buffer = np.ndarray(shape=(Aircraft.N,),
                                           dtype=Aircraft.dtype,
@@ -32,7 +30,6 @@ class FlightConductor:
 
         self.controller = controller
         self.oracle = oracle
-        self.remote = remote
 
         self.profiler = Profiler()
 
@@ -45,7 +42,7 @@ class FlightConductor:
 
         self.oracle.active_flight_plan.activate(
             quaternion=self.aircraft.quaternion,
-            translation=self.aircraft.position,
+            position=self.aircraft.position,
             timestamp=0.0
         )
         self.aircraft.flight_state = self.oracle.active_flight_state(timestamp=0.0)
@@ -80,18 +77,9 @@ class FlightConductor:
             self.oracle.update(r, t, timestamp=timestamp)
 
             flightplan = self.oracle.active_flight_plan
-            errors = flightplan.compute_error(quaternion=r, translation=t)
-            commands = self.controller.control(timestamp=timestamp, errors=errors)
-
-            if self.controller.killed:
-                self.kill_signal.set()
-
-            formatted_commands = self.controller.format_command(commands, 0.0, 128)
-            command_sent = self.remote.send_command(formatted_commands)
-            if command_sent:
-                with lock:
-                    np.copyto(command_buffer, commands)
+            sent_command = self.controller.control(flightplan, r, t, timestamp)
+            with lock:
+                np.copyto(command_buffer, sent_command)
 
     def cleanup(self):
         self.controller.shutdown()
-        self.remote.shutdown()

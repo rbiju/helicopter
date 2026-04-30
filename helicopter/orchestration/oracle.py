@@ -2,7 +2,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from helicopter.aircraft import FlightState
-from .flightplan import FlightPlan
+from flightplan.flightplan import FlightPlan
 
 
 class Oracle:
@@ -40,7 +40,7 @@ class Oracle:
         self.active_flight_plan.activate(r, t, timestamp)
 
     def update(self, r: Rotation, t: np.ndarray, timestamp: float):
-        depleted = self.active_flight_plan.tick(quaternion=r, translation=t, timestamp=timestamp)
+        depleted = self.active_flight_plan.tick(quaternion=r, position=t, timestamp=timestamp)
         if depleted:
             self.tick(r, t, timestamp)
 

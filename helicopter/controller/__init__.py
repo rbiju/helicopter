@@ -1,3 +1,3 @@
 from .base import FlightController
-from .pid import HelicopterPIDController
+from .pid import PIDFlightController
 from .manual import ManualFlightController

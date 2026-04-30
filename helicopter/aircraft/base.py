@@ -12,9 +12,9 @@ IDX_O = slice(7, 10)
 IDX_V = slice(10, 13)
 IDX_BATTERY = slice(13, 14)
 IDX_TRIM = slice(14, 15)
-IDX_ACTUAL_THRUST = slice(15, 16)
-IDX_STATE = slice(16, 17)
-IDX_TIME = slice(17, 18)
+IDX_ACTUAL_COMMANDS = slice(15, 18)
+IDX_STATE = slice(18, 19)
+IDX_TIME = slice(19, 20)
 
 
 class FlightState(Enum):
@@ -43,8 +43,8 @@ class FlightState(Enum):
 
 
 class Aircraft:
-    N: int = 18
-    STATE_N: int = 16
+    N: int = 20
+    STATE_N: int = 18
     dtype = np.float64
 
     def __init__(self, buffer: np.ndarray = None, lock: ProcessLock = None):
@@ -120,16 +120,6 @@ class Aircraft:
             self._buffer[IDX_TRIM] = np.array([value], dtype=self.dtype)
 
     @property
-    def actual_thrust(self) -> float:
-        with self._lock:
-            return float(self._buffer[IDX_ACTUAL_THRUST][0])
-
-    @actual_thrust.setter
-    def actual_thrust(self, value: float):
-        with self._lock:
-            self._buffer[IDX_ACTUAL_THRUST] = np.array([value], dtype=self.dtype)
-
-    @property
     def flight_state(self) -> FlightState:
         with self._lock:
             state_val = int(self._buffer[IDX_STATE][0])
@@ -175,7 +165,7 @@ class Aircraft:
                 'Angular Velocity': self._buffer[IDX_O].copy(),
                 'Battery': float(self._buffer[IDX_BATTERY][0]),
                 'Trim': float(self._buffer[IDX_TRIM][0]),
-                'Actual Thrust': float(self._buffer[IDX_ACTUAL_THRUST][0]),
+                'Actual Commands': float(self._buffer[IDX_ACTUAL_COMMANDS].copy()),
                 'Flight State': FlightState(int(self._buffer[IDX_STATE][0])),
                 'Timestamp': float(self._buffer[IDX_TIME][0])
             }

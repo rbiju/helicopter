@@ -3,7 +3,8 @@ from typing import NamedTuple
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from helicopter.utils import SymaCommandFactory
+from helicopter.flightplan import FlightPlan
+from helicopter.remote import RemoteControlThread, ControlPacket
 from .base import FlightController
 
 
@@ -72,46 +73,27 @@ class PIDController:
         return out
 
 
-class HelicopterPIDController(FlightController):
-    def __init__(self, thrust: PIDController, pitch: PIDController, yaw: PIDController,
-                 command_factory: SymaCommandFactory = SymaCommandFactory()):
+class PIDFlightController(FlightController):
+    def __init__(self, throttle: PIDController, pitch: PIDController, yaw: PIDController,
+                 remote_thread: RemoteControlThread):
         super().__init__()
-        self.command_factory = None
-        self.thrust = thrust
+        self.throttle = throttle
         self.pitch = pitch
         self.yaw = yaw
 
-        self.command_factory = command_factory
+        self.remote_thread = remote_thread
 
         # This order determines the order of the command array
-        self.controllers = [self.thrust, self.pitch, self.yaw]
+        self.controllers = [self.throttle, self.pitch, self.yaw]
 
         self.last_time = 0.0
+        self.remote_thread.start()
 
     def reset(self):
         for controller in self.controllers:
             controller.reset()
 
-    @staticmethod
-    def compute_pid_errors(waypoint: np.ndarray, r: Rotation, t: np.ndarray):
-        position_error = waypoint - t
-        e_throttle = position_error[2]
-
-        yaw_rotvec = Rotation.as_rotvec(r)[2]
-        yaw_rotation = Rotation.from_rotvec(np.array([0.0, 0.0, yaw_rotvec]))
-        position_error_body = yaw_rotation.inv().apply(position_error)
-        e_pitch = position_error_body[0]
-
-        if e_pitch < 0.05:
-            e_yaw = 0.0
-        else:
-            psi_target = np.arctan2(position_error[1], position_error[0])
-            psi_current = yaw_rotvec
-            e_yaw = psi_target - psi_current
-
-        return np.array([e_throttle, e_pitch, e_yaw])
-
-    def control(self, timestamp: float, errors: np.ndarray) -> np.ndarray:
+    def get_command(self, timestamp: float, errors: np.ndarray) -> ControlPacket:
         commands = []
         for i in range(len(self.controllers)):
             command = self.controllers[i].control(errors[i], timestamp - self.last_time)
@@ -119,11 +101,18 @@ class HelicopterPIDController(FlightController):
 
         self.last_time = timestamp
 
-        return np.array(commands)
+        return ControlPacket(*commands)
 
-    def format_command(self, command, trim=0, channel=0):
-        return self.command_factory.command(thrust=command[0],
-                                            pitch=command[1],
-                                            yaw=command[2],
-                                            trim=trim,
-                                            channel=channel).format()
+    def control(self, flightplan: FlightPlan,
+                quaternion: Rotation,
+                position: np.ndarray,
+                timestamp: float) -> np.ndarray:
+        error = flightplan.compute_error(quaternion=quaternion, position=position)
+        commands = self.get_command(timestamp, error)
+        self.remote_thread.update(commands)
+        self.last_time = timestamp
+
+        return self.remote_thread.most_recently_sent()
+
+    def shutdown(self):
+        self.remote_thread.stop()

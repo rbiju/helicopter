@@ -1,7 +1,6 @@
 from functools import partial
 from pathlib import Path
 from queue import Queue
-import threading
 from threading import Event, Lock
 import time
 
@@ -12,8 +11,9 @@ from tqdm import tqdm
 
 from helicopter.aircraft.base import Aircraft
 from helicopter.configuration import HydraConfigurable, LocalHydraConfiguration
+from helicopter.remote import RemoteRecorderThread, SymaRemoteRecorder
 from helicopter.vision.tracking import Tracker, TrianglePointMatcher
-from helicopter.utils import RemoteState, SymaRemoteRecorder, Profiler
+from helicopter.utils import Profiler
 
 from .base import Task
 
@@ -25,33 +25,6 @@ class FakeSharedMemory:
         pass
     def unlink(self):
         pass
-
-class RemoteRecorderThread(threading.Thread):
-    def __init__(self, _remote_state: RemoteState):
-        super().__init__(daemon=True)
-        self.remote_state = _remote_state
-        self.running = True
-        self.lock = threading.Lock()
-
-    def run(self):
-        while self.running:
-            _commands = self.remote_state.recorder.read_command()
-
-            if len(_commands) == 5:
-                with self.lock:
-                    self.remote_state.throttle = _commands[3]
-                    self.remote_state.yaw = _commands[2]
-                    self.remote_state.pitch = _commands[1]
-
-            time.sleep(0.001)
-
-    def convert_to_float(self):
-        with self.lock:
-            return self.remote_state.convert_to_float()
-
-    def stop(self):
-        self.running = False
-        self.join()
 
 
 @HydraConfigurable
@@ -93,8 +66,7 @@ class RecordFlight(Task):
                            orientation_ready=orientation_ready,
                            aircraft_lock=lock, )
 
-        remote_state = RemoteState(recorder=SymaRemoteRecorder())
-        rc_thread = RemoteRecorderThread(remote_state)
+        rc_thread = RemoteRecorderThread(SymaRemoteRecorder())
 
         rc_thread.start()
         point_record = []
@@ -127,7 +99,7 @@ class RecordFlight(Task):
 
                     table_space_points = self.tracker.camera_to_table_space(points)
                     point_record.append((video.ir_ts - first_video_time, table_space_points))
-                    command = rc_thread.convert_to_float()
+                    command = rc_thread.get_commands().tolist()
                     commands.append((video.ir_ts - first_video_time, command))
 
                     self.profiler.end("E2E")

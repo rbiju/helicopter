@@ -91,5 +91,3 @@ FlightConductor:
     flight_plan_sequence:
       - _target_: helicopter.orchestration.ManualFlightPlan
         flight_time: 120.0
-  remote:
-    _target_: helicopter.utils.SymaRemoteControl
