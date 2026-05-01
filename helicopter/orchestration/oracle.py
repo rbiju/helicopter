@@ -2,7 +2,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from helicopter.aircraft import FlightState
-from flightplan.flightplan import FlightPlan
+from helicopter.flightplan import FlightPlan
 
 
 class Oracle:

@@ -41,7 +41,7 @@ class RemoteState(ABC):
     def convert_to_float(self):
         throttle = self.throttle / 127.
         pitch = ((128 - (self.pitch + 1)) - 64.) / 128. * 2
-        yaw = ((128 - (self.yaw + 1)) - 64.) / 128. * 2
+        yaw = ((self.yaw + 1) - 64.) / 128. * 2
         return np.array([throttle, pitch, yaw])
 
     @abstractmethod
@@ -65,5 +65,5 @@ class RemoteThread(ABC, threading.Thread):
 
     def stop(self):
         self.running = False
-        self.shutdown()
         self.join()
+        self.shutdown()

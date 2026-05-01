@@ -29,9 +29,8 @@ class FakeSharedMemory:
 
 @HydraConfigurable
 class RecordFlight(Task):
-    def __init__(self, filename: str = 'recording'):
+    def __init__(self, filename: str = 'recording', num_frames: int = 300):
         super().__init__()
-
         aircraft_dummy = np.zeros(shape=(Aircraft.N,), dtype=np.float64)
         aircraft_sm = FakeSharedMemory(size=aircraft_dummy.nbytes)
         kill_event = Event()
@@ -43,6 +42,7 @@ class RecordFlight(Task):
 
         self.profiler = Profiler()
         self.filename = filename + '.csv'
+        self.num_frames = num_frames
 
     def run(self, **kwargs):
         marker_queue = Queue()
@@ -72,11 +72,11 @@ class RecordFlight(Task):
         point_record = []
         commands = []
         first_video_time = None
-        print("Starting Flight Recording")
+        print(f"Recording for {self.num_frames} frames . . .")
         frame_count = 0
 
         try:
-            while frame_count < 300:
+            while frame_count < self.num_frames:
                 frames = self.tracker.camera.pipeline.wait_for_frames()
                 video = self.tracker.camera.process_frames(frames)
 

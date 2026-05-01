@@ -1,3 +1,4 @@
 RecordFlight:
   _target_: helicopter.tasks.RecordFlight
-  filename: 'throttle_tuning'
+  filename: 'whole_tuning'
+  num_frames: 400

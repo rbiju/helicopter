@@ -1,5 +1,5 @@
 import time
-from helicopter.remote import SymaRemoteRecorder
+from helicopter.remote import SymaRemoteRecorder, RecordingPacket
 
 if __name__ == "__main__":
     recorder = SymaRemoteRecorder()
@@ -9,7 +9,8 @@ if __name__ == "__main__":
         commands = recorder.read_command()
         if len(commands) == 5:
             frame_count += 1
+            commands = RecordingPacket.from_list(commands)
             recorder.remote_state.update(commands)
             print(commands)
-            print(recorder.remote_state.get_commands())
+            print(recorder.remote_state.convert_to_float())
         time.sleep(0.001)

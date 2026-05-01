@@ -12,7 +12,7 @@ class ControllerRemoteState(RemoteState):
     def update(self, commands: ControlPacket):
         self.throttle = int(commands.throttle * 127.)
         self.pitch = int(commands.pitch * 64. - 63)
-        self.yaw = int(commands.yaw * 64. - 63)
+        self.yaw = int(commands.yaw * 64. + 63)
 
 
 class SymaRemoteControl:
