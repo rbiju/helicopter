@@ -35,7 +35,7 @@ class SymaRemoteRecorder:
 
 
 class RemoteRecorderThread(RemoteThread):
-    def __init__(self, remote_recorder: SymaRemoteRecorder = SymaRemoteRecorder()):
+    def __init__(self, remote_recorder: SymaRemoteRecorder):
         super().__init__()
         self.remote_recorder = remote_recorder
 

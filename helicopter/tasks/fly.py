@@ -125,7 +125,7 @@ class Fly(Task):
         orientation_ready = mp.Event()
 
         with SharedMemoryManager() as smm:
-            aircraft_dummy = np.zeros(shape=(Aircraft.N,), dtype=np.float64)
+            aircraft_dummy = Aircraft.default_state()
             aircraft_sm = smm.SharedMemory(size=aircraft_dummy.nbytes)
             dummy_command = np.zeros(4, dtype=np.float64)
             command_sm = smm.SharedMemory(size=dummy_command.nbytes)

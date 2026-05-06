@@ -33,7 +33,7 @@ class RemoteState(ABC):
         self.yaw = 63
         self.pitch = 63
         self.throttle = 0
-        self.trim = 0
+        self.trim = 63
 
     def as_list(self):
         return [self.channel, self.yaw, self.pitch, self.throttle, self.trim]

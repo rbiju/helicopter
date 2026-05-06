@@ -24,9 +24,9 @@ Measure:
       dp_y: 1.0e-2
       dp_z: 1.0e-2
   scanner:
-    _target_: helicopter.vision.measurement.scanner
+    _target_: helicopter.vision.measurement.Scanner
     _partial_: True
-    measurement_time: 30.0
+    measurement_time: 60.0
     logger:
       _target_: helicopter.vision.measurement.MeasurementStateLogger
       save_dir: '/home/ray/projects/helicopter/notebooks/logs'
@@ -43,6 +43,7 @@ Measure:
       ema_gyro: 0.1
     point_handler:
       _target_: helicopter.vision.measurement.MeasurementPointHandler
+      save_dir: 'blue_syma'
       queue_len: 75
       detector:
         _target_: helicopter.vision.point_detection.YOLOPointDetector
@@ -52,9 +53,9 @@ Measure:
           _target_: helicopter.vision.point_detection.HelicopterYOLO
           conf: 0.7
           preprocessor:
-            _target_: helicopter.vision.point_detection.GPUImagePreprocessor
+            _target_: helicopter.vision.point_detection.GPUSquarePadImagePreprocessor
             imgsz: [480, 640]
           model:
             _target_: ultralytics.YOLO
-            model: "/home/ray/yolo_models/helicopter/measure_20260227/weights/best.engine"
+            model: "/home/ray/yolo_models/helicopter/measure_20260505_0/weights/best.engine"
             task: "detect"

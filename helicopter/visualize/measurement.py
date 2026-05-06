@@ -37,7 +37,7 @@ class MeasurementVisualizer(Visualizer):
         self.camera_handle.wxyz = quat.as_quat(canonical=True, scalar_first=True)
         self.camera_handle.position = translation
 
-        if np.linalg.norm(translation - self.last_position) > 0.005:
+        if np.linalg.norm(translation - self.last_position) > 0.0005:
             line = np.vstack([self.last_position, translation])
             self.last_position = translation
             self.server.scene.add_line_segments(

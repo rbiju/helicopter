@@ -19,14 +19,14 @@ if __name__ == '__main__':
     print('Collecting data')
     camera.start()
     images = []
-    for i in tqdm(range(15)):
+    for i in tqdm(range(40)):
         frames = camera.pipeline.wait_for_frames()
         video = camera.process_frames(frames)
 
         images.append(video.ir_image.copy())
         print(i)
 
-        time.sleep(0.5)
+        time.sleep(0.25)
 
     camera.stop()
 

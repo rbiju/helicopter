@@ -16,10 +16,10 @@ class MeasurementPointHandler:
     def __init__(self,
                  detector: PointDetector,
                  queue_len: int = 50,
-                 save_dir: str = "../../../notebooks/points") -> None:
+                 save_dir: str = 'points') -> None:
         self.detector = detector
         self.maxlen = queue_len
-        self.save_dir = Path(save_dir)
+        self.save_dir = Path(__file__).parents[3] / 'notebooks' / save_dir
 
         self.point_map = np.empty((0, 3))
         self.points: dict[int, PointQueue] = {}

@@ -31,7 +31,7 @@ class FakeSharedMemory:
 class RecordFlight(Task):
     def __init__(self, filename: str = 'recording', num_frames: int = 300):
         super().__init__()
-        aircraft_dummy = np.zeros(shape=(Aircraft.N,), dtype=np.float64)
+        aircraft_dummy = Aircraft.default_state()
         aircraft_sm = FakeSharedMemory(size=aircraft_dummy.nbytes)
         kill_event = Event()
 

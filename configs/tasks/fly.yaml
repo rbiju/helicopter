@@ -21,7 +21,7 @@ Tracker:
     ema_accel: 1.0
   point_handler:
     _target_: helicopter.vision.tracking.TrackingPointHandler
-    init_std_dev: 0.0001
+    init_std_dev: 0.001
     detector:
       _target_: helicopter.vision.point_detection.YOLOPointDetector
       marker_tolerance: 0.01
@@ -89,5 +89,9 @@ FlightConductor:
   oracle:
     _target_: helicopter.orchestration.Oracle
     flight_plan_sequence:
-      - _target_: helicopter.orchestration.ManualFlightPlan
+      - _target_: helicopter.flightplan.ManualFlightPlan
+        recorder_thread:
+          _target_: helicopter.remote.RemoteRecorderThread
+          remote_recorder:
+            _target_: helicopter.remote.SymaRemoteRecorder
         flight_time: 120.0

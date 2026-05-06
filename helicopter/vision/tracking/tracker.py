@@ -32,6 +32,7 @@ class Tracker:
         self.aircraft_buffer = np.ndarray(shape=(Aircraft.N,),
                                           dtype=Aircraft.dtype,
                                           buffer=aircraft_sm.buf)
+        self.aircraft_buffer[:] = Aircraft.default_state()
         self.aircraft = None
 
         self.point_handler = point_handler

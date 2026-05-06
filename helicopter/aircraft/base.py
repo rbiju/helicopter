@@ -51,11 +51,18 @@ class Aircraft:
         if buffer is not None:
             self._buffer = buffer
         else:
-            self._buffer = np.zeros(self.N, dtype=self.dtype)
-            self._buffer[3] = 1.0
-            self._buffer[13] = 1.0
+            self._buffer = self.default_state()
 
         self._lock = lock if lock is not None else threading.Lock()
+
+    @staticmethod
+    def default_state() -> np.ndarray:
+        buffer = np.zeros(Aircraft.N, dtype=Aircraft.dtype)
+        buffer[IDX_Q][3] = 1.0
+        buffer[IDX_BATTERY] = 1.0
+        buffer[IDX_TRIM] = 0.5
+
+        return buffer
 
     @property
     def quaternion(self) -> Rotation:

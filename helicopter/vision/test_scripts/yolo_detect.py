@@ -5,7 +5,7 @@ from ultralytics import YOLO
 
 from helicopter.utils import Profiler, Quitter, KeyListener
 from helicopter.vision import D435i
-from helicopter.vision.point_detection import HelicopterYOLO, GPUImagePreprocessor
+from helicopter.vision.point_detection import HelicopterYOLO, GPUSquarePadImagePreprocessor
 
 
 def get_refined_keypoints(ir_frame, _boxes, margin=2):
@@ -122,9 +122,9 @@ if __name__ == '__main__':
     camera = D435i(projector_power=360.,
                    autoexpose=False,
                    exposure_time=1800)
-    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure_20260227/weights/best.engine',
+    model = HelicopterYOLO(model=YOLO('/home/ray/yolo_models/helicopter/measure_20260505_0/weights/best.engine',
                                       task='detect'),
-                           preprocessor=GPUImagePreprocessor(),
+                           preprocessor=GPUSquarePadImagePreprocessor(),
                            conf=0.7)
     listener = KeyListener()
     quitter = Quitter(listener=listener)

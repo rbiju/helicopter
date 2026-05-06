@@ -5,12 +5,12 @@ from ultralytics import YOLO
 if __name__ == "__main__":
     model = YOLO("yolo26n.pt")
 
-    model_dir = Path("/home/ray/yolo_models/helicopter/track_20260413_0")
+    model_dir = Path("/home/ray/yolo_models/helicopter/measure_20260505_0")
     model.train(
-        data="/home/ray/datasets/helicopter/point_detection/tracking/tracking.yaml",
-        epochs=450,
-        imgsz=1280,
-        batch=8,
+        data="/home/ray/datasets/helicopter/point_detection/measure/measure.yaml",
+        epochs=300,
+        imgsz=640,
+        batch=16,
         device=0,
         box=2.0,
         cls=3.0,
@@ -30,11 +30,11 @@ if __name__ == "__main__":
 
     best = YOLO(str(model_dir / "weights" / "best.pt"))
     best.export(format='engine',
-                data="/home/ray/datasets/helicopter/point_detection/tracking/tracking.yaml",
+                data="/home/ray/datasets/helicopter/point_detection/measure/measure.yaml",
                 simplify=True,
                 int8=False,
                 half=True,
-                imgsz=[736, 1280],
+                imgsz=640,
                 split='train',
                 fraction=1.0,
                 dynamic=False)

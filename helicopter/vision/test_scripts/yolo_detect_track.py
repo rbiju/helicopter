@@ -23,11 +23,11 @@ if __name__ == '__main__':
                                       task='detect'),
                            preprocessor=GPUImagePreprocessor(imgsz=imgsz,
                                                              brightness_factor=1.0),
-                           conf=0.15)
+                           conf=0.1)
     detector = YOLOPointDetector(model=model,
                                  marker_tolerance=0.01,
                                  distance_threshold=3.0,
-                                 marker_std_dev=0.003,
+                                 marker_std_dev=0.01,
                                  margin=1)
     listener = KeyListener()
     quitter = Quitter(listener=listener)

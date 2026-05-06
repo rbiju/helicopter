@@ -74,7 +74,8 @@ if __name__ == "__main__":
         "/home/ray/datasets/helicopter/point_detection/measure/day6",
         "/home/ray/datasets/helicopter/point_detection/measure/day7",
         "/home/ray/datasets/helicopter/point_detection/measure/day8",
-        "/home/ray/datasets/helicopter/point_detection/measure/day9"
+        "/home/ray/datasets/helicopter/point_detection/measure/day9",
+        "/home/ray/datasets/helicopter/point_detection/measure/blue_syma"
     ]
 
     output = "/home/ray/datasets/helicopter/point_detection/measure/master"

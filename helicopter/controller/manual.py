@@ -7,7 +7,7 @@ from .base import FlightController
 
 
 class ManualFlightController(FlightController):
-    def __init__(self, recorder_thread: RemoteRecorderThread = RemoteRecorderThread()):
+    def __init__(self, recorder_thread: RemoteRecorderThread):
         super().__init__()
         self.recorder_thread = recorder_thread
         self.recorder_thread.start()
