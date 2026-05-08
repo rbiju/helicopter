@@ -10,9 +10,9 @@ IDX_Q = slice(0, 4)
 IDX_P = slice(4, 7)
 IDX_O = slice(7, 10)
 IDX_V = slice(10, 13)
-IDX_BATTERY = slice(13, 14)
-IDX_TRIM = slice(14, 15)
-IDX_ACTUAL_COMMANDS = slice(15, 18)
+IDX_ACTUAL_COMMANDS = slice(13, 16)
+IDX_BATTERY = slice(16, 17)
+IDX_TRIM = slice(17, 18)
 IDX_STATE = slice(18, 19)
 IDX_TIME = slice(19, 20)
 
@@ -51,13 +51,22 @@ class Aircraft:
         if buffer is not None:
             self._buffer = buffer
         else:
-            self._buffer = self.default_state()
+            self._buffer = self.default_full_state()
 
         self._lock = lock if lock is not None else threading.Lock()
 
     @staticmethod
-    def default_state() -> np.ndarray:
+    def default_full_state() -> np.ndarray:
         buffer = np.zeros(Aircraft.N, dtype=Aircraft.dtype)
+        buffer[IDX_Q][3] = 1.0
+        buffer[IDX_BATTERY] = 1.0
+        buffer[IDX_TRIM] = 0.5
+
+        return buffer
+
+    @staticmethod
+    def default_state() -> np.ndarray:
+        buffer = np.zeros(Aircraft.STATE_N, dtype=Aircraft.dtype)
         buffer[IDX_Q][3] = 1.0
         buffer[IDX_BATTERY] = 1.0
         buffer[IDX_TRIM] = 0.5
@@ -119,7 +128,7 @@ class Aircraft:
     @property
     def trim(self) -> float:
         with self._lock:
-            return float(self._buffer[IDX_TRIM][0])
+            return float(self._buffer[IDX_TRIM].copy()[0])
 
     @trim.setter
     def trim(self, value: float):
@@ -129,7 +138,7 @@ class Aircraft:
     @property
     def flight_state(self) -> FlightState:
         with self._lock:
-            state_val = int(self._buffer[IDX_STATE][0])
+            state_val = int(self._buffer[IDX_STATE].copy()[0])
         return FlightState(state_val)
 
     @flight_state.setter
@@ -140,18 +149,25 @@ class Aircraft:
     @property
     def timestamp(self) -> float:
         with self._lock:
-            return float(self._buffer[IDX_TIME][0])
+            return float(self._buffer[IDX_TIME].copy()[0])
 
     @timestamp.setter
     def timestamp(self, time: float):
         with self._lock:
             self._buffer[IDX_TIME] = np.array([time], dtype=self.dtype)
 
-    def get_state_vector(self) -> np.ndarray:
+    @property
+    def full_state(self):
+        with self._lock:
+            return self._buffer.copy()
+
+    @property
+    def state_vector(self) -> np.ndarray:
         with self._lock:
             return self._buffer.copy()[:self.STATE_N]
 
-    def set_state_vector(self, state_vector: np.ndarray):
+    @state_vector.setter
+    def state_vector(self, state_vector: np.ndarray):
         if state_vector.shape != (self.STATE_N,):
             raise ValueError(f"Provided vector of shape {state_vector.shape} "
                              f"does not match size of buffer: {self.STATE_N}")
@@ -172,7 +188,7 @@ class Aircraft:
                 'Angular Velocity': self._buffer[IDX_O].copy(),
                 'Battery': float(self._buffer[IDX_BATTERY][0]),
                 'Trim': float(self._buffer[IDX_TRIM][0]),
-                'Actual Commands': float(self._buffer[IDX_ACTUAL_COMMANDS].copy()),
+                'Actual Commands': self._buffer[IDX_ACTUAL_COMMANDS].copy(),
                 'Flight State': FlightState(int(self._buffer[IDX_STATE][0])),
                 'Timestamp': float(self._buffer[IDX_TIME][0])
             }

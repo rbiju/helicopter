@@ -31,7 +31,7 @@ class FakeSharedMemory:
 class RecordFlight(Task):
     def __init__(self, asset_name: str = 'recording', num_frames: int = 300):
         super().__init__()
-        aircraft_dummy = Aircraft.default_state()
+        aircraft_dummy = Aircraft.default_full_state()
         aircraft_sm = FakeSharedMemory(size=aircraft_dummy.nbytes)
         kill_event = Event()
 
@@ -134,5 +134,5 @@ class RecordFlight(Task):
             print(self.profiler)
 
             df = pd.DataFrame(df_dict)
-            initial_state = self.tracker.aircraft.get_state_vector()
+            initial_state = self.tracker.aircraft.state_vector
             self.asset.write(df, initial_state)

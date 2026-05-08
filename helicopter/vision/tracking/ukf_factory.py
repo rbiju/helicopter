@@ -9,13 +9,13 @@ def initialize_Q_matrix(dt: float, std_devs: dict) -> jax.Array:
 
     Q_dtheta = ((std_devs['orientation'] * jnp.pi / 180) ** 2) * I * dt
     Q_dp = (std_devs['position'] ** 2) * I * dt
-    Q_do = (std_devs['angular_velocity'] ** 2) * I * dt
+    Q_do = ((std_devs['angular_velocity'] * jnp.pi / 180) ** 2) * I * dt
     Q_dv = (std_devs['velocity'] ** 2) * I * dt
+    Q_commands = (std_devs['commands'] ** 2) * I * dt
     Q_battery = std_devs['battery'] ** 2 * dt
     Q_trim = std_devs['trim'] ** 2 * dt
-    Q_commands = std_devs['commands'] ** 2 * dt
 
-    return jax.scipy.linalg.block_diag(Q_dtheta, Q_dp, Q_do, Q_dv, Q_battery, Q_trim, Q_commands)
+    return jax.scipy.linalg.block_diag(Q_dtheta, Q_dp, Q_do, Q_dv, Q_commands, Q_battery, Q_trim)
 
 
 def initialize_S_matrix(std_devs: dict) -> jax.Array:
@@ -23,13 +23,13 @@ def initialize_S_matrix(std_devs: dict) -> jax.Array:
 
     P_dtheta = ((std_devs['orientation'] * jnp.pi / 180) ** 2) * I
     P_dp = (std_devs['position'] ** 2) * I
-    P_do = (std_devs['angular_velocity'] ** 2) * I
+    P_do = ((std_devs['angular_velocity'] * jnp.pi / 180) ** 2) * I
     P_dv = (std_devs['velocity'] ** 2) * I
+    P_commands = (std_devs['commands'] ** 2) * I
     P_battery = std_devs['battery'] ** 2
     P_trim = std_devs['trim'] ** 2
-    P_commands = std_devs['commands'] ** 2
 
-    P0 = jax.scipy.linalg.block_diag(P_dtheta, P_dp, P_do, P_dv, P_battery, P_trim, P_commands)
+    P0 = jax.scipy.linalg.block_diag(P_dtheta, P_dp, P_do, P_dv, P_commands, P_battery, P_trim)
     _S = jax.lax.linalg.cholesky(jnp.array(P0)).T
 
     return _S
@@ -47,7 +47,7 @@ class TrackerUKFFactory:
                  q_std_devs: dict,
                  s_std_devs: dict,
                  r_std_devs: dict,
-                 N: int = 18,
+                 N: int = 17,
                  alpha: float = 0.1,
                  beta: float = 2.0,
                  kappa: float = -12):

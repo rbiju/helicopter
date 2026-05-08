@@ -61,19 +61,23 @@ class ErrorStateSquareRootUnscentedKalmanFilter:
             S_curr, v_curr = carry
             sq_diff = jnp.square(S_curr[i, i]) - jnp.square(v_curr[i])
 
-            r = jnp.sqrt(jnp.maximum(sq_diff, 1e-12))
+            valid_mask = sq_diff > 1e-12
 
+            r = jnp.sqrt(jnp.where(valid_mask, sq_diff, jnp.square(S_curr[i, i])))
             safe_diag = jnp.where(S_curr[i, i] == 0, 1e-12, S_curr[i, i])
-            c = r / safe_diag
-            s = v_curr[i] / safe_diag
+
+            c = jnp.where(valid_mask, r / safe_diag, 1.0)
+            s = jnp.where(valid_mask, v_curr[i] / safe_diag, 0.0)
 
             row = (S_curr[i, :] - s * v_curr) / c
-
-            v_next = c * v_curr - s * row
+            v_next_calc = c * v_curr - s * row
 
             mask = jnp.arange(n) >= i
             row_masked = jnp.where(mask, row, 0.0)
-            S_next = S_curr.at[i, :].set(row_masked)
+            row_final = jnp.where(valid_mask, row_masked, S_curr[i, :])
+
+            S_next = S_curr.at[i, :].set(row_final)
+            v_next = jnp.where(valid_mask, v_next_calc, jnp.zeros_like(v_curr))
 
             return S_next, v_next
 

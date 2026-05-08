@@ -1,9 +1,10 @@
 Fly:
   _target_: helicopter.tasks.Fly
-  init_only: True
+  init_only: False
 Tracker:
   _target_: helicopter.vision.tracking.Tracker
   _partial_: True
+  simulation_params_name: 'blue_syma'
   camera:
     _target_: helicopter.vision.D435i
     enable_motion: True
@@ -26,7 +27,7 @@ Tracker:
       _target_: helicopter.vision.point_detection.YOLOPointDetector
       marker_tolerance: 0.01
       distance_threshold: 3.0
-      marker_std_dev: 0.003
+      marker_std_dev: 0.005
       margin: 1
       model:
         _target_: helicopter.vision.point_detection.HelicopterYOLO
@@ -43,9 +44,9 @@ Tracker:
     matcher:
       _target_: helicopter.vision.tracking.TrianglePointMatcher
       n: 5000
-      k: 100
+      k: 500
       inlier_threshold: 0.005
-      reference_points_path: 'assets/point_clouds/green_syma.npy'
+      reference_points_path: 'blue_syma.npy'
     icp:
       _target_: helicopter.vision.tracking.ICP
       distance_threshold: 1e-1
@@ -56,27 +57,30 @@ Tracker:
     marker_size_meters: 0.04
   ukf_factory:
     _target_: helicopter.vision.tracking.TrackerUKFFactory
-    dt: 0.005
-    N: 15
+    dt: 0.004
     alpha: 0.1
     beta: 2.0
     kappa: -12.0
     q_std_devs:
-      gyro: 1.5
-      pos: 1.0e-6
-      vel: 7.5e-2
-      bias_acc: 1.0e-7
-      bias_gyro: 1.0e-7
+      orientation: 1.0
+      position: 1e-3
+      angular_velocity: 20.0
+      velocity: 15e-2
+      battery: 1e-2
+      trim: 1e-2
+      commands: 1e-5
     s_std_devs:
-      d_theta: 0.2
-      dp: 1.0e-4
-      dv: 1.0e-3
-      dba: 1.0e-5
-      dbg: 1.0e-5
+      orientation: 10.0
+      position: 1e-2
+      angular_velocity: 7.5e-2
+      velocity: 1.0e-7
+      battery: 1.0e-2
+      trim: 0.1
+      commands: 1e-5
     r_std_devs:
-      dp_x: 1.0e-2
-      dp_y: 1.0e-2
-      dp_z: 1.0e-2
+      dp_x: 5e-2
+      dp_y: 5e-2
+      dp_z: 5e-2
   simulation_fps: 250.
 FlightVisualizer:
   _target_: helicopter.visualize.FlightVisualizer
@@ -86,12 +90,12 @@ FlightConductor:
   _partial_: True
   controller:
     _target_: helicopter.controller.ManualFlightController
+    recorder_thread:
+      _target_: helicopter.remote.RemoteRecorderThread
+      remote_recorder:
+        _target_: helicopter.remote.SymaRemoteRecorder
   oracle:
     _target_: helicopter.orchestration.Oracle
     flight_plan_sequence:
       - _target_: helicopter.flightplan.ManualFlightPlan
-        recorder_thread:
-          _target_: helicopter.remote.RemoteRecorderThread
-          remote_recorder:
-            _target_: helicopter.remote.SymaRemoteRecorder
-        flight_time: 120.0
+        flight_time: 10.0

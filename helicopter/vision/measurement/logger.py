@@ -6,8 +6,8 @@ import numpy as np
 
 
 class MeasurementStateLogger:
-    def __init__(self, save_dir="../../../notebooks/logs"):
-        self.save_dir = Path(save_dir)
+    def __init__(self, save_dir='measurement'):
+        self.save_dir = Path(__file__).parents[3] / 'notebooks/logs' / save_dir
         self.data = deque()
         self.headers = [
             'timestamp', 'event',

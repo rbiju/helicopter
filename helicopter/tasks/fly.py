@@ -12,6 +12,7 @@ from helicopter.configuration import HydraConfigurable, LocalHydraConfiguration
 from helicopter.orchestration import FlightConductor
 from helicopter.vision.tracking import Tracker
 from helicopter.visualize import FlightVisualizer
+from helicopter.utils import CommandBufferConstants
 
 from .base import Task
 
@@ -125,10 +126,14 @@ class Fly(Task):
         orientation_ready = mp.Event()
 
         with SharedMemoryManager() as smm:
-            aircraft_dummy = Aircraft.default_state()
+            aircraft_dummy = Aircraft.default_full_state()
             aircraft_sm = smm.SharedMemory(size=aircraft_dummy.nbytes)
-            dummy_command = np.zeros(4, dtype=np.float64)
+            dummy_command = np.zeros(CommandBufferConstants.N, dtype=CommandBufferConstants.dtype)
             command_sm = smm.SharedMemory(size=dummy_command.nbytes)
+            command_init = np.ndarray(shape=(CommandBufferConstants.N,),
+                                      dtype=CommandBufferConstants.dtype,
+                                      buffer=command_sm.buf)
+            np.copyto(command_init, dummy_command)
             sm_lock = mp.Lock()
             aircraft_lock = mp.Lock()
             kill_signal = mp.Event()

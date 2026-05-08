@@ -93,8 +93,8 @@ class Kabsch:
 
 
 class PointMatcher(ABC):
-    def __init__(self, reference_points_path: str = 'assets/point_clouds/green_syma.npy'):
-        reference_points_path = Path(__file__).parents[3] / reference_points_path
+    def __init__(self, reference_points_path: str = 'green_syma.npy'):
+        reference_points_path = Path(__file__).parents[3] / 'assets/point_clouds' / reference_points_path
         self.reference_points = jnp.array(np.load(str(reference_points_path)))
         self.reference_distance_matrix = jax_get_distance_matrix(self.reference_points, self.reference_points)
         self.sorted_reference_distance_matrix = jnp.sort(self.reference_distance_matrix, axis=-1)
@@ -115,7 +115,7 @@ class TrianglePointMatcher(PointMatcher):
     def __init__(self, n: int,
                  k: int = 10,
                  inlier_threshold: float = 0.003,
-                 reference_points_path: str = 'assets/point_clouds/green_syma.npy'):
+                 reference_points_path: str = 'green_syma.npy'):
         """
 
         Args:

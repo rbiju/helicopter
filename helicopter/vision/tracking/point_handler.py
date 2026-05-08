@@ -94,7 +94,7 @@ class TrackingPointHandler:
         keypoints = self.detector.detect(ir_frame)
         marker_coords, _, _ = self.detector.get_points_coords(depth_frame, keypoints, intrinsics, std_dev)
 
-        if len(marker_coords) <= 0:
+        if len(marker_coords) <= 3:
             return None
 
         return marker_coords, keypoints
@@ -138,7 +138,7 @@ class TrackingPointHandler:
         min_idxs = np.asarray(min_idxs)
         valid_mask = np.asarray(valid_mask)
 
-        measure_idxs = np.arange(len(measured_points))[valid_mask]
+        measure_idxs = np.arange(len(valid_mask))[valid_mask]
         reference_idxs = min_idxs[valid_mask]
 
         return measure_idxs, reference_idxs

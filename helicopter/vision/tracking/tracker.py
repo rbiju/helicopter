@@ -6,6 +6,7 @@ from multiprocessing.synchronize import Lock, Event
 from multiprocessing.shared_memory import SharedMemory
 from pathlib import Path
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -18,6 +19,7 @@ from helicopter.utils import PointQueue, Profiler, CommandBufferConstants
 
 from .point_handler import TrackingPointHandler
 from .filter_functions import SystemParams, propagate, transition_fn, measurement_fn, compose_fn
+from .logger import TrackerStateLogger
 from .ukf_factory import TrackerUKFFactory
 
 
@@ -29,19 +31,19 @@ class Tracker:
                  camera: D435i,
                  ukf_factory: TrackerUKFFactory,
                  kill_signal: Event,
-                 simulation_params_file: str = 'blue_syma',
+                 simulation_params_name: str = 'blue_syma',
                  simulation_fps: float = 250.):
         self.aircraft_buffer = np.ndarray(shape=(Aircraft.N,),
                                           dtype=Aircraft.dtype,
                                           buffer=aircraft_sm.buf)
-        self.aircraft_buffer[:] = Aircraft.default_state()
+        self.aircraft_buffer[:] = Aircraft.default_full_state()
         self.aircraft = None
 
         self.point_handler = point_handler
         self.marker_detector = marker_detector
         self.camera = camera
         self.ukf: ErrorStateSquareRootUnscentedKalmanFilter = ukf_factory.filter()
-        params_file_path = Path(__file__).parents[3] / "assets/simulation_params" / simulation_params_file
+        params_file_path = Path(__file__).parents[3] / "assets/simulation_params" / simulation_params_name
         self.simulation_params = SystemParams.from_file(params_file_path)
 
         self.marker_detector.activate(rs_intrinsics=self.camera.color_intrinsics,
@@ -61,6 +63,7 @@ class Tracker:
         self.is_running = False
 
         self.profiler = Profiler()
+        self.logger = TrackerStateLogger()
 
         self.last_simulated_time = 0.0
         self.simulation_fps = simulation_fps
@@ -71,9 +74,39 @@ class Tracker:
 
         self.kill_signal = kill_signal
 
-    def jax_init(self):
-        print("Compiling jax kernels")
-        pass
+        self.init_jax()
+
+    def init_jax(self):
+        print("Compiling JAX kernels...")
+
+        dummy_dt = jnp.array(0.033, dtype=jnp.float32)
+        dummy_nominal = jnp.array(Aircraft.default_state(), dtype=jnp.float32)
+        dummy_error = jnp.zeros(17, dtype=jnp.float32)
+
+        dummy_commands = jnp.array(np.zeros(3, dtype=np.float32))
+
+        _ = propagate(dummy_nominal, dummy_dt, self.simulation_params, dummy_commands, ground=jnp.bool(True))
+        _ = compose_fn(dummy_nominal, dummy_error)
+
+        tmp = self.ukf.predict(transition_fn=transition_fn,
+                               dt=dummy_dt,
+                               nominal_state=dummy_nominal,
+                               propagated_nominal=dummy_nominal,
+                               params=self.simulation_params,
+                               commands=dummy_commands,
+                               ground=jnp.bool(False))
+
+        dummy_points = np.ones((10, 3), dtype=np.float32)
+
+        for z_point, ref_point in zip(dummy_points, dummy_points):
+            _ = self.ukf.update(measurement_fn=measurement_fn,
+                                z_point=z_point,
+                                ref_point=ref_point,
+                                nominal_state=dummy_nominal)
+
+        jax.block_until_ready(tmp)
+
+        print("JAX Compilation complete")
 
     def camera_to_table_space(self, points: np.ndarray) -> np.ndarray:
         points = points - self.vertical_offset
@@ -243,17 +276,21 @@ class Tracker:
         print(repr(self.origin_position))
         print(repr(self.vertical_offset))
 
-        yaw_only_helicopter_quat = Rotation.from_euler('z',
-                                                   r_refined.as_euler('zyx')[0])
+        yaw_only_helicopter_quat = Rotation.from_euler('Z',
+                                                   r_refined.as_euler('ZYX')[0])
         grounded_helicopter_position = t_refined - self.vertical_offset
 
         self.aircraft.quaternion = yaw_only_helicopter_quat
         self.aircraft.position = grounded_helicopter_position
 
+        self.logger.log_state('Initialization', self.aircraft.full_state)
+
         orientation_ready.set()
 
-        print(repr(self.aircraft.get_state_vector()))
+        print(repr(self.aircraft.state_vector))
         print(repr(table_space_coords))
+
+        self.camera.imu_pipeline.stop()
 
     def loop(self, command_sm: SharedMemory, lock: Lock):
         command_buffer = np.ndarray(shape=(CommandBufferConstants.N,),
@@ -284,31 +321,38 @@ class Tracker:
 
             self.profiler.start('Simulation')
             step_size = 1 / self.simulation_fps
+            step_size_jax = jnp.array(step_size, dtype=jnp.float32)
             while self.last_simulated_time < vision_time:
                 self.last_simulated_time += step_size
 
                 with lock:
                     np.copyto(commands, command_buffer)
+                jax_commands = jnp.array(commands, dtype=jnp.float32)
 
-                nominal_state = jnp.array(self.aircraft.get_state_vector())
+                self.logger.log_commands(self.last_simulated_time, commands)
 
-                ground = np.abs(nominal_state[6]) < 1e-2
+                nominal_state = jnp.array(self.aircraft.state_vector, dtype=jnp.float32)
+
+                ground = jnp.bool(np.abs(nominal_state[6]) < 1e-2)
                 propagated_nominal = propagate(nominal_state,
-                                               step_size,
+                                               step_size_jax,
                                                self.simulation_params,
-                                               commands,
+                                               jax_commands,
                                                ground)
 
                 self.profiler.start("UKF_Predict")
                 self.ukf = self.ukf.predict(transition_fn=transition_fn,
-                                            dt=step_size,
+                                            dt=step_size_jax,
                                             nominal_state=nominal_state,
                                             propagated_nominal=propagated_nominal,
-                                            commands=commands)
+                                            params=self.simulation_params,
+                                            commands=jax_commands,
+                                            ground=ground)
                 self.profiler.end("UKF_Predict")
 
                 self.aircraft.timestamp = self.last_simulated_time
-                self.aircraft.set_state_vector(np.asarray(propagated_nominal))
+                self.aircraft.state_vector = np.asarray(propagated_nominal)
+                self.logger.log_state(event='Simulation', state_vector=self.aircraft.full_state)
 
             self.profiler.end('Simulation')
 
@@ -319,20 +363,20 @@ class Tracker:
             self.profiler.end("Detection")
 
             if measured_out is None:
-                current_nominal_state = jnp.array(self.aircraft.get_state_vector())
+                current_nominal_state = jnp.array(self.aircraft.state_vector)
 
                 nominal_state = np.asarray(compose_fn(current_nominal_state, self.ukf.x))
                 self.ukf = self.ukf.reset()
 
-                self.aircraft.set_state_vector(nominal_state)
+                self.aircraft.state_vector = nominal_state
                 continue
             else:
                 measured_points, keypoints = measured_out
                 table_measured_points = self.camera_to_table_space(measured_points)
 
                 q = self.aircraft.quaternion
-                t = self.aircraft.position.copy()
-                nominal_state = jnp.array(self.aircraft.get_state_vector())
+                t = self.aircraft.position
+                nominal_state = jnp.array(self.aircraft.state_vector, dtype=jnp.float32)
 
                 self.profiler.start('Match_Points')
                 measure_idx, ref_idx = self.point_handler.get_point_correspondence(q, t, table_measured_points)
@@ -347,15 +391,16 @@ class Tracker:
                                                z_point=z_point,
                                                ref_point=ref_point,
                                                nominal_state=nominal_state)
+                    nominal_state = np.asarray(compose_fn(nominal_state,
+                                                          self.ukf.x))
+                    self.ukf = self.ukf.reset()
 
-                nominal_state = np.asarray(compose_fn(nominal_state,
-                                                      self.ukf.x))
 
-                self.ukf = self.ukf.reset()
+                self.profiler.end('UKF_Update')
 
                 self.aircraft.timestamp = vision_time
-                self.aircraft.set_state_vector(nominal_state)
-                self.profiler.end('UKF_Update')
+                self.aircraft.state_vector = nominal_state
+                self.logger.log_state(event='Measurement', state_vector=self.aircraft.full_state)
 
     def cleanup(self):
         self.is_running = False
@@ -363,3 +408,5 @@ class Tracker:
         if self.vision_thread.is_alive():
             self.vision_thread.join(timeout=1.0)
         self.camera.stop()
+        self.logger.save()
+        print(self.profiler)

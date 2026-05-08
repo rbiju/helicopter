@@ -11,9 +11,9 @@ IDX_Q = slice(0, 4)
 IDX_P = slice(4, 7)
 IDX_O = slice(7, 10)
 IDX_V = slice(10, 13)
-IDX_BATTERY = slice(13, 14)
-IDX_TRIM = slice(14, 15)
-IDX_ACTUAL_COMMANDS = slice(15, 18)
+IDX_ACTUAL_COMMANDS = slice(13, 16)
+IDX_BATTERY = slice(16, 17)
+IDX_TRIM = slice(17, 18)
 
 
 class SystemParams(NamedTuple):
@@ -209,9 +209,9 @@ def propagate(s, dt, params: SystemParams, commands, ground=False):
 
 
 @jit
-def transition_fn(error_state, dt, nominal_state, propagated_nominal, throttle, pitch, yaw, trim):
+def transition_fn(error_state, dt, nominal_state, propagated_nominal, params, commands, ground):
     full_state = compose_fn(nominal_state, error_state)
-    propagated_full = propagate(full_state, dt, throttle, pitch, yaw, trim)
+    propagated_full = propagate(full_state, dt, params, commands, ground)
     return decompose_fn(propagated_nominal, propagated_full)
 
 
