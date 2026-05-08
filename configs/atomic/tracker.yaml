@@ -75,7 +75,7 @@ Tracker:
       trim: 0.1
       commands: 1e-4
     r_std_devs:
-      dp_x: 1.0e-2
-      dp_y: 1.0e-2
-      dp_z: 1.0e-2
+      dp_x: 7.5e-2
+      dp_y: 7.5e-2
+      dp_z: 7.5e-2
   simulation_fps: 250.

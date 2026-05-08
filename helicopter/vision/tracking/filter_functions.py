@@ -1,8 +1,11 @@
+import json
+from typing import NamedTuple
+
+import jax
 import jax.numpy as jnp
 from jax import jit
 from jax.scipy.spatial.transform import Rotation
 
-from typing import NamedTuple
 
 IDX_Q = slice(0, 4)
 IDX_P = slice(4, 7)
@@ -10,14 +13,13 @@ IDX_O = slice(7, 10)
 IDX_V = slice(10, 13)
 IDX_BATTERY = slice(13, 14)
 IDX_TRIM = slice(14, 15)
-IDX_ACTUAL_THRUST = slice(15, 16)
+IDX_ACTUAL_COMMANDS = slice(15, 18)
 
 
 class SystemParams(NamedTuple):
     MASS: float
     G_WORLD: jnp.ndarray
-    I_TENSOR: jnp.ndarray
-    I_INVERSE: jnp.ndarray
+    I_TENSOR_DIAGONAL: jnp.ndarray
     DRAG: jnp.ndarray
     THRUST_CONSTANT: jnp.ndarray
     MAX_THRUST: jnp.ndarray
@@ -25,30 +27,41 @@ class SystemParams(NamedTuple):
     ROTOR_RADIUS: float
     MAX_TAIL_THRUST: jnp.ndarray
     TAIL_MOMENT_ARM: float
-    YAW_TIME_CONSTANT: float
-    GYRO_SPRING_CONSTANT: jnp.ndarray
+    MAX_YAW_TORQUE: float
+    GYRO_SPRING_CONSTANT: float
     ANGULAR_DRAG: jnp.ndarray
     CORIOLIS_CONSTANT: float
     ROTOR_TIME_CONSTANT: float
+    PITCH_TIME_CONSTANT: float
+    YAW_TIME_CONSTANT: float
+    CURRENT_DRAW_COEFF: float = 2.5
+    BATTERY_CAPACITY: float = 540.
+    INTERNAL_RESISTANCE: float = 0.15
 
-I_TENSOR = jnp.diag(jnp.array([2e-4, 2e-4, 1e-4]))
-SIM_CONSTANTS = SystemParams(
-    MASS = 0.0404,
-    G_WORLD = jnp.array([0, 0, -9.8066]),
-    I_TENSOR = I_TENSOR,
-    I_INVERSE = jnp.diag(1 / (I_TENSOR.diagonal())),
-    DRAG = jnp.array([0.1,  0.4, 1.35]),
-    THRUST_CONSTANT = jnp.array([0.0, 0.0, 0.255]),
-    MAX_THRUST = jnp.array([0.0, 0.0, 0.392]),
-    MAX_TAIL_THRUST = jnp.array([0.0, 0.0, 0.125]),
-    GROUND_EFFECT_MAX=0.2,
-    ROTOR_RADIUS=0.1,
-    TAIL_MOMENT_ARM = 0.12,
-    YAW_TIME_CONSTANT = 0.03,
-    GYRO_SPRING_CONSTANT = jnp.array([0.01, 0.01, 0.0]),
-    ANGULAR_DRAG = jnp.array([0.05, 0.025, 1e-4]),
-    CORIOLIS_CONSTANT = 0.06,
-    ROTOR_TIME_CONSTANT=0.25)
+    @classmethod
+    def from_file(cls, filepath):
+        with open(filepath / 'parameters.json', 'r') as f:
+            data = json.load(f)
+
+        obj = cls(**data)
+        _simulation_params = jax.tree_util.tree_map(
+            lambda x: jnp.array(x) if isinstance(x, list) else x,
+            obj,
+            is_leaf=lambda x: isinstance(x, list)
+        )
+
+        return _simulation_params
+
+    def __repr__(self):
+            args = []
+            for key, val in self._asdict().items():
+                if hasattr(val, "tolist"):
+                    args.append(f"{key}=jnp.array({val.tolist()})")
+                else:
+                    args.append(f"{key}={repr(val)}")
+
+            formatted_args = ",\n    ".join(args)
+            return f"{self.__class__.__name__}(\n    {formatted_args}\n)"
 
 
 @jit
@@ -76,36 +89,67 @@ def decompose_fn(old_state, new_state):
 
 
 @jit
-def propagate(s, dt, commands, ground=False):
+def propagate(s, dt, params: SystemParams, commands, ground=False):
+    # Takes about 0.55 milliseconds
+
     pos_old = s[IDX_P]
     vel_old = s[IDX_V]
     omega_old = s[IDX_O]
     quat_old = Rotation.from_quat(s[IDX_Q])
-    battery = s[IDX_BATTERY]
+    battery_old = s[IDX_BATTERY]
     trim_old = s[IDX_TRIM]
-    actual_thrust_old = s[IDX_ACTUAL_THRUST]
+    actual_commands_old = s[IDX_ACTUAL_COMMANDS]
 
+    I_TENSOR = jnp.diag(params.I_TENSOR_DIAGONAL)
+    I_INVERSE = jnp.diag(1 / params.I_TENSOR_DIAGONAL)
+    GYRO_SPRING_VECTOR = jnp.array([params.GYRO_SPRING_CONSTANT, params.GYRO_SPRING_CONSTANT, 0.0])
+
+
+    # First order model for commands
+    actual_thrust_old, actual_pitch_old, actual_yaw_old = actual_commands_old
     thrust, pitch, yaw = commands
+    thrust = jnp.sqrt(thrust)
 
     actual_thrust_new = (actual_thrust_old +
-                         ((thrust - actual_thrust_old) / SIM_CONSTANTS.ROTOR_TIME_CONSTANT) * dt)
+                         ((thrust - actual_thrust_old) / params.ROTOR_TIME_CONSTANT) * dt)
+
+    actual_pitch_new = (actual_pitch_old +
+                         ((pitch - actual_pitch_old) / params.PITCH_TIME_CONSTANT) * dt)
+
+    # Mirrors remote control logic for adding yaw + trim
+    yaw_cmd = jnp.clip(yaw + ((trim_old - 0.5) / 3), -1.0, 1.0)
+    actual_yaw_new = (actual_yaw_old +
+                      ((yaw_cmd - actual_yaw_old) / params.YAW_TIME_CONSTANT) * dt).squeeze()
+
+    # Battery
+    current_draw = (thrust ** 2 * params.CURRENT_DRAW_COEFF) + \
+               (jnp.abs(actual_pitch_new) * params.CURRENT_DRAW_COEFF * 0.05)
+
+    battery_new = battery_old - (current_draw / params.BATTERY_CAPACITY) * dt
+    battery_new = jnp.clip(battery_new, 0.0, 1.0)
+
+    v_ocv = 3.0 + (3.2 * battery_new) - (5.0 * battery_new**2) + (3.0 * battery_new**3)
+    v_terminal = v_ocv - (current_draw * params.INTERNAL_RESISTANCE)
+    voltage_efficiency = v_terminal / 4.2
 
     # Orientation
     dq = Rotation.from_rotvec(omega_old * dt)
     quat_new = quat_old * dq
 
     # Velocity
-    gravity = quat_new.inv().apply(SIM_CONSTANTS.G_WORLD * SIM_CONSTANTS.MASS)
+    gravity = quat_new.inv().apply(params.G_WORLD * params.MASS)
     alt = jnp.maximum(pos_old[2], 0.001)
-    ge_multiplier = (1.0 + SIM_CONSTANTS.GROUND_EFFECT_MAX *
-                     jnp.exp(-3.0 * (alt / SIM_CONSTANTS.ROTOR_RADIUS)))
+    out_of_bounds = jnp.logical_or(jnp.abs(pos_old[0]) > 0.355, jnp.abs(pos_old[1]) > 0.685)
+    table_dropoff = jnp.where(out_of_bounds,
+                              0.48,
+                              0.0)
+    ge_multiplier = 1.0 + params.GROUND_EFFECT_MAX * jnp.exp(-3.0 * ((alt + table_dropoff) / params.ROTOR_RADIUS))
 
-    main_rotor_thrust = (SIM_CONSTANTS.THRUST_CONSTANT + actual_thrust_new *
-                         SIM_CONSTANTS.MAX_THRUST * battery) * ge_multiplier
-    tail_rotor_thrust = pitch * SIM_CONSTANTS.MAX_TAIL_THRUST * battery
+    main_rotor_thrust = (params.THRUST_CONSTANT + actual_thrust_new * params.MAX_THRUST * voltage_efficiency) * ge_multiplier
+    tail_rotor_thrust = actual_pitch_new * params.MAX_TAIL_THRUST * voltage_efficiency
     thrust_vector = main_rotor_thrust + tail_rotor_thrust
 
-    drag = SIM_CONSTANTS.DRAG * vel_old
+    drag = params.DRAG * vel_old
     F_net_body = gravity + thrust_vector - drag
     F_net_world_frame = quat_new.apply(F_net_body)
 
@@ -117,7 +161,7 @@ def propagate(s, dt, commands, ground=False):
     F_net = F_net_body + normal
     acc_coriolis = jnp.cross(omega_old, vel_old)
 
-    vel_new = vel_old + ((F_net / SIM_CONSTANTS.MASS) - acc_coriolis) * dt
+    vel_new = vel_old + ((F_net / params.MASS) - acc_coriolis) * dt
 
     vel_new_world = quat_new.apply(vel_new)
 
@@ -130,23 +174,26 @@ def propagate(s, dt, commands, ground=False):
     pos_new = jnp.where(ground & (pos_new[2] <= 0.0), pos_new.at[2].set(0.0), pos_new)
 
     # Angular Velocity
-    tau_roll = acc_coriolis[1] * SIM_CONSTANTS.MASS * SIM_CONSTANTS.CORIOLIS_CONSTANT
-    tau_actuator_pitch = (SIM_CONSTANTS.MAX_TAIL_THRUST[2] * pitch * battery * SIM_CONSTANTS.TAIL_MOMENT_ARM).squeeze()
-    tau_actuator_yaw = ((SIM_CONSTANTS.I_TENSOR[2, 2] / SIM_CONSTANTS.YAW_TIME_CONSTANT) * jnp.clip(yaw + trim_old, -1.0, 1.0) * battery).squeeze()
+    tau_roll = acc_coriolis[1] * params.MASS * params.CORIOLIS_CONSTANT
+    tau_actuator_pitch = (params.MAX_TAIL_THRUST[2] * actual_pitch_new * voltage_efficiency * params.TAIL_MOMENT_ARM).squeeze()
+    tau_actuator_yaw = (actual_yaw_new * params.MAX_YAW_TORQUE * voltage_efficiency).squeeze()
+
     tau_actuator = jnp.array([tau_roll, tau_actuator_pitch, tau_actuator_yaw])
 
-    tau_gyro = SIM_CONSTANTS.GYRO_SPRING_CONSTANT * quat_old.as_euler(seq='XYZ', degrees=False)
-    tau_damping = SIM_CONSTANTS.ANGULAR_DRAG * omega_old
+    world_up = jnp.array([0.0, 0.0, 1.0])
+    world_up_in_body = quat_old.inv().apply(world_up)
+    local_up = jnp.array([0.0, 0.0, 1.0])
+    restoring_torque_dir = jnp.cross(world_up_in_body, local_up)
+    tau_gyro = GYRO_SPRING_VECTOR * restoring_torque_dir
+
+    tau_damping = params.ANGULAR_DRAG * omega_old
 
     tau_net = tau_actuator - tau_gyro - tau_damping
 
-    omega_cross_I_omega = jnp.cross(omega_old, SIM_CONSTANTS.I_TENSOR @ omega_old)
-    d_omega = SIM_CONSTANTS.I_INVERSE @ (tau_net - omega_cross_I_omega)
+    omega_cross_I_omega = jnp.cross(omega_old, I_TENSOR @ omega_old)
+    d_omega = I_INVERSE @ (tau_net - omega_cross_I_omega)
 
     omega_new = omega_old + d_omega * dt
-
-    # Battery
-    battery_new = battery - (thrust * (dt / 360.))
 
     s_new = jnp.concatenate([
         quat_new.as_quat(canonical=True),
@@ -155,7 +202,7 @@ def propagate(s, dt, commands, ground=False):
         vel_new,
         battery_new,
         trim_old,
-        actual_thrust_new
+        jnp.array([actual_thrust_new, actual_pitch_new, actual_yaw_new]),
     ])
 
     return s_new

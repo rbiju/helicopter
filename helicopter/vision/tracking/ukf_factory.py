@@ -42,7 +42,8 @@ def initialize_R_matrix(std_devs: dict) -> jax.Array:
 
 
 class TrackerUKFFactory:
-    def __init__(self, dt: float,
+    def __init__(self,
+                 dt: float,
                  q_std_devs: dict,
                  s_std_devs: dict,
                  r_std_devs: dict,

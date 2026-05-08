@@ -4,6 +4,7 @@ import time
 from multiprocessing import Queue
 from multiprocessing.synchronize import Lock, Event
 from multiprocessing.shared_memory import SharedMemory
+from pathlib import Path
 
 import jax.numpy as jnp
 import numpy as np
@@ -16,7 +17,7 @@ from helicopter.vision.point_detection import MarkerDetector
 from helicopter.utils import PointQueue, Profiler, CommandBufferConstants
 
 from .point_handler import TrackingPointHandler
-from .filter_functions import propagate, transition_fn, measurement_fn, compose_fn
+from .filter_functions import SystemParams, propagate, transition_fn, measurement_fn, compose_fn
 from .ukf_factory import TrackerUKFFactory
 
 
@@ -28,6 +29,7 @@ class Tracker:
                  camera: D435i,
                  ukf_factory: TrackerUKFFactory,
                  kill_signal: Event,
+                 simulation_params_file: str = 'blue_syma',
                  simulation_fps: float = 250.):
         self.aircraft_buffer = np.ndarray(shape=(Aircraft.N,),
                                           dtype=Aircraft.dtype,
@@ -39,6 +41,8 @@ class Tracker:
         self.marker_detector = marker_detector
         self.camera = camera
         self.ukf: ErrorStateSquareRootUnscentedKalmanFilter = ukf_factory.filter()
+        params_file_path = Path(__file__).parents[3] / "assets/simulation_params" / simulation_params_file
+        self.simulation_params = SystemParams.from_file(params_file_path)
 
         self.marker_detector.activate(rs_intrinsics=self.camera.color_intrinsics,
                                       rs_extrinsics=self.camera.color_ir_extrinsics)
@@ -66,6 +70,10 @@ class Tracker:
         self.first_frame_system_time = 0.0
 
         self.kill_signal = kill_signal
+
+    def jax_init(self):
+        print("Compiling jax kernels")
+        pass
 
     def camera_to_table_space(self, points: np.ndarray) -> np.ndarray:
         points = points - self.vertical_offset
@@ -285,7 +293,11 @@ class Tracker:
                 nominal_state = jnp.array(self.aircraft.get_state_vector())
 
                 ground = np.abs(nominal_state[6]) < 1e-2
-                propagated_nominal = propagate(nominal_state, step_size, commands, ground)
+                propagated_nominal = propagate(nominal_state,
+                                               step_size,
+                                               self.simulation_params,
+                                               commands,
+                                               ground)
 
                 self.profiler.start("UKF_Predict")
                 self.ukf = self.ukf.predict(transition_fn=transition_fn,
