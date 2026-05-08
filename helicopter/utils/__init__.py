@@ -4,3 +4,4 @@ from .keyboard import KeyListener, KeyConsumer, Quitter, ManualController
 from .models import D435iModel, HelicopterModel
 from .command import SymaCommand, SymaCommandFactory
 from .constants import CommandBufferConstants
+from .recording_asset import RecordingAsset

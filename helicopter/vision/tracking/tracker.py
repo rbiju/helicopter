@@ -160,7 +160,7 @@ class Tracker:
         # |                         MARKERS                          |
         # ------------------------------------------------------------
 
-        marker_iters = 200
+        marker_iters = 100
         print("\nInitializing marker orientations.")
         counter = 0
         marker_dict = {}

@@ -136,7 +136,8 @@ class TrianglePointMatcher(PointMatcher):
 
     def get_alignment(self, sample_points: np.ndarray) -> tuple[Rotation, np.ndarray]:
         if len(sample_points) < 3:
-            raise RuntimeError('Need at least 3 points to align')
+            raise RuntimeError('Need at least 3 points to align. '
+                               'Check that aircraft is in view and illuminator is on')
 
         sample_points_jnp = jnp.array(sample_points)
         sample_dist_matrix = jax_get_distance_matrix(sample_points_jnp, sample_points_jnp)

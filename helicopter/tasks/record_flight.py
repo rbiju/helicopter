@@ -12,8 +12,8 @@ from tqdm import tqdm
 from helicopter.aircraft.base import Aircraft
 from helicopter.configuration import HydraConfigurable, LocalHydraConfiguration
 from helicopter.remote import RemoteRecorderThread, SymaRemoteRecorder
-from helicopter.vision.tracking import Tracker, TrianglePointMatcher
-from helicopter.utils import Profiler
+from helicopter.vision.tracking import Tracker
+from helicopter.utils import Profiler, RecordingAsset
 
 from .base import Task
 
@@ -29,7 +29,7 @@ class FakeSharedMemory:
 
 @HydraConfigurable
 class RecordFlight(Task):
-    def __init__(self, filename: str = 'recording', num_frames: int = 300):
+    def __init__(self, asset_name: str = 'recording', num_frames: int = 300):
         super().__init__()
         aircraft_dummy = Aircraft.default_state()
         aircraft_sm = FakeSharedMemory(size=aircraft_dummy.nbytes)
@@ -41,7 +41,7 @@ class RecordFlight(Task):
                                         kill_signal=kill_event, )
 
         self.profiler = Profiler()
-        self.filename = filename + '.csv'
+        self.asset = RecordingAsset(Path(__file__).parents[2] / 'notebooks' / 'flight_recordings' / asset_name)
         self.num_frames = num_frames
 
     def run(self, **kwargs):
@@ -110,9 +110,7 @@ class RecordFlight(Task):
 
         to_save = input('Save Flight Recording? (y/n) \n')
         if to_save.lower() == 'y':
-            save_location = Path(__file__).parents[2] / 'notebooks' / 'flight_recordings' / self.filename
-            point_matcher = TrianglePointMatcher(n=2500, k=100)
-
+            print(f'Saving recording to {self.asset.filepath}')
             df_dict = {'timestamp': [],
                        'command': [],
                        'position': [], }
@@ -127,7 +125,7 @@ class RecordFlight(Task):
                     continue
                 else:
                     self.profiler.start('Point_Matching')
-                    helicopter_state = point_matcher.get_alignment(points)
+                    helicopter_state = self.tracker.point_handler.matcher.get_alignment(points)
                     self.profiler.end('Point_Matching')
                     df_dict['timestamp'].append(timestamp)
                     df_dict['command'].append(command)
@@ -136,4 +134,5 @@ class RecordFlight(Task):
             print(self.profiler)
 
             df = pd.DataFrame(df_dict)
-            df.to_csv(str(save_location), index=False)
+            initial_state = self.tracker.aircraft.get_state_vector()
+            self.asset.write(df, initial_state)

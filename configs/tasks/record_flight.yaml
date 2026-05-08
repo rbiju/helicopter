@@ -1,4 +1,4 @@
 RecordFlight:
   _target_: helicopter.tasks.RecordFlight
-  filename: 'pitch_tuning'
-  num_frames: 250
+  asset_name: 'blue_syma/whole_tuning'
+  num_frames: 300

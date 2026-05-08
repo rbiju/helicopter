@@ -43,7 +43,7 @@ Measure:
       ema_gyro: 0.1
     point_handler:
       _target_: helicopter.vision.measurement.MeasurementPointHandler
-      save_dir: 'blue_syma'
+      save_dir: 'point_clouds/blue_syma'
       queue_len: 75
       detector:
         _target_: helicopter.vision.point_detection.YOLOPointDetector

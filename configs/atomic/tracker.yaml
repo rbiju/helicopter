@@ -23,7 +23,7 @@ Tracker:
       _target_: helicopter.vision.point_detection.YOLOPointDetector
       marker_tolerance: 0.01
       distance_threshold: 3.0
-      marker_std_dev: 0.003
+      marker_std_dev: 0.005
       margin: 1
       model:
         _target_: helicopter.vision.point_detection.HelicopterYOLO
@@ -40,9 +40,9 @@ Tracker:
     matcher:
       _target_: helicopter.vision.tracking.TrianglePointMatcher
       n: 5000
-      k: 100
+      k: 500
       inlier_threshold: 0.005
-      reference_points_path: 'assets/point_clouds/green_syma.npy'
+      reference_points_path: 'assets/point_clouds/blue_syma.npy'
     icp:
       _target_: helicopter.vision.tracking.ICP
       distance_threshold: 1e-1
@@ -59,17 +59,21 @@ Tracker:
     beta: 2.0
     kappa: -12.0
     q_std_devs:
-      gyro: 1.5
-      pos: 1.0e-6
-      vel: 7.5e-2
-      bias_acc: 1.0e-7
-      bias_gyro: 1.0e-7
+      orientation: 5.0
+      position: 7.5e-2
+      angular_velocity: 7.5e-2
+      velocity: 1.0e-7
+      battery: 1.0e-7
+      trim: 0.1
+      commands: 1e-4
     s_std_devs:
-      d_theta: 0.2
-      dp: 1.0e-4
-      dv: 1.0e-3
-      dba: 1.0e-5
-      dbg: 1.0e-5
+      orientation: 5.0
+      position: 7.5e-2
+      angular_velocity: 7.5e-2
+      velocity: 1.0e-7
+      battery: 1.0e-7
+      trim: 0.1
+      commands: 1e-4
     r_std_devs:
       dp_x: 1.0e-2
       dp_y: 1.0e-2
