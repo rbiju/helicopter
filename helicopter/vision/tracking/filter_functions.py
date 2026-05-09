@@ -200,9 +200,9 @@ def propagate(s, dt, params: SystemParams, commands, ground=False):
         pos_new,
         omega_new,
         vel_new,
+        jnp.array([actual_thrust_new, actual_pitch_new, actual_yaw_new]),
         battery_new,
         trim_old,
-        jnp.array([actual_thrust_new, actual_pitch_new, actual_yaw_new]),
     ])
 
     return s_new

@@ -188,7 +188,7 @@ class Aircraft:
                 'Angular Velocity': self._buffer[IDX_O].copy(),
                 'Battery': float(self._buffer[IDX_BATTERY][0]),
                 'Trim': float(self._buffer[IDX_TRIM][0]),
-                'Actual Commands': self._buffer[IDX_ACTUAL_COMMANDS].copy(),
+                'Commands': self._buffer[IDX_ACTUAL_COMMANDS].copy(),
                 'Flight State': FlightState(int(self._buffer[IDX_STATE][0])),
                 'Timestamp': float(self._buffer[IDX_TIME][0])
             }

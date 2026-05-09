@@ -16,8 +16,8 @@ class TrackerStateLogger:
             'px', 'py', 'pz',
             'ox', 'oy', 'oz',
             'vx', 'vy', 'vz',
-            'battery', 'trim',
             'actual_throttle', 'actual_pitch', 'actual_yaw',
+            'battery', 'trim',
             'sys_state'
         ]
 

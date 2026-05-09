@@ -85,7 +85,11 @@ class Tracker:
 
         dummy_commands = jnp.array(np.zeros(3, dtype=np.float32))
 
-        _ = propagate(dummy_nominal, dummy_dt, self.simulation_params, dummy_commands, ground=jnp.bool(True))
+        _ = propagate(dummy_nominal,
+                      dummy_dt,
+                      self.simulation_params,
+                      dummy_commands,
+                      ground=jnp.bool(True))
         _ = compose_fn(dummy_nominal, dummy_error)
 
         tmp = self.ukf.predict(transition_fn=transition_fn,
@@ -322,7 +326,7 @@ class Tracker:
             self.profiler.start('Simulation')
             step_size = 1 / self.simulation_fps
             step_size_jax = jnp.array(step_size, dtype=jnp.float32)
-            while self.last_simulated_time < vision_time:
+            while (self.last_simulated_time + step_size) < vision_time:
                 self.last_simulated_time += step_size
 
                 with lock:
@@ -333,12 +337,12 @@ class Tracker:
 
                 nominal_state = jnp.array(self.aircraft.state_vector, dtype=jnp.float32)
 
-                ground = jnp.bool(np.abs(nominal_state[6]) < 1e-2)
+                ground = jnp.abs(nominal_state[6]) < 1e-2
                 propagated_nominal = propagate(nominal_state,
                                                step_size_jax,
                                                self.simulation_params,
                                                jax_commands,
-                                               ground)
+                                               ground=ground)
 
                 self.profiler.start("UKF_Predict")
                 self.ukf = self.ukf.predict(transition_fn=transition_fn,
@@ -382,20 +386,19 @@ class Tracker:
                 measure_idx, ref_idx = self.point_handler.get_point_correspondence(q, t, table_measured_points)
                 self.profiler.end('Match_Points')
 
-                self.profiler.start('UKF_Update')
                 z_points = table_measured_points[measure_idx]
                 ref_points = self.point_handler.matcher.reference_points[ref_idx]
 
+                self.profiler.start('UKF_Update')
                 for z_point, ref_point in zip(z_points, ref_points):
                     self.ukf = self.ukf.update(measurement_fn=measurement_fn,
                                                z_point=z_point,
                                                ref_point=ref_point,
                                                nominal_state=nominal_state)
-                    nominal_state = np.asarray(compose_fn(nominal_state,
-                                                          self.ukf.x))
-                    self.ukf = self.ukf.reset()
 
-
+                nominal_state = np.asarray(compose_fn(nominal_state,
+                                                      self.ukf.x))
+                self.ukf = self.ukf.reset()
                 self.profiler.end('UKF_Update')
 
                 self.aircraft.timestamp = vision_time

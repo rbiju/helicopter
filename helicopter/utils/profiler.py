@@ -33,6 +33,7 @@ class Profiler:
                 means[name]['std'] = f"{np.std(times):.6f} sec"
                 means[name]['min'] = f"{np.min(times):.6f} sec"
                 means[name]['max'] = f"{np.max(times):.6f} sec"
+                means[name]['count'] = len(times)
         means = json.dumps(means, indent=4)
         return (f'Profiler: \n'
                 f'{means}')

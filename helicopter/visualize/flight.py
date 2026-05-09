@@ -58,7 +58,7 @@ class FlightVisualizer(Visualizer):
                                            'Velocity': ['X', 'Y', 'Z'],
                                            'Orientation': ['W', 'X', 'Y', 'Z'],
                                            'Angular Velocity': ['X', 'Y', 'Z']},
-                            'Control': {'Commands': ['Thrust', 'Pitch', 'Yaw']}}
+                            'Control': {'Commands': ['Throttle', 'Pitch', 'Yaw']}}
         for group in self.plot_labels.keys():
             with self.server.gui.add_folder(group):
                 for plot_name in self.plot_labels[group].keys():
@@ -76,7 +76,9 @@ class FlightVisualizer(Visualizer):
                                 time=False,
                                 auto=True,
                             ),
-                            "y": viser.uplot.Scale(range=(-1.5, 2.5)),
+                            "y": viser.uplot.Scale(
+                                auto=True,
+                            ),
                         },
                         legend=viser.uplot.Legend(show=True),
                         aspect=2.0,
@@ -85,7 +87,7 @@ class FlightVisualizer(Visualizer):
                     self.plot_handles[plot_name] = handle
                     self.plot_data[plot_name] = {line: deque(maxlen=plot_maxlen) for line in lines}
 
-        self.status_badge = self.server.gui.add_markdown("")
+        self.status_badge = self.server.gui.add_html("")
 
         self.camera_quat = Rotation.from_rotvec(np.array([0.0, 0.0, 0.0]))
         self.origin_quat = Rotation.from_rotvec(np.array([0.0, 0.0, 0.0]))
@@ -104,6 +106,8 @@ class FlightVisualizer(Visualizer):
         self.is_running = False
         self.kill_signal = kill_signal
 
+        self._last_state = None
+
     def kill_flight(self):
         self.kill_signal.set()
 
@@ -112,13 +116,16 @@ class FlightVisualizer(Visualizer):
             self.plot_data[name][line].append(data_point)
 
     def display_system_state(self, flight_state: FlightState):
-        self.status_badge.content = (
-            f"<div style='background-color: {flight_state.color}; color: white; "
-            f"padding: 12px; text-align: center; border-radius: 6px; "
-            f"font-weight: bold; font-size: 1.1em; width: 100%; box-sizing: border-box;'>"
-            f"{flight_state.name}"
-            f"</div>"
-        )
+        if self._last_state != flight_state:
+            self._last_state = flight_state
+
+            self.status_badge.content = (
+                f"<div style='background-color: {flight_state.color}; color: white; "
+                f"padding: 12px; text-align: center; border-radius: 6px; "
+                f"font-weight: bold; font-size: 1.1em; width: 100%; box-sizing: border-box;'>"
+                f"{flight_state.name}"
+                f"</div>"
+            )
 
     def camera_to_table_space(self, object_rotation: Rotation, object_position: np.ndarray,
                               offset_rotation: Rotation, offset_position: np.ndarray):
@@ -229,22 +236,23 @@ class FlightVisualizer(Visualizer):
             if self.last_update_time is None:
                 self.last_update_time = time.time()
 
-            current_time = self.aircraft.timestamp
-            elapsed_time = current_time - self.last_update_time
+            current_wall_time = time.time()
+            elapsed_time = time.time() - self.last_update_time
             if elapsed_time < (1 / self.fps):
                 time.sleep(0.001)
                 continue
             else:
-                self.last_update_time = current_time
-                state_dict = self.aircraft.state_dict()
+                self.last_update_time = current_wall_time
+                state_dict = self.aircraft.state_dict
                 self.update_helicopter(Rotation.from_quat(state_dict['Orientation']), state_dict['Position'])
 
                 with lock:
                     np.copyto(commands, command_buffer)
 
+                self.timestamps.append(state_dict['Timestamp'])
+
                 for plot_name in self.plot_handles.keys():
                     plot_handle = self.plot_handles[plot_name]
-                    self.timestamps.append(plot_handle.timestamp)
                     self.append_to_plot_data(plot_name, state_dict[plot_name])
                     plot_handle.data = (self.timestamps, *list(self.plot_data[plot_name].values()))
 

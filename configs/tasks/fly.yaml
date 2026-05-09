@@ -60,23 +60,23 @@ Tracker:
     dt: 0.004
     alpha: 0.1
     beta: 2.0
-    kappa: -12.0
+    kappa: -14.0
     q_std_devs:
-      orientation: 1.0
+      orientation: 5.0
       position: 1e-3
-      angular_velocity: 20.0
-      velocity: 15e-2
-      battery: 1e-2
-      trim: 1e-2
+      angular_velocity: 4.0
+      velocity: 1e-1
       commands: 1e-5
+      battery: 1e-6
+      trim: 1e-2
     s_std_devs:
       orientation: 10.0
       position: 1e-2
-      angular_velocity: 7.5e-2
-      velocity: 1.0e-7
-      battery: 1.0e-2
-      trim: 0.1
+      angular_velocity: 5e-1
+      velocity: 1e-2
       commands: 1e-5
+      battery: 1.0e-6
+      trim: 0.1
     r_std_devs:
       dp_x: 5e-2
       dp_y: 5e-2
@@ -85,6 +85,7 @@ Tracker:
 FlightVisualizer:
   _target_: helicopter.visualize.FlightVisualizer
   _partial_: True
+  plot_maxlen: 300
 FlightConductor:
   _target_: helicopter.orchestration.FlightConductor
   _partial_: True
@@ -98,4 +99,4 @@ FlightConductor:
     _target_: helicopter.orchestration.Oracle
     flight_plan_sequence:
       - _target_: helicopter.flightplan.ManualFlightPlan
-        flight_time: 10.0
+        flight_time: 30.0

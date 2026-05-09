@@ -17,12 +17,6 @@ class FlightConductor:
                  controller: FlightController,
                  oracle: Oracle,
                  kill_signal: Event) -> None:
-        """
-
-        Args:
-            controller: The Brain
-            oracle: Glues together and manages flight plans
-        """
         self.aircraft_buffer = np.ndarray(shape=(Aircraft.N,),
                                           dtype=Aircraft.dtype,
                                           buffer=aircraft_sm.buf)
@@ -56,13 +50,6 @@ class FlightConductor:
         3. Apply input, simulate effect and feed to Kalman filter
         4. Use predicted location as starting point for ICP, feed visual update to KF
         5. Tick to next waypoint based on the time
-
-        while aircraft.state != FlightEnded:
-            r, t, battery = aircraft.get_current_orientation()
-            self.oracle.update(r, t, battery)
-
-            flightplan = self.oracle.get_active_flightplan()
-            waypoint = flightplan.waypoint
         """
         command_buffer = np.ndarray(shape=(CommandBufferConstants.N,),
                                     dtype=CommandBufferConstants.dtype,
@@ -75,11 +62,16 @@ class FlightConductor:
             self.aircraft.flight_state = self.oracle.active_flight_state(timestamp)
             r, t = self.aircraft.quaternion, self.aircraft.position
             self.oracle.update(r, t, timestamp=timestamp)
+            if self.oracle.finished:
+                break
 
             flightplan = self.oracle.active_flight_plan
             sent_command = self.controller.control(flightplan, r, t, timestamp)
             with lock:
                 np.copyto(command_buffer, sent_command)
+
+        print('Flight plans exhausted. Ending Flight!')
+        self.kill_signal.set()
 
     def cleanup(self):
         self.controller.shutdown()

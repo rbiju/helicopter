@@ -62,17 +62,17 @@ Tracker:
     q_std_devs:
       orientation: 5.0
       position: 1e-3
-      angular_velocity: 20.0
+      angular_velocity: 4.0
       velocity: 1e-1
-      commands: 1e-4
+      commands: 1e-5
       battery: 1e-2
       trim: 1e-2
     s_std_devs:
       orientation: 10.0
       position: 1e-2
-      angular_velocity: 7.5e-2
+      angular_velocity: 5e-1
       velocity: 1e-2
-      commands: 1e-4
+      commands: 1e-5
       battery: 1.0e-2
       trim: 0.1
     r_std_devs:
