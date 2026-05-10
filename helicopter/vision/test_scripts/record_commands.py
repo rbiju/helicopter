@@ -1,7 +1,11 @@
 import time
 from helicopter.remote import SymaRemoteRecorder, RecordingPacket
+from helicopter.utils import ArduinoLoader
 
 if __name__ == "__main__":
+    arduino_loader = ArduinoLoader(sketch_path='py_recorder')
+    arduino_loader.load()
+
     recorder = SymaRemoteRecorder()
     record_iters = 100
     frame_count = 0

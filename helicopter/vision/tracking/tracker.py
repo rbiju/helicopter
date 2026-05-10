@@ -387,7 +387,7 @@ class Tracker:
                 self.profiler.end('Match_Points')
 
                 z_points = table_measured_points[measure_idx]
-                ref_points = self.point_handler.matcher.reference_points[ref_idx]
+                ref_points = np.array(self.point_handler.matcher.reference_points[ref_idx])
 
                 self.profiler.start('UKF_Update')
                 for z_point, ref_point in zip(z_points, ref_points):

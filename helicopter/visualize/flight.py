@@ -159,7 +159,7 @@ class FlightVisualizer(Visualizer):
             self.server.scene.add_line_segments(
                 f"/line_segments/{self.path_counter}",
                 points=np.expand_dims(line, 0),
-                colors=(255, 255, 255),
+                colors=(255, 0, 0),
                 line_width=2.0,
             )
             self.path_counter += 1
@@ -221,6 +221,7 @@ class FlightVisualizer(Visualizer):
         self.helicopter_handle = self.add_mesh(helicopter_mesh, name="/helicopter",
                                                orientation=self.aircraft.quaternion,
                                                position=self.aircraft.position)
+        self.last_position = self.aircraft.position
         print("Visualizer initialized")
 
     def loop(self, command_sm: SharedMemory, lock: Lock):

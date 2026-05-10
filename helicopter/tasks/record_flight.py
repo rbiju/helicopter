@@ -13,7 +13,7 @@ from helicopter.aircraft.base import Aircraft
 from helicopter.configuration import HydraConfigurable, LocalHydraConfiguration
 from helicopter.remote import RemoteRecorderThread, SymaRemoteRecorder
 from helicopter.vision.tracking import Tracker
-from helicopter.utils import Profiler, RecordingAsset
+from helicopter.utils import Profiler, RecordingAsset, ArduinoLoader
 
 from .base import Task
 
@@ -34,6 +34,9 @@ class RecordFlight(Task):
         aircraft_dummy = Aircraft.default_full_state()
         aircraft_sm = FakeSharedMemory(size=aircraft_dummy.nbytes)
         kill_event = Event()
+
+        arduino_loader = ArduinoLoader(sketch_path='py_recorder')
+        arduino_loader.load()
 
         config = LocalHydraConfiguration('/home/ray/projects/helicopter/configs/atomic/tracker.yaml')
         tracker: partial = Tracker.from_hydra_configuration(config)

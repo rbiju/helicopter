@@ -5,6 +5,8 @@ from scipy.spatial.transform import Rotation
 
 from helicopter.flightplan import FlightPlan
 from helicopter.remote import RemoteControlThread, ControlPacket
+from helicopter.utils import ArduinoLoader
+
 from .base import FlightController
 
 
@@ -75,12 +77,12 @@ class PIDController:
 
 class PIDFlightController(FlightController):
     def __init__(self, throttle: PIDController, pitch: PIDController, yaw: PIDController,
-                 remote_thread: RemoteControlThread):
-        super().__init__()
+                 remote_thread: RemoteControlThread,
+                 arduino_loader: ArduinoLoader = ArduinoLoader(sketch_path='py_controller')):
+        super().__init__(arduino_loader=arduino_loader)
         self.throttle = throttle
         self.pitch = pitch
         self.yaw = yaw
-
         self.remote_thread = remote_thread
 
         # This order determines the order of the command array

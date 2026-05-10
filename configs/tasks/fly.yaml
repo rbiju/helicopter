@@ -62,11 +62,11 @@ Tracker:
     beta: 2.0
     kappa: -14.0
     q_std_devs:
-      orientation: 5.0
+      orientation: 1.0
       position: 1e-3
       angular_velocity: 4.0
-      velocity: 1e-1
-      commands: 1e-5
+      velocity: 5e-2
+      commands: 1e-6
       battery: 1e-6
       trim: 1e-2
     s_std_devs:
@@ -74,7 +74,7 @@ Tracker:
       position: 1e-2
       angular_velocity: 5e-1
       velocity: 1e-2
-      commands: 1e-5
+      commands: 1e-6
       battery: 1.0e-6
       trim: 0.1
     r_std_devs:

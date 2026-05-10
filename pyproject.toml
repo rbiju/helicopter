@@ -19,7 +19,8 @@ dependencies = [
     "pyserial",
     "hydra-core",
     "click",
-    "pupil-apriltags"]
+    "pupil-apriltags",
+    "pyduinocli"]
 
 [project.scripts]
 helicopter = "helicopter.cli:helicopter"
