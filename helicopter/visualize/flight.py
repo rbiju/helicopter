@@ -232,7 +232,8 @@ class FlightVisualizer(Visualizer):
         self.is_running = True
         while self.is_running:
             if self.kill_signal.is_set():
-                raise RuntimeError('Visualizer detected kill signal. Shutting down.')
+                print('Visualizer detected kill signal. Shutting down.')
+                break
 
             if self.last_update_time is None:
                 self.last_update_time = time.time()

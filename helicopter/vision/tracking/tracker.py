@@ -306,7 +306,8 @@ class Tracker:
 
         while self.is_running:
             if self.kill_signal.is_set():
-                raise RuntimeError('Tracker detected kill signal. Shutting down.')
+                print('Tracker detected kill signal. Shutting down.')
+                break
 
             try:
                 vision_time, ir_frame, depth_frame = self.vision_queue.get(timeout=0.05)

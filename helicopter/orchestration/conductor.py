@@ -56,7 +56,8 @@ class FlightConductor:
                                     buffer=command_sm.buf)
         while not self.oracle.finished:
             if self.kill_signal.is_set():
-                raise RuntimeError('Conductor detected kill signal. Shutting down')
+                print('Conductor detected kill signal. Shutting down')
+                break
 
             timestamp = self.aircraft.timestamp
             self.aircraft.flight_state = self.oracle.active_flight_state(timestamp)
