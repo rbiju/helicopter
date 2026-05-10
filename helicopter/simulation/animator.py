@@ -21,7 +21,7 @@ class SimulationAnimator:
         while i < len(df):
             series = df.iloc[i]
             x, y, z = series['x'], series['y'], series['z']
-            q_w, q_i, q_j, q_k = series['q_w'], series['q_i'], series['q_j'], series['q_k']
+            q_w, q_i, q_j, q_k = series['q_w'], series['q_x'], series['q_y'], series['q_z']
             q = quaternion.quaternion(q_w, q_i, q_j, q_k)
             rotated_heading = (q * heading * q.inverse()).imag
             yield (series['time'],
