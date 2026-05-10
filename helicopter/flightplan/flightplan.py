@@ -48,8 +48,8 @@ class WaypointFollowingFlightPlan(FlightPlan, ABC):
         position_error = self.waypoint - t
         e_throttle = position_error[2]
 
-        yaw_rotvec = Rotation.as_rotvec(r)[2]
-        yaw_rotation = Rotation.from_rotvec(np.array([0.0, 0.0, yaw_rotvec]))
+        yaw = r.as_euler('ZYX')[0]
+        yaw_rotation = Rotation.from_euler('Z', yaw)
         position_error_body = yaw_rotation.inv().apply(position_error)
         e_pitch = position_error_body[0]
 
@@ -57,8 +57,8 @@ class WaypointFollowingFlightPlan(FlightPlan, ABC):
             e_yaw = 0.0
         else:
             psi_target = np.arctan2(position_error[1], position_error[0])
-            psi_current = yaw_rotvec
-            e_yaw = psi_target - psi_current
+            e_yaw = psi_target - yaw
+            e_yaw = (e_yaw + np.pi) % (2 * np.pi) - np.pi
 
         return np.array([e_throttle, e_pitch, e_yaw])
 
@@ -72,12 +72,13 @@ class ConstantHeadingFlightPlan(FlightPlan, ABC):
         position_error = self.waypoint - t
         e_throttle = position_error[2]
 
-        yaw_rotvec = Rotation.as_rotvec(quaternion)[2]
-        yaw_rotation = Rotation.from_rotvec(np.array([0.0, 0.0, yaw_rotvec]))
+        yaw = quaternion.as_euler('ZYX')[0]
+        yaw_rotation = Rotation.from_euler('Z', yaw)
         position_error_body = yaw_rotation.inv().apply(position_error)
         e_pitch = position_error_body[0]
 
-        e_yaw = self.reference_heading - yaw_rotvec
+        e_yaw = self.reference_heading - yaw
+        e_yaw = (e_yaw + np.pi) % (2 * np.pi) - np.pi
 
         return np.array([e_throttle, e_pitch, e_yaw])
 
@@ -108,9 +109,6 @@ class TakeOffFlightPlan(WaypointFollowingFlightPlan):
         self.start_time = 0
 
     def flight_state(self, timestamp: float) -> FlightState:
-        if timestamp - self.start_time < self.ground_time:
-            return FlightState.IDLE
-        else:
             return FlightState.TAKEOFF
 
     def activate(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
@@ -125,19 +123,59 @@ class TakeOffFlightPlan(WaypointFollowingFlightPlan):
         return depleted
 
 
+class HoldAltitudeFlightPlan(FlightPlan):
+    def __init__(self, altitude: float = 0.5, hover_time: float = 10.0):
+        super().__init__()
+        self.start_time = 0
+        self.altitude = altitude
+        self.hover_time = hover_time
+        self.reference_heading = 0.0
+
+    def flight_state(self, timestamp: float) -> FlightState:
+        return FlightState.HOVER
+
+    def compute_error(self, quaternion: Rotation, t: np.ndarray):
+        position_error = self.waypoint - t
+        e_throttle = position_error[2]
+        e_pitch = 0.0
+
+        yaw = quaternion.as_euler('ZYX')[0]
+        e_yaw = self.reference_heading - yaw
+        e_yaw = (e_yaw + np.pi) % (2 * np.pi) - np.pi
+
+        return np.array([e_throttle, e_pitch, e_yaw])
+
+    def activate(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
+        self.reference_heading = quaternion.as_euler('ZYX')[0]
+        self.start_time = timestamp
+
+        waypoint = position + np.array([0, 0, self.altitude])
+        self._waypoints.append(waypoint)
+        self.activated = True
+
+    def tick(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
+        depleted = False
+        if (timestamp - self.start_time) > self.hover_time:
+            depleted = self._advance_waypoint()
+        return depleted
+
+
 class HoverFlightPlan(ConstantHeadingFlightPlan):
-    def __init__(self, hover_time: float = 10.0):
+    def __init__(self, altitude: float = 0.5, hover_time: float = 10.0):
         super().__init__()
         self.start_time = 0
         self.hover_time = hover_time
+        self.altitude = altitude
 
     def flight_state(self, timestamp: float) -> FlightState:
         return FlightState.HOVER
 
     def activate(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
-        self.reference_heading = Rotation.as_rotvec(quaternion)[2]
+        self.reference_heading = quaternion.as_euler('ZYX')[0]
         self.start_time = timestamp
-        self._waypoints.append(position)
+
+        waypoint = position + np.array([0, 0, self.altitude])
+        self._waypoints.append(waypoint)
         self.activated = True
 
     def tick(self, quaternion: Rotation, position: np.ndarray, timestamp: float):

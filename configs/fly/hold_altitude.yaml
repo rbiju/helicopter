@@ -1,0 +1,125 @@
+Fly:
+  _target_: helicopter.tasks.Fly
+  init_only: False
+Tracker:
+  _target_: helicopter.vision.tracking.Tracker
+  _partial_: True
+  simulation_params_name: 'blue_syma'
+  camera:
+    _target_: helicopter.vision.D435i
+    enable_motion: True
+    enable_rgb: True
+    video_rate: 30
+    video_resolution:
+      - 720
+      - 1280
+    projector_power: 0.0
+    autoexpose: False
+    exposure_time: 2400
+    autoexpose_rgb: False
+    exposure_time_rgb: 1000
+    depth_preset: 3
+    ema_accel: 1.0
+  point_handler:
+    _target_: helicopter.vision.tracking.TrackingPointHandler
+    init_std_dev: 0.001
+    detector:
+      _target_: helicopter.vision.point_detection.YOLOPointDetector
+      marker_tolerance: 0.01
+      distance_threshold: 3.0
+      marker_std_dev: 0.005
+      margin: 1
+      model:
+        _target_: helicopter.vision.point_detection.HelicopterYOLO
+        model:
+          _target_: ultralytics.YOLO
+          model: '/home/ray/yolo_models/helicopter/track_20260413_0/weights/best.engine'
+          task: "detect"
+        preprocessor:
+          _target_:  helicopter.vision.point_detection.GPUImagePreprocessor
+          imgsz:
+            - 720
+            - 1280
+        conf: 0.15
+    matcher:
+      _target_: helicopter.vision.tracking.TrianglePointMatcher
+      n: 5000
+      k: 500
+      inlier_threshold: 0.005
+      reference_points_path: 'blue_syma.npy'
+    icp:
+      _target_: helicopter.vision.tracking.ICP
+      distance_threshold: 1e-1
+      etol: 3e-3
+      max_iterations: 100
+  marker_detector:
+    _target_: helicopter.vision.point_detection.AprilTagMarkerDetector
+    marker_size_meters: 0.04
+  ukf_factory:
+    _target_: helicopter.vision.tracking.TrackerUKFFactory
+    dt: 0.004
+    alpha: 0.1
+    beta: 2.0
+    kappa: -14.0
+    q_std_devs:
+      orientation: 1.0
+      position: 1e-3
+      angular_velocity: 4.0
+      velocity: 5e-2
+      commands: 1e-6
+      battery: 1e-6
+      trim: 1e-2
+    s_std_devs:
+      orientation: 10.0
+      position: 1e-2
+      angular_velocity: 5e-1
+      velocity: 1e-2
+      commands: 1e-6
+      battery: 1.0e-6
+      trim: 0.1
+    r_std_devs:
+      dp_x: 5e-2
+      dp_y: 5e-2
+      dp_z: 5e-2
+  simulation_fps: 250.
+FlightVisualizer:
+  _target_: helicopter.visualize.FlightVisualizer
+  _partial_: True
+  plot_maxlen: 300
+FlightConductor:
+  _target_: helicopter.orchestration.FlightConductor
+  _partial_: True
+  controller:
+    _target_: helicopter.controller.PIDFlightController
+    throttle:
+      _target_: helicopter.controller.PIDController
+      gains:
+        _target_: helicopter.controller.PIDController
+        k_p: 4.0
+        k_i: 2.0
+        k_d: 1.0
+        min_value: 0.0
+    pitch:
+      _target_: helicopter.controller.PIDController
+      gains:
+        _target_: helicopter.controller.PIDController
+        k_p: 3.0
+        k_i: 0.05
+        k_d: 0.05
+    yaw:
+      _target_: helicopter.controller.PIDController
+      gains:
+        _target_: helicopter.controller.PIDController
+        k_p: 1.0
+        k_i: 0.05
+        k_d: 0.2
+    remote_thread:
+      _target_: helicopter.remote.RemoteControlThread
+      rc:
+        _target_: helicopter.remote.SymaRemoteControl
+  oracle:
+    _target_: helicopter.orchestration.Oracle
+    flight_plan_sequence:
+      - _target_: helicopter.flightplan.HoldAltitudeFlightPlan
+        altitude: 0.5
+        flight_time: 30.0
