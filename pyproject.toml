@@ -20,7 +20,8 @@ dependencies = [
     "hydra-core",
     "click",
     "pupil-apriltags",
-    "pyduinocli"]
+    "pyduinocli",
+    "gymnasium"]
 
 [project.scripts]
 helicopter = "helicopter.cli:helicopter"

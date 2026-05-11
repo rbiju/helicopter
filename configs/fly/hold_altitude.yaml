@@ -4,6 +4,7 @@ Fly:
 Tracker:
   _target_: helicopter.vision.tracking.Tracker
   _partial_: True
+  initial_battery_level: 0.6
   simulation_params_name: 'blue_syma'
   camera:
     _target_: helicopter.vision.D435i
@@ -64,13 +65,13 @@ Tracker:
     q_std_devs:
       orientation: 1.0
       position: 1e-3
-      angular_velocity: 4.0
+      angular_velocity: 5.0
       velocity: 5e-2
       commands: 1e-6
       battery: 1e-6
       trim: 1e-2
     s_std_devs:
-      orientation: 10.0
+      orientation: 1.0
       position: 1e-2
       angular_velocity: 5e-1
       velocity: 1e-2
@@ -78,9 +79,9 @@ Tracker:
       battery: 1.0e-6
       trim: 0.1
     r_std_devs:
-      dp_x: 5e-2
-      dp_y: 5e-2
-      dp_z: 5e-2
+      dp_x: 3e-2
+      dp_y: 1e-2
+      dp_z: 1e-2
   simulation_fps: 250.
 FlightVisualizer:
   _target_: helicopter.visualize.FlightVisualizer
@@ -96,8 +97,8 @@ FlightConductor:
       min_value: 0.0
       gains:
         _target_: helicopter.controller.PIDGains
-        k_p: 1.25
-        k_i: 0.25
+        k_p: 1.0
+        k_i: 1.0
         k_d: 0.5
     pitch:
       _target_: helicopter.controller.PIDController
@@ -120,6 +121,8 @@ FlightConductor:
   oracle:
     _target_: helicopter.orchestration.Oracle
     flight_plan_sequence:
+      - _target_: helicopter.flightplan.IdleFlightPlan
+        idle_time: 5.0
       - _target_: helicopter.flightplan.HoldAltitudeFlightPlan
         altitude: 0.5
         hover_time: 10.0

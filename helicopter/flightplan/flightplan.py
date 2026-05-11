@@ -84,8 +84,10 @@ class ConstantHeadingFlightPlan(FlightPlan, ABC):
 
 
 class IdleFlightPlan(FlightPlan):
-    def __init__(self):
+    def __init__(self, idle_time: float = 5.0):
         super().__init__()
+        self.idle_time = idle_time
+        self.start_time = 0
 
     def flight_state(self, timestamp: float) -> FlightState:
         return FlightState.IDLE
@@ -94,10 +96,15 @@ class IdleFlightPlan(FlightPlan):
         return np.array([0.0, 0.0, 0.0])
 
     def activate(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
-        pass
+        self.start_time = timestamp
+        self._waypoints.append(np.array([0, 0, 0.0]))
+        self.activated = True
 
     def tick(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
-        return True
+        if timestamp - self.start_time > self.idle_time:
+            return True
+        else:
+            return False
 
 
 class TakeOffFlightPlan(WaypointFollowingFlightPlan):

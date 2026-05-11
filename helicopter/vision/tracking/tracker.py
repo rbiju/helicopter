@@ -32,12 +32,14 @@ class Tracker:
                  ukf_factory: TrackerUKFFactory,
                  kill_signal: Event,
                  simulation_params_name: str = 'blue_syma',
-                 simulation_fps: float = 250.):
+                 simulation_fps: float = 250.,
+                 initial_battery_level: float = 1.0,):
         self.aircraft_buffer = np.ndarray(shape=(Aircraft.N,),
                                           dtype=Aircraft.dtype,
                                           buffer=aircraft_sm.buf)
         self.aircraft_buffer[:] = Aircraft.default_full_state()
         self.aircraft = None
+        self.initial_battery_level = initial_battery_level
 
         self.point_handler = point_handler
         self.marker_detector = marker_detector
@@ -286,6 +288,7 @@ class Tracker:
 
         self.aircraft.quaternion = yaw_only_helicopter_quat
         self.aircraft.position = grounded_helicopter_position
+        self.aircraft.battery = self.initial_battery_level
 
         self.logger.log_state('Initialization', self.aircraft.full_state)
 
@@ -338,7 +341,7 @@ class Tracker:
 
                 nominal_state = jnp.array(self.aircraft.state_vector, dtype=jnp.float32)
 
-                ground = jnp.abs(nominal_state[6]) < 1e-2
+                ground = nominal_state[6] < 1e-2
                 propagated_nominal = propagate(nominal_state,
                                                step_size_jax,
                                                self.simulation_params,
