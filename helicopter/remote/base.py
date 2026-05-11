@@ -29,7 +29,7 @@ class RecordingPacket:
 
 class RemoteState(ABC):
     def __init__(self):
-        self.channel = 128
+        self.channel = 0
         self.yaw = 63
         self.pitch = 63
         self.throttle = 0

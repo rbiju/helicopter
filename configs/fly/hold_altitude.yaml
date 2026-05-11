@@ -27,7 +27,7 @@ Tracker:
       _target_: helicopter.vision.point_detection.YOLOPointDetector
       marker_tolerance: 0.01
       distance_threshold: 3.0
-      marker_std_dev: 0.005
+      marker_std_dev: 0.003
       margin: 1
       model:
         _target_: helicopter.vision.point_detection.HelicopterYOLO
@@ -93,23 +93,23 @@ FlightConductor:
     _target_: helicopter.controller.PIDFlightController
     throttle:
       _target_: helicopter.controller.PIDController
+      min_value: 0.0
       gains:
-        _target_: helicopter.controller.PIDController
-        k_p: 4.0
-        k_i: 2.0
-        k_d: 1.0
-        min_value: 0.0
+        _target_: helicopter.controller.PIDGains
+        k_p: 1.25
+        k_i: 0.25
+        k_d: 0.5
     pitch:
       _target_: helicopter.controller.PIDController
       gains:
-        _target_: helicopter.controller.PIDController
+        _target_: helicopter.controller.PIDGains
         k_p: 3.0
         k_i: 0.05
         k_d: 0.05
     yaw:
       _target_: helicopter.controller.PIDController
       gains:
-        _target_: helicopter.controller.PIDController
+        _target_: helicopter.controller.PIDGains
         k_p: 1.0
         k_i: 0.05
         k_d: 0.2
@@ -122,4 +122,4 @@ FlightConductor:
     flight_plan_sequence:
       - _target_: helicopter.flightplan.HoldAltitudeFlightPlan
         altitude: 0.5
-        flight_time: 30.0
+        hover_time: 10.0

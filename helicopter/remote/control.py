@@ -9,10 +9,14 @@ class ControllerRemoteState(RemoteState):
     def __init__(self,):
         super().__init__()
 
+    @staticmethod
+    def clip(value: int) -> int:
+        return max(min(value, 127), 0)
+
     def update(self, commands: ControlPacket):
-        self.throttle = int(commands.throttle * 127.)
-        self.pitch = int(commands.pitch * 64. - 63)
-        self.yaw = int(commands.yaw * 64. + 63)
+        self.throttle = self.clip(int(commands.throttle * 127.))
+        self.pitch = self.clip(int(63 - (commands.pitch * 64.)))
+        self.yaw = self.clip(int(commands.yaw * 64. + 63))
 
 
 class SymaRemoteControl:
@@ -52,13 +56,14 @@ class RemoteControlThread(RemoteThread):
             self.rc.send_command(commands)
             time.sleep(0.001)
 
-    def update(self, command: ControlPacket):
-        with self.lock:
-            self.rc.remote_state.update(command)
+    def update(self, command: ControlPacket | None):
+        if command is not None:
+            with self.lock:
+                self.rc.remote_state.update(command)
 
     def most_recently_sent(self):
         with self.lock:
-            return self.rc.remote_state.convert_to_float()
+            return self.rc.most_recently_sent
 
     def shutdown(self):
         self.rc.shutdown()

@@ -94,33 +94,29 @@ void loop() {
   static unsigned long millisLast = millis();
   unsigned long interval;
 
-  // Send command to helicopter
-  if (inputBuffer[3] > 0) {
-    sendControlPacket(
-      inputBuffer[0], inputBuffer[1], inputBuffer[2],
-      inputBuffer[3], inputBuffer[4]
-    );
-  }
+  sendControlPacket(
+    inputBuffer[0], inputBuffer[1], inputBuffer[2],
+    inputBuffer[3], inputBuffer[4]
+  );
 
-  // Ready to accept new packet from Python script
   Serial.write(READY_ACK);
 
-  // Receive new packet from script
-  if(Serial.available() == BYTES_IN_PACKET) {
-    for(int i = 0; i < 5; i++) {
-      inputBuffer[i] = Serial.read();
-    }
-  } else {
-    // No packet received, turn off
-    inputBuffer[3] = 0;
+  unsigned long waitStart = millis();
+  while (Serial.available() < BYTES_IN_PACKET && (millis() - waitStart) < 50) {
   }
 
-  // Wait before sending next command
+  if(Serial.available() >= BYTES_IN_PACKET) {
+    for(int i = 0; i < BYTES_IN_PACKET; i++) {
+      inputBuffer[i] = Serial.read();
+    }
+  }
+
   if (!inputBuffer[0]) {
     interval = 120;  // channel A (120ms between headers)
   } else {
     interval = 180;  // channel B (180ms between headers)
   }
+
   while (millis() < millisLast + interval);
   millisLast = millis();
 }

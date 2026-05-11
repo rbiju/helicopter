@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 import queue
 import threading
 
+import numpy as np
+
 import sshkeyboard
 
 
@@ -74,7 +76,7 @@ class ManualController(KeyConsumer):
     def __init__(self, listener: KeyListener):
         super().__init__(listener)
 
-        self.channel = 128
+        self.channel = 0
         self.throttle = 0
         self.pitch = 63
         self.yaw = 63
@@ -109,6 +111,8 @@ class ManualController(KeyConsumer):
                 self.quit = True
             elif key == 'r':
                 self.reset()
+            elif key == 'c':
+                self.channel = self.channel ^ 1 << 7
             print(f"c:{self.channel} - t:{self.throttle} - p:{self.pitch} - y:{self.yaw} - tr:{self.trim}")
 
     def reset(self):
@@ -118,10 +122,10 @@ class ManualController(KeyConsumer):
         self.trim = 63
 
     def convert_to_float(self):
-        thrust = self.throttle / 127.
-        pitch = (self.pitch - 63.) / 128. * 2
-        yaw = (self.yaw - 63.) / 128. * 2
-        return [thrust, pitch, yaw]
+        throttle = self.throttle / 127.
+        pitch = ((128 - (self.pitch + 1)) - 64.) / 128. * 2
+        yaw = ((self.yaw + 1) - 64.) / 128. * 2
+        return np.array([throttle, pitch, yaw])
 
     def format(self) -> list[int]:
         return [self.channel,

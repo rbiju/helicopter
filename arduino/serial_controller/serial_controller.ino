@@ -117,20 +117,17 @@ void loop() {
   static unsigned long millisLast = millis();
   unsigned long interval;
 
-  if (inputBuffer[3] > 0) {
-    // Send command to helicopter
-    sendControlPacket(
-      inputBuffer[0], inputBuffer[1], inputBuffer[2],
-      inputBuffer[3], inputBuffer[4]
-    );
-  }
+  sendControlPacket(
+    inputBuffer[0], inputBuffer[1], inputBuffer[2],
+    inputBuffer[3], inputBuffer[4]
+  );
 
-  // Wait before sending next command
   if (!inputBuffer[0]) {
-    interval = 120;  // channel A (120ms between headers)
+    interval = 120;
   } else {
-    interval = 180;  // channel B (180ms between headers)
+    interval = 180;
   }
+  
   while (millis() < millisLast + interval);
   millisLast = millis();
 }

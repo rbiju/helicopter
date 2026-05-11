@@ -1,5 +1,6 @@
 from multiprocessing.shared_memory import SharedMemory
 from multiprocessing.synchronize import Lock, Event
+import time
 
 import numpy as np
 
@@ -28,6 +29,7 @@ class FlightConductor:
         self.profiler = Profiler()
 
         self.kill_signal = kill_signal
+        self.last_time = 0.0
 
     def initialize(self, aircraft_lock: Lock):
         # TODO: load waypoints for visualization
@@ -51,6 +53,7 @@ class FlightConductor:
         4. Use predicted location as starting point for ICP, feed visual update to KF
         5. Tick to next waypoint based on the time
         """
+        print('Starting Flight!')
         command_buffer = np.ndarray(shape=(CommandBufferConstants.N,),
                                     dtype=CommandBufferConstants.dtype,
                                     buffer=command_sm.buf)
@@ -60,6 +63,7 @@ class FlightConductor:
                 break
 
             timestamp = self.aircraft.timestamp
+            self.last_time = timestamp
             self.aircraft.flight_state = self.oracle.active_flight_state(timestamp)
             r, t = self.aircraft.quaternion, self.aircraft.position
             self.oracle.update(r, t, timestamp=timestamp)
@@ -70,6 +74,8 @@ class FlightConductor:
             sent_command = self.controller.control(flightplan, r, t, timestamp)
             with lock:
                 np.copyto(command_buffer, sent_command)
+
+            time.sleep(0.01)
 
         print('Flight plans exhausted. Ending Flight!')
         self.kill_signal.set()

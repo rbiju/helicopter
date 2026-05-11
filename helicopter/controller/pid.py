@@ -51,12 +51,12 @@ class PIDController:
     def xnor(a, b):
         return (a and b) or (not a and not b)
 
-    def control(self, dt, error: float) -> float:
+    def control(self, error: float, dt: float) -> float:
         error = self.lambd * error + (1 - self.lambd) * self.prev_error
 
         out = self.proportional(error) + self.integral(error, dt) + self.derivative(error, dt)
 
-        if abs(out) > 1.0:
+        if out > self.max_value or out < self.min_value:
             out = max(min(out, self.max_value), self.min_value)
             clamped = True
         else:
@@ -95,22 +95,26 @@ class PIDFlightController(FlightController):
         for controller in self.controllers:
             controller.reset()
 
-    def get_command(self, timestamp: float, errors: np.ndarray) -> ControlPacket:
-        commands = []
-        for i in range(len(self.controllers)):
-            command = self.controllers[i].control(errors[i], timestamp - self.last_time)
-            commands.append(command)
+    def get_command(self, timestamp: float, errors: np.ndarray) -> ControlPacket | None:
+        dt = timestamp - self.last_time
 
-        self.last_time = timestamp
+        if dt > 1e-5:
+            commands = []
+            for i in range(len(self.controllers)):
+                command = self.controllers[i].control(dt=dt, error=errors[i])
+                commands.append(command)
 
-        return ControlPacket(*commands)
+            self.last_time = timestamp
+            return ControlPacket(*commands)
+        else:
+            return None
 
     def control(self, flightplan: FlightPlan,
                 quaternion: Rotation,
                 position: np.ndarray,
                 timestamp: float) -> np.ndarray:
         error = flightplan.compute_error(quaternion=quaternion, position=position)
-        commands = self.get_command(timestamp, error)
+        commands = self.get_command(timestamp=timestamp, errors=error)
         self.remote_thread.update(commands)
         self.last_time = timestamp
 

@@ -29,10 +29,10 @@ class FlightPlan(ABC):
         raise NotImplementedError
 
     def _advance_waypoint(self):
-        try:
+        if len(self._waypoints) > 1:
             self._waypoints.popleft()
             return False
-        except IndexError:
+        else:
             return True
 
     @abstractmethod
@@ -44,11 +44,11 @@ class WaypointFollowingFlightPlan(FlightPlan, ABC):
     def __init__(self):
         super().__init__()
 
-    def compute_error(self, r: Rotation, t: np.ndarray):
-        position_error = self.waypoint - t
+    def compute_error(self, quaternion: Rotation, position: np.ndarray):
+        position_error = self.waypoint - position
         e_throttle = position_error[2]
 
-        yaw = r.as_euler('ZYX')[0]
+        yaw = quaternion.as_euler('ZYX')[0]
         yaw_rotation = Rotation.from_euler('Z', yaw)
         position_error_body = yaw_rotation.inv().apply(position_error)
         e_pitch = position_error_body[0]
@@ -68,8 +68,8 @@ class ConstantHeadingFlightPlan(FlightPlan, ABC):
         super().__init__()
         self.reference_heading = 0.0
 
-    def compute_error(self, quaternion: Rotation, t: np.ndarray):
-        position_error = self.waypoint - t
+    def compute_error(self, quaternion: Rotation, position: np.ndarray):
+        position_error = self.waypoint - position
         e_throttle = position_error[2]
 
         yaw = quaternion.as_euler('ZYX')[0]
@@ -134,16 +134,11 @@ class HoldAltitudeFlightPlan(FlightPlan):
     def flight_state(self, timestamp: float) -> FlightState:
         return FlightState.HOVER
 
-    def compute_error(self, quaternion: Rotation, t: np.ndarray):
-        position_error = self.waypoint - t
+    def compute_error(self, quaternion: Rotation, position: np.ndarray):
+        position_error = self.waypoint - position
         e_throttle = position_error[2]
-        e_pitch = 0.0
 
-        yaw = quaternion.as_euler('ZYX')[0]
-        e_yaw = self.reference_heading - yaw
-        e_yaw = (e_yaw + np.pi) % (2 * np.pi) - np.pi
-
-        return np.array([e_throttle, e_pitch, e_yaw])
+        return np.array([e_throttle, 0.0, 0.0])
 
     def activate(self, quaternion: Rotation, position: np.ndarray, timestamp: float):
         self.reference_heading = quaternion.as_euler('ZYX')[0]
