@@ -79,7 +79,7 @@ Tracker:
       battery: 1.0e-6
       trim: 0.1
     r_std_devs:
-      dp_x: 3e-2
+      dp_x: 1e-2
       dp_y: 1e-2
       dp_z: 1e-2
   simulation_fps: 250.
@@ -97,9 +97,9 @@ FlightConductor:
       min_value: 0.0
       gains:
         _target_: helicopter.controller.PIDGains
-        k_p: 1.0
-        k_i: 0.5
-        k_d: 0.5
+        k_p: 0.5
+        k_i: 0.35
+        k_d: 0.75
     pitch:
       _target_: helicopter.controller.PIDController
       gains:

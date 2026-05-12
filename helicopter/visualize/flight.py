@@ -36,19 +36,20 @@ class FlightVisualizer(Visualizer):
             "/grid/ground",
             width=5.0,
             height=5.0,
-            position=np.array([0.0, 0.0, 0.0]),
+            position=np.array([0.0, 0.0, 0.001]),
             cell_size=0.1,
             cell_color=(0, 255, 0),
             cell_thickness=0.5,
             section_size=0.50,
             section_thickness=1.0,
-            section_color=(0, 255, 0)
+            section_color=(0, 255, 0),
+            shadow_opacity=0.5
         )
 
         self.server.scene.add_grid(
             "/grid/yz",
             plane='yz',
-            width=1.37,
+            width=1.217,
             height=2.0,
             position=np.array([0.0, 0.0, 1.0]),
             cell_size=0.1,
@@ -57,7 +58,6 @@ class FlightVisualizer(Visualizer):
             section_size=0.50,
             section_thickness=0.5,
             section_color=(0, 255, 0),
-            visible=False
         )
 
         self.server.scene.add_grid(
@@ -72,7 +72,6 @@ class FlightVisualizer(Visualizer):
             section_size=0.50,
             section_thickness=0.5,
             section_color=(0, 255, 0),
-            visible=False
         )
 
         self.land_button = self.server.gui.add_button('Kill Flight')
