@@ -322,6 +322,10 @@ class Tracker:
                     self.first_frame_system_time = time.perf_counter()
 
                 vision_time = vision_time - self.first_frame_time
+                with lock:
+                    np.copyto(commands, command_buffer)
+
+                self.logger.log_commands(vision_time, commands)
 
             except queue.Empty:
                 time.sleep(0.001)
