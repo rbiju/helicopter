@@ -110,7 +110,7 @@ class GameTableModelTopSide(GameTableModel):
     @property
     def marker_offset(self) -> np.ndarray:
         return np.array([-0.355 + self.marker_size_offset,
-                         -0.685 + self.marker_size_offset,
+                         -0.6085 + self.marker_size_offset,
                          0.0])
 
 @model_registry.register()
@@ -129,7 +129,7 @@ class GameTableModelShortSide(GameTableModel):
     @property
     def marker_offset(self) -> np.ndarray:
         return np.array([-0.355,
-                         -0.685 - self.marker_size_offset,
+                         -0.6085 - self.marker_size_offset,
                          - self.marker_size_offset])
 
 
@@ -145,5 +145,5 @@ class GameTableModelLongSide(GameTableModel):
     @property
     def marker_offset(self) -> np.ndarray:
         return np.array([-0.355 - self.marker_size_offset,
-                         -0.685,
+                         -0.6085,
                          - self.marker_size_offset])
