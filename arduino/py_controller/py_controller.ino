@@ -28,7 +28,7 @@ void setup() {
   pinMode(LED, OUTPUT);
   digitalWrite(LED, LOW);
 
-  Serial.begin(115200);
+  Serial.begin(1000000);
 
   inputBuffer[0] = 128;   // channel (0 for A OR 128 for B)
   inputBuffer[1] = 63;  // yaw (0 to 127)
@@ -94,15 +94,19 @@ void loop() {
   static unsigned long millisLast = millis();
   unsigned long interval;
 
-  sendControlPacket(
-    inputBuffer[0], inputBuffer[1], inputBuffer[2],
-    inputBuffer[3], inputBuffer[4]
-  );
+  if (!inputBuffer[0]) {
+    interval = 120;  // channel A
+  } else {
+    interval = 180;  // channel B
+  }
+
+  while (millis() < millisLast + interval);
+  millisLast = millis();
 
   Serial.write(READY_ACK);
 
   unsigned long waitStart = millis();
-  while (Serial.available() < BYTES_IN_PACKET && (millis() - waitStart) < 50) {
+  while (Serial.available() < BYTES_IN_PACKET && (millis() - waitStart) < 10) {
   }
 
   if(Serial.available() >= BYTES_IN_PACKET) {
@@ -111,12 +115,8 @@ void loop() {
     }
   }
 
-  if (!inputBuffer[0]) {
-    interval = 120;  // channel A (120ms between headers)
-  } else {
-    interval = 180;  // channel B (180ms between headers)
-  }
-
-  while (millis() < millisLast + interval);
-  millisLast = millis();
+  sendControlPacket(
+    inputBuffer[0], inputBuffer[1], inputBuffer[2],
+    inputBuffer[3], inputBuffer[4]
+  );
 }

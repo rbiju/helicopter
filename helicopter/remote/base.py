@@ -35,6 +35,10 @@ class RemoteState(ABC):
         self.throttle = 0
         self.trim = 63
 
+    @property
+    def default(self):
+        return [self.channel, 63, 63, 0, 63]
+
     def as_list(self):
         return [self.channel, self.yaw, self.pitch, self.throttle, self.trim]
 
