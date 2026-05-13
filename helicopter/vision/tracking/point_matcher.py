@@ -9,13 +9,13 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 
-@jax.jit
+@jax.jit(backend='cpu')
 def jax_get_distance_matrix(points_1, points_2):
     diff = points_1[:, None, :] - points_2[None, :, :]
     return jnp.linalg.norm(diff, axis=-1)
 
 
-@jax.jit
+@jax.jit(backend='cpu')
 def jax_single_kabsch(q, p):
     q_c = q - jnp.mean(q, axis=0)
     p_c = p - jnp.mean(p, axis=0)
@@ -36,12 +36,12 @@ def jax_single_kabsch(q, p):
 jax_batched_kabsch = jax.vmap(jax_single_kabsch, in_axes=(0, 0))
 
 
-@jax.jit
+@jax.jit(backend='cpu')
 def jax_apply_transform(rotation, translation, points):
     return points @ rotation.T + translation
 
 
-@functools.partial(jax.jit, static_argnames=['k', 'n'])
+@functools.partial(jax.jit, backend='cpu', static_argnames=['k', 'n'])
 def jax_get_top_n_correspondences(sample_features, ref_features, k, n):
     dists = jax_get_distance_matrix(sample_features, ref_features)
     vals, indices = jax.lax.top_k(-dists, k)
@@ -55,7 +55,7 @@ def jax_get_top_n_correspondences(sample_features, ref_features, k, n):
     return flat_sample_indices[top_n_idxs], flat_ref_indices[top_n_idxs]
 
 
-@jax.jit
+@jax.jit(backend='cpu')
 def jax_evaluate_alignments(rotations, translations, sample_points, ref_points, inlier_threshold):
     def eval_single(rot, trans):
         transformed_ref = jax_apply_transform(rot, trans, ref_points)
@@ -73,7 +73,7 @@ def jax_evaluate_alignments(rotations, translations, sample_points, ref_points, 
     return rotations[best_idx], translations[best_idx]
 
 
-@jax.jit
+@jax.jit(backend='cpu')
 def jax_get_triangle_features(distance_matrix, indices):
     d_ij = distance_matrix[indices[:, 0], indices[:, 1]]
     d_jk = distance_matrix[indices[:, 1], indices[:, 2]]

@@ -15,7 +15,7 @@ IDX_TRIM = slice(17, 18)
 IDX_NOISE = slice(18, 21)
 
 
-@jit
+@jit(backend='cpu')
 def simulate(s, dt, params: SystemParams, commands, key):
     pos_old = s[IDX_P]
     vel_old = s[IDX_V]
@@ -34,6 +34,10 @@ def simulate(s, dt, params: SystemParams, commands, key):
     # First order model for commands
     actual_thrust_old, actual_pitch_old, actual_yaw_old = actual_commands_old
     thrust, pitch, yaw = commands
+    thrust = jnp.clip(thrust, 0.0, 1.0)
+    pitch = jnp.clip(pitch, -1.0, 1.0)
+    yaw = jnp.clip(yaw, -1.0, 1.0)
+
     thrust = jnp.sqrt(thrust)
 
     actual_thrust_new = (actual_thrust_old +

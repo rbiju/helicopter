@@ -53,7 +53,7 @@ class ErrorStateSquareRootUnscentedKalmanFilter:
         return obj
 
     @staticmethod
-    @jax.jit
+    @jax.jit(backend='cpu')
     def _cholesky_downdate(S, v):
         n = v.shape[0]
 
@@ -90,7 +90,7 @@ class ErrorStateSquareRootUnscentedKalmanFilter:
         points_minus = x - sig.T
         return jnp.concatenate([x[None, :], points_plus, points_minus], axis=0)
 
-    @partial(jax.jit, static_argnames=['transition_fn'])
+    @partial(jax.jit, backend='cpu', static_argnames=['transition_fn'])
     def predict(self, transition_fn, dt, **kwargs) -> "ErrorStateSquareRootUnscentedKalmanFilter":
         points = self._generate_sigma_points(self.x, self.S)
         points_pred = jax.vmap(lambda p: transition_fn(p, dt, **kwargs))(points)
@@ -119,7 +119,7 @@ class ErrorStateSquareRootUnscentedKalmanFilter:
             (x_pred, S_pred, self.Q_upper, self.R_upper, self.Wm, self.Wc)
         )
 
-    @partial(jax.jit, static_argnames=['measurement_fn'])
+    @partial(jax.jit, backend='cpu', static_argnames=['measurement_fn'])
     def update(self, measurement_fn, z_point, **kwargs) -> "ErrorStateSquareRootUnscentedKalmanFilter":
         points = self._generate_sigma_points(self.x, self.S)
 

@@ -14,7 +14,7 @@ IDX_BATTERY = slice(16, 17)
 IDX_TRIM = slice(17, 18)
 
 
-@jit
+@jit(backend='cpu')
 def compose_fn(state, error):
     q_nom = Rotation.from_quat(state[IDX_Q])
     dq = Rotation.from_rotvec(error[:3])
@@ -25,7 +25,7 @@ def compose_fn(state, error):
     return jnp.concatenate([q_new.as_quat(canonical=True), new_rest])
 
 
-@jit
+@jit(backend='cpu')
 def decompose_fn(old_state, new_state):
     q_old = Rotation.from_quat(old_state[IDX_Q])
     q_new = Rotation.from_quat(new_state[IDX_Q])
@@ -38,7 +38,7 @@ def decompose_fn(old_state, new_state):
     return jnp.concatenate([error_theta, error_rest])
 
 
-@jit
+@jit(backend='cpu')
 def propagate(s, dt, params: SystemParams, commands):
     # Takes about 0.55 milliseconds
 
@@ -159,14 +159,14 @@ def propagate(s, dt, params: SystemParams, commands):
     return s_new
 
 
-@jit
+@jit(backend='cpu')
 def transition_fn(error_state, dt, nominal_state, propagated_nominal, params, commands):
     full_state = compose_fn(nominal_state, error_state)
     propagated_full = propagate(full_state, dt, params, commands)
     return decompose_fn(propagated_nominal, propagated_full)
 
 
-@jit
+@jit(backend='cpu')
 def measurement_fn(error_state, ref_point, nominal_state):
     full_state_hypothesis = compose_fn(nominal_state, error_state)
 
