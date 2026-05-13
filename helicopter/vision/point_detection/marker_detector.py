@@ -50,9 +50,9 @@ class MarkerDetector(ABC):
             [fx, 0, cx],
             [0, fy, cy],
             [0, 0, 1]
-        ], dtype=np.float64)
+        ], dtype=np.float32)
 
-        dist_coeffs = np.array(rs_intrinsics.coeffs, dtype=np.float64)
+        dist_coeffs = np.array(rs_intrinsics.coeffs, dtype=np.float32)
 
         return camera_matrix, dist_coeffs
 

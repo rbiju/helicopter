@@ -45,7 +45,7 @@ class FlightState(Enum):
 class Aircraft:
     N: int = 20
     STATE_N: int = 18
-    dtype = np.float64
+    dtype = np.float32
 
     def __init__(self, buffer: np.ndarray = None, lock: ProcessLock = None):
         if buffer is not None:
@@ -180,6 +180,19 @@ class Aircraft:
 
     @property
     def state_dict(self) -> dict[str, np.ndarray]:
+        with self._lock:
+            return {
+                'Position': self._buffer[IDX_P].copy(),
+                'Velocity': self._buffer[IDX_V].copy(),
+                'Orientation': self._buffer[IDX_Q].copy(),
+                'Angular Velocity': self._buffer[IDX_O].copy(),
+                'Battery': float(self._buffer[IDX_BATTERY][0]),
+                'Trim': float(self._buffer[IDX_TRIM][0]),
+                'Commands': self._buffer[IDX_ACTUAL_COMMANDS].copy(),
+            }
+
+    @property
+    def full_state_dict(self) -> dict[str, np.ndarray]:
         with self._lock:
             return {
                 'Position': self._buffer[IDX_P].copy(),

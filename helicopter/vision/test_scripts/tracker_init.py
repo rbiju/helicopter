@@ -20,7 +20,7 @@ class FakeSharedMemory:
 
 
 if __name__ == "__main__":
-    aircraft_dummy = np.zeros(shape=(Aircraft.N,), dtype=np.float64)
+    aircraft_dummy = np.zeros(shape=(Aircraft.N,), dtype=np.float32)
     aircraft_sm = FakeSharedMemory(size=aircraft_dummy.nbytes)
     kill_event = Event()
 

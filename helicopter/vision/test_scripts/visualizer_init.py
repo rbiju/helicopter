@@ -32,11 +32,11 @@ def thread_runner(target_func, kwargs_dict):
 
 
 if __name__ == "__main__":
-    aircraft_dummy = np.zeros(shape=(Aircraft.N,), dtype=np.float64)
+    aircraft_dummy = np.zeros(shape=(Aircraft.N,), dtype=np.float32)
     aircraft_sm = FakeSharedMemory(size=aircraft_dummy.nbytes)
     lock = Lock()
 
-    mock_buffer = np.ndarray(shape=(Aircraft.N,), dtype=np.float64, buffer=aircraft_sm.buf)
+    mock_buffer = np.ndarray(shape=(Aircraft.N,), dtype=np.float32, buffer=aircraft_sm.buf)
     mock_aircraft = Aircraft(buffer=mock_buffer, lock=lock)
     mock_aircraft.position = np.array([-0.02399,    -0.46966,           0])
     mock_aircraft.quaternion = Rotation.from_quat(np.array([0, 0, -0.23423, 0.97218]))
