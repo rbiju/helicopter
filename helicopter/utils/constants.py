@@ -6,4 +6,4 @@ import numpy as np
 @dataclass
 class CommandBufferConstants:
     N: int = 3
-    dtype = np.float64
+    dtype = np.float32

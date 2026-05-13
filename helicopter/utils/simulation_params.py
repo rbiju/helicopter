@@ -27,6 +27,8 @@ class SystemParams(NamedTuple):
     CURRENT_DRAW_COEFF: float = 2.5
     BATTERY_CAPACITY: float = 540.
     INTERNAL_RESISTANCE: float = 0.15
+    OU_THETA: float = 0.2
+    OU_SIGMA: float = 0.03
 
     @classmethod
     def from_file(cls, filepath: Path):

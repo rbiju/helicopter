@@ -90,8 +90,7 @@ class Tracker:
         _ = propagate(dummy_nominal,
                       dummy_dt,
                       self.simulation_params,
-                      dummy_commands,
-                      ground=jnp.bool(True))
+                      dummy_commands)
         _ = compose_fn(dummy_nominal, dummy_error)
 
         tmp = self.ukf.predict(transition_fn=transition_fn,
@@ -99,8 +98,7 @@ class Tracker:
                                nominal_state=dummy_nominal,
                                propagated_nominal=dummy_nominal,
                                params=self.simulation_params,
-                               commands=dummy_commands,
-                               ground=jnp.bool(False))
+                               commands=dummy_commands)
 
         dummy_points = np.ones((10, 3), dtype=np.float32)
 
@@ -345,12 +343,10 @@ class Tracker:
 
                 nominal_state = jnp.array(self.aircraft.state_vector, dtype=jnp.float32)
 
-                ground = nominal_state[6] < 1e-2
                 propagated_nominal = propagate(nominal_state,
                                                step_size_jax,
                                                self.simulation_params,
-                                               jax_commands,
-                                               ground=ground)
+                                               jax_commands)
 
                 self.profiler.start("UKF_Predict")
                 self.ukf = self.ukf.predict(transition_fn=transition_fn,
@@ -358,8 +354,7 @@ class Tracker:
                                             nominal_state=nominal_state,
                                             propagated_nominal=propagated_nominal,
                                             params=self.simulation_params,
-                                            commands=jax_commands,
-                                            ground=ground)
+                                            commands=jax_commands)
                 self.profiler.end("UKF_Predict")
 
                 self.aircraft.timestamp = self.last_simulated_time

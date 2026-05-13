@@ -15,7 +15,7 @@ IDX_BA = slice(10, 13)
 IDX_BG = slice(13, 16)
 
 
-@jit
+@jit(backend='cpu')
 def compose_fn(state, error):
     q_nom = Rotation.from_quat(state[IDX_Q])
     dq = Rotation.from_rotvec(error[:3])
@@ -26,7 +26,7 @@ def compose_fn(state, error):
     return jnp.concatenate([q_new.as_quat(canonical=True), new_rest])
 
 
-@jit
+@jit(backend='cpu')
 def decompose_fn(old_state, new_state):
     q_old = Rotation.from_quat(old_state[IDX_Q])
     q_new = Rotation.from_quat(new_state[IDX_Q])
@@ -39,7 +39,7 @@ def decompose_fn(old_state, new_state):
     return jnp.concatenate([error_theta, error_rest])
 
 
-@jit
+@jit(backend='cpu')
 def propagate(s, dt, accel, gyro, g_world):
     q_prev = Rotation.from_quat(s[IDX_Q])
     p_prev = s[IDX_P]
@@ -68,14 +68,14 @@ def propagate(s, dt, accel, gyro, g_world):
     ])
 
 
-@jit
+@jit(backend='cpu')
 def transition_fn(error_state, dt, nominal_state, propagated_nominal, accel, gyro, g_world):
     full_state = compose_fn(nominal_state, error_state)
     propagated_full = propagate(full_state, dt, accel, gyro, g_world)
     return decompose_fn(propagated_nominal, propagated_full)
 
 
-@jit
+@jit(backend='cpu')
 def measurement_fn(error_state, ref_point, nominal_state):
     """
     Calculates where a reference point should be measured based on the current camera state

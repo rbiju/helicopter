@@ -93,8 +93,8 @@ class FlightVisualizer(Visualizer):
                 for plot_name in self.plot_labels[group].keys():
                     lines = self.plot_labels[group][plot_name]
                     handle = self.server.gui.add_uplot(
-                        data=(np.array([], dtype=np.float64),
-                              *[np.array([], dtype=np.float64) for _ in range(len(lines))],),
+                        data=(np.array([], dtype=np.float32),
+                              *[np.array([], dtype=np.float32) for _ in range(len(lines))],),
                         series=(viser.uplot.Series(label="timestamp"),
                                 *[viser.uplot.Series(label=lines[i],
                                                      stroke=["red", "green", "blue"][i % 3],
@@ -274,7 +274,7 @@ class FlightVisualizer(Visualizer):
                 continue
             else:
                 self.last_update_time = current_wall_time
-                state_dict = self.aircraft.state_dict
+                state_dict = self.aircraft.full_state_dict
                 self.update_helicopter(Rotation.from_quat(state_dict['Orientation']), state_dict['Position'])
 
                 with lock:

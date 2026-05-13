@@ -10,7 +10,7 @@ class ICP:
         self.etol = etol
         self.max_iterations = max_iterations
 
-    @partial(jax.jit, static_argnums=(0,))
+    @partial(jax.jit, backend='cpu', static_argnums=(0,))
     def kabsch(self, P, Q, weights=None):
         if weights is None:
             weights = jnp.ones(P.shape[0])
@@ -35,11 +35,11 @@ class ICP:
 
         return Rotation.from_matrix(R), t
 
-    @partial(jax.jit, static_argnums=(0,))
+    @partial(jax.jit, backend='cpu', static_argnums=(0,))
     def apply(self, R: Rotation, t, points):
         return R.apply(points) + t
 
-    @partial(jax.jit, static_argnums=(0,))
+    @partial(jax.jit, backend='cpu', static_argnums=(0,))
     def get_correspondence(self, reference_points, sample_points):
         diff = sample_points[:, None, :] - reference_points[None, :, :]
         distances = jnp.linalg.norm(diff, axis=-1)
@@ -59,7 +59,7 @@ class ICP:
 
         return sample_to_ref_idx, valid_mask
 
-    @partial(jax.jit, static_argnums=(0,))
+    @partial(jax.jit, backend='cpu', static_argnums=(0,))
     def iterate(self, q_old: Rotation, t_old, sample_points, reference_points, valid_input_mask):
         transformed_reference_points = self.apply(q_old, t_old, reference_points)
 

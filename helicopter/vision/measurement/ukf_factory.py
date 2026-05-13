@@ -67,5 +67,8 @@ class MeasurementUKFFactory:
         self.kappa = kappa
 
     def filter(self) -> ErrorStateSquareRootUnscentedKalmanFilter:
-        return ErrorStateSquareRootUnscentedKalmanFilter(x=self.x, S=self.S, Q=self.Q, R=self.R,
+        cpu_device = jax.devices('cpu')[0]
+        with jax.default_device(cpu_device):
+            ukf = ErrorStateSquareRootUnscentedKalmanFilter(x=self.x, S=self.S, Q=self.Q, R=self.R,
                                                          alpha=self.alpha, beta=self.beta, kappa=self.kappa)
+        return ukf
