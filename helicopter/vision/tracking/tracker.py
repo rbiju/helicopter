@@ -22,6 +22,7 @@ from .filter_functions import SystemParams, propagate, transition_fn, measuremen
 from .logger import TrackerStateLogger
 from .ukf_factory import TrackerUKFFactory
 
+jax.config.update('jax_default_device', jax.devices('cpu')[0])
 
 @HydraConfigurable
 class Tracker:

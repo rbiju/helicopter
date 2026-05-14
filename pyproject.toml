@@ -21,8 +21,8 @@ dependencies = [
     "click",
     "pupil-apriltags",
     "pyduinocli",
-    "gymnasium",
-    "lightning"]
+    "lightning",
+    "gymnax"]
 
 [project.scripts]
 helicopter = "helicopter.cli:helicopter"

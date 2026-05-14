@@ -1,9 +1,15 @@
+import jax
+import jax.numpy as jnp
+
 import torch
 from torch.distributions import Normal
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.dlpack import from_dlpack
 
 import pytorch_lightning as pl
+
+from .environment import FlightEnvironment
 
 
 class ActionCorrector(nn.Module):
@@ -13,7 +19,8 @@ class ActionCorrector(nn.Module):
         self.additive_factor = torch.Tensor([0.5, 0.0, 0.0])
 
     def forward(self, actions):
-        return actions * self.multiplicative_factor + self.additive_factor
+        return ((torch.clip(actions, -1.0, 1.0) * self.multiplicative_factor)
+                + self.additive_factor)
 
 
 class ActorCritic(nn.Module):
@@ -74,60 +81,141 @@ class PPOLoss(nn.Module):
         }
 
 
-class FlightEnvironmentDataset(torch.utils.data.Dataset):
-    def __init__(self, state_dim, action_dim):
-        self.state_dim = state_dim
+class StepCounterDataset(torch.utils.data.Dataset):
+    def __init__(self, num_steps: int):
+        super().__init__()
+        self.num_steps = num_steps
+
+    def __len__(self):
+        return self.num_steps
+
+    def __getitem__(self, idx):
+        return torch.tensor(0.0)
 
 
 class FlightAgentPPO(pl.LightningModule):
-    def __init__(self):
+    def __init__(self,
+                 agent: ActorCritic = ActorCritic(state_dim=21, action_dim=3),
+                 loss: PPOLoss = PPOLoss(),
+                 env: FlightEnvironment = FlightEnvironment(),
+                 dataset: StepCounterDataset = StepCounterDataset(num_steps=1_000),
+                 num_envs: int = 10_000,
+                 rollout_steps: int = 250):
         super().__init__()
-        self.agent = ActorCritic(18, 3)
+        self.save_hyperparameters(ignore=['agent', 'loss', 'env'])
+        self.agent = agent
+        self.loss = loss
+        self.env = env
+
+        self.dataset = dataset
+        self.num_envs = num_envs
+        self.rollout_steps = rollout_steps
+
+        self.vmap_reset = jax.vmap(env.reset_env, in_axes=(0, None))
+        self.vmap_step = jax.vmap(env.step_env, in_axes=(0, 0, 0, None))
+
+        self.jax_rng = jax.random.key(0)
+        self.jax_rng, reset_rng = jax.random.split(self.jax_rng)
+        reset_rngs = jax.random.split(reset_rng, self.num_envs)
+
+        self.current_obs_jax, self.current_state_jax = self.vmap_reset(
+            reset_rngs, self.env.default_params
+        )
 
     @staticmethod
     @torch.compile
-    def calculate_returns(rewards: torch.Tensor, gamma: float) -> torch.Tensor:
-        returns = torch.empty_like(rewards)
-        R = torch.tensor(0.0, device=rewards.device)
+    def calculate_gae(rewards: torch.Tensor, masks: torch.Tensor, values: torch.Tensor,
+                      gamma: float = 0.99, lam: float = 0.95) -> tuple[torch.Tensor, torch.Tensor]:
+        advantages = torch.empty_like(rewards)
 
-        for i in range(len(rewards) - 1, -1, -1):
-            R = rewards[i] + gamma * R
-            returns[i] = R
+        last_gae_lam = torch.zeros_like(rewards[0])
+        next_values = torch.cat([values[1:], torch.zeros_like(values[0:1])])
 
-        return returns
+        for t in range(rewards.size(0) - 1, -1, -1):
+            delta = rewards[t] + gamma * next_values[t] * masks[t] - values[t]
+            last_gae_lam = delta + gamma * lam * masks[t] * last_gae_lam
+            advantages[t] = last_gae_lam
 
-    def forward(self, state):
-        action_mean, action_std, state_value = self.agent(state)
-        dist = Normal(action_mean, action_std)
-        action = dist.sample()
+        returns = advantages + values
 
-        return action, state_value
+        return returns, advantages
 
     def episode(self):
-        output = {'saved_log_probs': [], 'saved_values': [], 'rewards': [], 'saved_entropies': []}
-        state, info = env.reset()
-        done = False
+        rollout = {
+            'obs': [], 'actions': [], 'log_probs': [],
+            'values': [], 'entropy': [], 'rewards': [], 'masks': []
+        }
 
-        while not done:
-            action, state_value = self.forward(state)
-            next_state, reward, terminated, truncated, info = env.step(action.detach().cpu().numpy()[0])
+        obs_jax = self.current_obs_jax
+        state_jax = self.current_state_jax
 
-            done = terminated or truncated
+        for _ in range(self.rollout_steps):
+            obs_pt = from_dlpack(obs_jax)
 
-            output['saved_log_probs'].append(dist.log_prob(action))
-            output['saved_values'].append(state_value)
-            output['rewards'].append(reward)
-            output['saved_entropies'].append(dist.entropy())
-            state = next_state
+            action_mean, action_std, state_value = self.agent(obs_pt)
+            dist = Normal(action_mean, action_std)
+            action_raw_pt = dist.sample()
+            action_pt = self.agent.corrector(action_raw_pt)
 
-        saved_log_probs = torch.stack(output['saved_log_probs']).to(self.device)
-        saved_values = torch.stack(output['saved_values']).to(self.device)
-        saved_entropies = torch.stack(output['saved_entropies']).to(self.device)
-        rewards = torch.tensor(output['rewards'], device=self.device, dtype=torch.float32)
+            log_prob = dist.log_prob(action_raw_pt).sum(dim=-1)
+            entropy = dist.entropy().sum(dim=-1)
 
-        return saved_log_probs, saved_values, rewards, saved_entropies
+            action_jax = jax.dlpack.from_dlpack(action_pt)
+
+            self.jax_rng, step_rng = jax.random.split(self.jax_rng)
+            step_rngs = jax.random.split(step_rng, self.num_envs)
+
+            next_obs_jax, next_state_jax, reward_jax, done_jax, _ = self.vmap_step(
+                step_rngs, state_jax, action_jax, self.env.default_params
+            )
+
+            rollout['obs'].append(obs_pt)
+            rollout['actions'].append(action_raw_pt)
+            rollout['log_probs'].append(log_prob)
+            rollout['values'].append(state_value.squeeze())
+            rollout['entropy'].append(entropy)
+            rollout['rewards'].append(from_dlpack(reward_jax))
+            rollout['masks'].append(1.0 - from_dlpack(done_jax.astype(jnp.float32)))
+
+            obs_jax = next_obs_jax
+            state_jax = next_state_jax
+
+        self.current_obs_jax = obs_jax
+        self.current_state_jax = state_jax
+
+        return {k: torch.stack(v) for k, v in rollout.items()}
+
+    def train_dataloader(self):
+        return torch.utils.data.DataLoader(dataset=self.dataset, batch_size=1, num_workers=0)
 
     def training_step(self, batch, batch_idx):
-        episode_output = self.episode()
+        data = self.episode()
 
-        returns = self.calculate_returns(episode_output['rewards'], gamma=0.99)
+        b_obs = data['obs'].view(-1, 21)
+        b_actions = data['actions'].view(-1, 3)
+        b_old_log_probs = data['log_probs'].view(-1)
+
+        b_returns, b_advantages = self.calculate_gae(data['rewards'],
+                                                     data['masks'],
+                                                     data['values'],
+                                                     gamma=0.99)
+        b_returns = b_returns.view(-1)
+        b_advantages = b_advantages.view(-1)
+        b_advantages = (b_advantages - b_advantages.mean()) / (b_advantages.std() + 1e-8)
+
+        action_mean, action_std, new_values = self.agent(b_obs)
+        dist = Normal(action_mean, action_std)
+
+        new_log_probs = dist.log_prob(b_actions).sum(dim=-1)
+        new_entropy = dist.entropy().sum(dim=-1)
+
+        loss_dict = self.loss(
+            old_log_probs=b_old_log_probs,
+            new_log_probs=new_log_probs,
+            advantages=b_advantages,
+            returns=b_returns,
+            values=new_values.squeeze(),
+            entropy=new_entropy
+        )
+
+        return loss_dict

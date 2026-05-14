@@ -15,7 +15,7 @@ IDX_TRIM = slice(17, 18)
 IDX_NOISE = slice(18, 21)
 
 
-@jit(backend='cpu')
+@jit
 def simulate(s, dt, params: SystemParams, commands, key):
     pos_old = s[IDX_P]
     vel_old = s[IDX_V]

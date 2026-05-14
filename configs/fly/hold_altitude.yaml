@@ -97,9 +97,9 @@ FlightConductor:
       min_value: 0.0
       gains:
         _target_: helicopter.controller.PIDGains
-        k_p: 0.5
-        k_i: 0.35
-        k_d: 0.75
+        k_p: 0.25
+        k_i: 0.25
+        k_d: 0.25
     pitch:
       _target_: helicopter.controller.PIDController
       gains:
@@ -124,5 +124,5 @@ FlightConductor:
       - _target_: helicopter.flightplan.IdleFlightPlan
         idle_time: 7.5
       - _target_: helicopter.flightplan.HoldAltitudeFlightPlan
-        altitude: 0.4
+        altitude: 0.5
         hover_time: 10.0

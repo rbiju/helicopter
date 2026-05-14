@@ -21,8 +21,9 @@ from .point_handler import MeasurementPointHandler
 
 from .filter_functions import compose_fn, propagate, transition_fn, measurement_fn
 
-logging.basicConfig(level=logging.WARNING)
 
+logging.basicConfig(level=logging.WARNING)
+jax.config.update('jax_default_device', jax.devices('cpu')[0])
 
 class Scanner:
     def __init__(self,
