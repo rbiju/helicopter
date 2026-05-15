@@ -52,10 +52,9 @@ class ActorCritic(nn.Module):
         return self.critic(state)
 
     def forward(self, state):
-        actor_out = self.actor(state).reshape(-1, self.action_dim)
-
-        action_mean = self.corrector(torch.tanh(actor_out[0::2, :]))
-        action_std = actor_out[1::2, :].exp()
+        action_mean, log_std = torch.chunk(self.actor(state), 2, dim=-1)
+        action_mean = self.corrector(torch.tanh(action_mean))
+        action_std = torch.nn.functional.softplus(log_std) + 1e-8
 
         state_value = self.evaluate(state)
 
@@ -109,7 +108,7 @@ class FlightAgentPPO(pl.LightningModule):
                  loss: PPOLoss = PPOLoss(),
                  env: FlightEnvironment = FlightEnvironment(),
                  dataset: StepCounterDataset = StepCounterDataset(num_steps=1_000),
-                 num_envs: int = 10_000,
+                 num_envs: int = 1000,
                  rollout_steps: int = 250,
                  iters_per_rollout: int = 5,):
         super().__init__()
@@ -123,8 +122,17 @@ class FlightAgentPPO(pl.LightningModule):
         self.rollout_steps = rollout_steps
         self.iters_per_rollout = iters_per_rollout
 
-        self.vmap_reset = jax.vmap(env.reset_env, in_axes=(0, None))
-        self.vmap_step = jax.vmap(env.step_env, in_axes=(0, 0, 0, None))
+        self.vmap_reset = jax.jit(jax.vmap(env.reset_env, in_axes=(0, None)))
+
+        def step_with_reset(rng, state, action, params):
+            next_obs, next_state, reward, done, info = env.step_env(rng, state, action, params)
+            reset_obs, reset_state = env.reset_env(rng, params)
+
+            obs = jax.tree_util.tree_map(lambda n, r: jnp.where(done, r, n), next_obs, reset_obs)
+            state = jax.tree_util.tree_map(lambda n, r: jnp.where(done, r, n), next_state, reset_state)
+            return obs, state, reward, done, info
+
+        self.vmap_step = jax.jit(jax.vmap(step_with_reset, in_axes=(0, 0, 0, None)))
 
         self.jax_rng = jax.random.key(0)
         self.jax_rng, reset_rng = jax.random.split(self.jax_rng)
@@ -247,3 +255,12 @@ class FlightAgentPPO(pl.LightningModule):
         critic_optimizer = torch.optim.Adam(self.agent.critic.parameters(), lr=self.lr)
 
         return [actor_optimizer, critic_optimizer]
+
+
+if __name__ == '__main__':
+    agent = FlightAgentPPO()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    agent.to(device)
+
+    episode_data = agent.episode()
+    print('done')

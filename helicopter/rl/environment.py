@@ -21,21 +21,24 @@ class EnvState:
 
 @struct.dataclass
 class EnvParams:
-    time_limit: float = 10.0
-    simulation_dt: float = 0.004
-    command_dt: float = 0.1
+    time_limit: float = struct.field(default=10.0, pytree_node=False)
+    simulation_dt: float = struct.field(default=0.004, pytree_node=False)
+    command_dt: float = struct.field(default=0.1, pytree_node=False)
     sys_params: SystemParams = struct.field(
-        default_factory=lambda: SystemParams.from_file(Path(__file__).parents[2] / "assets/simulation_params/blue_syma")
+        default_factory=lambda: SystemParams.from_file(Path(__file__).parents[2] /
+                                                       "assets/simulation_params/blue_syma"),
+        pytree_node=False
     )
 
 
 class FlightEnvironment(environment.Environment[EnvState, EnvParams]):
     def __init__(self):
         super().__init__()
+        self._cached_params = EnvParams()
 
     @property
     def default_params(self) -> EnvParams:
-        return EnvParams()
+        return self._cached_params
 
     def step_env(
             self, key: jax.Array, state: EnvState, action: jnp.ndarray, params: EnvParams
@@ -89,7 +92,6 @@ class FlightEnvironment(environment.Environment[EnvState, EnvParams]):
     ) -> Tuple[jnp.ndarray, EnvState]:
         key, subkey1, subkey2 = jax.random.split(key, 3)
 
-        # Sample setpoint
         setpoint = jax.random.uniform(
             subkey1, shape=(3,),
             minval=jnp.array([-0.355, -0.6085, 0.0]),
@@ -102,12 +104,11 @@ class FlightEnvironment(environment.Environment[EnvState, EnvParams]):
             maxval=jnp.array([0.355, 0.6085])
         )
 
-        # Initialize default state vector
         init_state_vec = jnp.zeros(18, dtype=jnp.float32)
-        init_state_vec = init_state_vec.at[0:4].set(jnp.array([0.0, 0.0, 0.0, 1.0]))  # Quat
-        init_state_vec = init_state_vec.at[4:7].set(jnp.array([pos_sample[0], pos_sample[1], 0.0]))  # Pos
-        init_state_vec = init_state_vec.at[16].set(1.0)  # Battery
-        init_state_vec = init_state_vec.at[17].set(0.5)  # Trim
+        init_state_vec = init_state_vec.at[0:4].set(jnp.array([0.0, 0.0, 0.0, 1.0]))
+        init_state_vec = init_state_vec.at[4:7].set(jnp.array([pos_sample[0], pos_sample[1], 0.0]))
+        init_state_vec = init_state_vec.at[16].set(1.0)
+        init_state_vec = init_state_vec.at[17].set(0.5)
 
         state = EnvState(
             state_vector=init_state_vec,
