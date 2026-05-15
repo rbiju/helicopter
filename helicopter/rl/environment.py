@@ -1,4 +1,6 @@
+from pathlib import Path
 from typing import Tuple
+
 import jax
 import jax.numpy as jnp
 
@@ -22,7 +24,9 @@ class EnvParams:
     time_limit: float = 10.0
     simulation_dt: float = 0.004
     command_dt: float = 0.1
-    sys_params: SystemParams = struct.field(default_factory=SystemParams)
+    sys_params: SystemParams = struct.field(
+        default_factory=lambda: SystemParams.from_file(Path(__file__).parents[2] / "assets/simulation_params/blue_syma")
+    )
 
 
 class FlightEnvironment(environment.Environment[EnvState, EnvParams]):

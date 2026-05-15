@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torch.utils.dlpack import from_dlpack
 
 import pytorch_lightning as pl
+from pytorch_lightning.utilities.types import OptimizerLRScheduler
 
 from .environment import FlightEnvironment
 
@@ -15,8 +16,8 @@ from .environment import FlightEnvironment
 class ActionCorrector(nn.Module):
     def __init__(self):
         super().__init__()
-        self.multiplicative_factor = torch.Tensor([0.5, 1.0, 1.0])
-        self.additive_factor = torch.Tensor([0.5, 0.0, 0.0])
+        self.register_buffer('multiplicative_factor', torch.tensor([0.5, 1.0, 1.0]))
+        self.register_buffer('additive_factor', torch.tensor([0.5, 0.0, 0.0]))
 
     def forward(self, actions):
         return ((torch.clip(actions, -1.0, 1.0) * self.multiplicative_factor)
@@ -26,28 +27,37 @@ class ActionCorrector(nn.Module):
 class ActorCritic(nn.Module):
     def __init__(self, state_dim, action_dim, corrector: ActionCorrector = ActionCorrector()):
         super().__init__()
-        self.corrector = corrector
+        self.state_dim = state_dim
+        self.action_dim = action_dim
 
-        self.hidden_layers = nn.Sequential(
+        self.actor = nn.Sequential(
             nn.Linear(state_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 64),
             nn.ReLU(),
+            nn.Linear(64, action_dim * 2)
         )
 
-        self.actor_mean = nn.Linear(64, action_dim)
-        self.actor_log_std = nn.Parameter(torch.zeros(1, action_dim))
+        self.critic = nn.Sequential(
+            nn.Linear(state_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
+        )
 
-        self.critic_value = nn.Linear(64, 1)
+        self.corrector = corrector
+
+    def evaluate(self, state):
+        return self.critic(state)
 
     def forward(self, state):
-        features = self.hidden_layers(state)
+        actor_out = self.actor(state).reshape(-1, self.action_dim)
 
-        raw_mean = self.actor_mean(features)
-        action_mean = self.corrector(torch.tanh(raw_mean))
+        action_mean = self.corrector(torch.tanh(actor_out[0::2, :]))
+        action_std = actor_out[1::2, :].exp()
 
-        action_std = self.actor_log_std.exp().expand_as(action_mean)
-        state_value = self.critic_value(features)
+        state_value = self.evaluate(state)
 
         return action_mean, action_std, state_value
 
@@ -71,13 +81,13 @@ class PPOLoss(nn.Module):
 
         entropy_loss = -entropy.mean()
 
-        total_loss = policy_loss + (self.value_coef * value_loss) + (self.entropy_coef * entropy_loss)
+        actor_loss = self.value_coef * value_loss + self.entropy_coef * entropy_loss
 
         return {
             "policy_loss": policy_loss,
-            "value_loss": value_loss,
+            "actor_loss": actor_loss,
             "entropy_loss": entropy_loss,
-            "loss": total_loss
+            "critic_loss": value_loss,
         }
 
 
@@ -100,7 +110,8 @@ class FlightAgentPPO(pl.LightningModule):
                  env: FlightEnvironment = FlightEnvironment(),
                  dataset: StepCounterDataset = StepCounterDataset(num_steps=1_000),
                  num_envs: int = 10_000,
-                 rollout_steps: int = 250):
+                 rollout_steps: int = 250,
+                 iters_per_rollout: int = 5,):
         super().__init__()
         self.save_hyperparameters(ignore=['agent', 'loss', 'env'])
         self.agent = agent
@@ -110,6 +121,7 @@ class FlightAgentPPO(pl.LightningModule):
         self.dataset = dataset
         self.num_envs = num_envs
         self.rollout_steps = rollout_steps
+        self.iters_per_rollout = iters_per_rollout
 
         self.vmap_reset = jax.vmap(env.reset_env, in_axes=(0, None))
         self.vmap_step = jax.vmap(env.step_env, in_axes=(0, 0, 0, None))
@@ -121,6 +133,8 @@ class FlightAgentPPO(pl.LightningModule):
         self.current_obs_jax, self.current_state_jax = self.vmap_reset(
             reset_rngs, self.env.default_params
         )
+
+        self.automatic_optimization = False
 
     @staticmethod
     @torch.compile
@@ -189,6 +203,7 @@ class FlightAgentPPO(pl.LightningModule):
         return torch.utils.data.DataLoader(dataset=self.dataset, batch_size=1, num_workers=0)
 
     def training_step(self, batch, batch_idx):
+        actor_opt, critic_opt = self.optimizers()
         data = self.episode()
 
         b_obs = data['obs'].view(-1, 21)
@@ -203,19 +218,32 @@ class FlightAgentPPO(pl.LightningModule):
         b_advantages = b_advantages.view(-1)
         b_advantages = (b_advantages - b_advantages.mean()) / (b_advantages.std() + 1e-8)
 
-        action_mean, action_std, new_values = self.agent(b_obs)
-        dist = Normal(action_mean, action_std)
+        for _ in range(self.iters_per_rollout):
+            action_mean, action_std, new_values = self.agent(b_obs)
+            dist = Normal(action_mean, action_std)
 
-        new_log_probs = dist.log_prob(b_actions).sum(dim=-1)
-        new_entropy = dist.entropy().sum(dim=-1)
+            new_log_probs = dist.log_prob(b_actions).sum(dim=-1)
+            new_entropy = dist.entropy().sum(dim=-1)
 
-        loss_dict = self.loss(
-            old_log_probs=b_old_log_probs,
-            new_log_probs=new_log_probs,
-            advantages=b_advantages,
-            returns=b_returns,
-            values=new_values.squeeze(),
-            entropy=new_entropy
-        )
+            loss_dict = self.loss(
+                old_log_probs=b_old_log_probs,
+                new_log_probs=new_log_probs,
+                advantages=b_advantages,
+                returns=b_returns,
+                values=new_values.squeeze(),
+                entropy=new_entropy
+            )
 
-        return loss_dict
+            actor_opt.zero_grad()
+            self.manual_backward(loss_dict['actor_loss'])
+            actor_opt.step()
+
+            critic_opt.zero_grad()
+            self.manual_backward(loss_dict['critic_loss'])
+            critic_opt.step()
+
+    def configure_optimizers(self) -> OptimizerLRScheduler:
+        actor_optimizer = torch.optim.Adam(self.agent.actor.parameters(), lr=self.lr)
+        critic_optimizer = torch.optim.Adam(self.agent.critic.parameters(), lr=self.lr)
+
+        return [actor_optimizer, critic_optimizer]
