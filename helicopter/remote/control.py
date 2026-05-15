@@ -50,7 +50,7 @@ class RemoteControlThread(RemoteThread):
             with self.lock:
                 commands = self.rc.remote_state.as_list()
             self.rc.send_command(commands)
-            time.sleep(0.0001)
+            time.sleep(0.001)
 
     def update(self, command: ControlPacket | None):
         if command is not None:

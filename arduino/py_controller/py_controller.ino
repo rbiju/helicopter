@@ -103,6 +103,9 @@ void loop() {
   while (millis() < millisLast + interval);
   millisLast = millis();
 
+  while (Serial.available() > 0) {
+    Serial.read();
+  }
   Serial.write(READY_ACK);
 
   unsigned long waitStart = millis();

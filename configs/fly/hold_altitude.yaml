@@ -4,7 +4,7 @@ Fly:
 Tracker:
   _target_: helicopter.vision.tracking.Tracker
   _partial_: True
-  initial_battery_level: 0.95
+  initial_battery_level: 1.0
   simulation_params_name: 'blue_syma'
   camera:
     _target_: helicopter.vision.D435i
@@ -97,7 +97,7 @@ FlightConductor:
       min_value: 0.0
       gains:
         _target_: helicopter.controller.PIDGains
-        k_p: 1.0
+        k_p: 1.25
         k_i: 0.75
         k_d: 0.45
     pitch:
