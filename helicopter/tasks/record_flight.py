@@ -109,7 +109,7 @@ class RecordFlight(Task):
                     time.sleep(0.00001)
         finally:
             self.tracker.cleanup()
-            rc_thread.stop()
+            rc_thread.end()
 
         to_save = input('Save Flight Recording? (y/n) \n')
         if to_save.lower() == 'y':

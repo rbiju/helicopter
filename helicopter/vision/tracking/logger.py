@@ -6,7 +6,7 @@ import numpy as np
 
 class TrackerStateLogger:
     def __init__(self, save_dir='tracking'):
-        self.save_dir = self.save_dir = Path(__file__).parents[3] / 'notebooks/logs' / save_dir
+        self.save_dir = Path(__file__).parents[3] / 'notebooks/logs' / save_dir
         self.save_dir.mkdir(parents=True, exist_ok=True)
 
         self.data = deque()

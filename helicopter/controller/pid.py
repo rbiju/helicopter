@@ -8,6 +8,7 @@ from helicopter.remote import RemoteControlThread, ControlPacket
 from helicopter.utils import ArduinoLoader
 
 from .base import FlightController
+from .logger import PIDLogger
 
 
 class PIDGains(NamedTuple):
@@ -18,42 +19,59 @@ class PIDGains(NamedTuple):
 
 class PIDController:
     def __init__(self, gains: PIDGains,
-                 lambd: float = 0.9,
                  max_value: float = 1.0,
-                 min_value: float = -1.0):
+                 min_value: float = -1.0,
+                 lambd: float = 0.1,
+                 ):
         super().__init__()
-        self.prev_error = 0.
-
-        self.accumulator = 0.
-
         self.gains = gains
-
-        self.lambd = lambd
 
         self.max_value = max_value
         self.min_value = min_value
+        self.lambd = lambd
+
+        self.proportional_value = 0.0
+        self.integral_value = 0.0
+        self.derivative_value = 0.0
+
+        self.prev_error = 0.
+        self.prev_derivative = 0.
+        self.accumulator = 0.
 
     def proportional(self, error: float) -> float:
-        return self.gains.k_p * error
+        self.proportional_value = self.gains.k_p * error
+        return self.proportional_value
 
     def integral(self, error: float, dt) -> float:
         self.accumulator += (error * dt)
-        return self.gains.k_i * self.accumulator
+        self.integral_value = self.gains.k_i * self.accumulator
+        return self.integral_value
 
-    def derivative(self, error: float, dt) -> float:
-        return self.gains.k_d * (error - self.prev_error) / dt
+    def derivative(self, error: float, dt: float) -> float:
+        raw_derivative = (error - self.prev_error) / dt
+        filtered_derivative = (self.lambd * raw_derivative) + ((1 - self.lambd) * self.prev_derivative)
+
+        self.prev_derivative = filtered_derivative
+        self.derivative_value = self.gains.k_d * filtered_derivative
+
+        return self.derivative_value
 
     def reset(self):
         self.accumulator = 0.
-        self.prev_error = 0.
+        self.prev_derivative = 0.
+
+    @property
+    def state(self) -> np.ndarray:
+        return np.array([self.proportional_value,
+                         self.integral_value,
+                         self.derivative_value,
+                         self.accumulator])
 
     @staticmethod
     def xnor(a, b):
         return (a and b) or (not a and not b)
 
     def control(self, error: float, dt: float) -> float:
-        error = self.lambd * error + (1 - self.lambd) * self.prev_error
-
         out = self.proportional(error) + self.integral(error, dt) + self.derivative(error, dt)
 
         if out > self.max_value or out < self.min_value:
@@ -85,14 +103,16 @@ class PIDFlightController(FlightController):
         self.yaw = yaw
         self.remote_thread = remote_thread
 
+        self.logger = PIDLogger()
+
         # This order determines the order of the command array
-        self.controllers = [self.throttle, self.pitch, self.yaw]
+        self._controllers = [self.throttle, self.pitch, self.yaw]
 
         self.last_time = 0.0
         self.remote_thread.start()
 
     def reset(self):
-        for controller in self.controllers:
+        for controller in self._controllers:
             controller.reset()
 
     def get_command(self, timestamp: float, errors: np.ndarray) -> ControlPacket | None:
@@ -100,8 +120,8 @@ class PIDFlightController(FlightController):
 
         if dt > 1e-5:
             commands = []
-            for i in range(len(self.controllers)):
-                command = self.controllers[i].control(dt=dt, error=errors[i])
+            for i in range(len(self._controllers)):
+                command = self._controllers[i].control(dt=dt, error=errors[i])
                 commands.append(command)
 
             self.last_time = timestamp
@@ -113,12 +133,17 @@ class PIDFlightController(FlightController):
                 quaternion: Rotation,
                 position: np.ndarray,
                 timestamp: float) -> np.ndarray:
-        error = flightplan.compute_error(quaternion=quaternion, position=position)
-        commands = self.get_command(timestamp=timestamp, errors=error)
-        self.remote_thread.update(commands)
-        self.last_time = timestamp
+        if timestamp != self.last_time:
+            error = flightplan.compute_error(quaternion=quaternion, position=position)
+            commands = self.get_command(timestamp=timestamp, errors=error)
+            self.logger.log(timestamp=timestamp,
+                            error=error,
+                            controller_states=[controller.state for controller in self._controllers])
+            self.remote_thread.update(commands)
+            self.last_time = timestamp
 
         return self.remote_thread.most_recently_sent()
 
     def shutdown(self):
-        self.remote_thread.stop()
+        self.remote_thread.end()
+        self.logger.save()

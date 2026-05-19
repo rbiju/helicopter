@@ -42,6 +42,9 @@ class RemoteState(ABC):
     def as_list(self):
         return [self.channel, self.yaw, self.pitch, self.throttle, self.trim]
 
+    def switch_channel(self):
+        self.channel = self.channel ^ 1 << 7
+
     def convert_to_float(self):
         throttle = self.throttle / 127.
         pitch = ((128 - (self.pitch + 1)) - 64.) / 128. * 2
@@ -67,7 +70,7 @@ class RemoteThread(ABC, threading.Thread):
     def shutdown(self):
         raise NotImplementedError
 
-    def stop(self):
+    def end(self):
         self.running = False
         self.join()
         self.shutdown()

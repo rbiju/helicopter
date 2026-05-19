@@ -4,7 +4,7 @@ Fly:
 Tracker:
   _target_: helicopter.vision.tracking.Tracker
   _partial_: True
-  initial_battery_level: 1.0
+  initial_battery_level: 0.8
   simulation_params_name: 'blue_syma'
   camera:
     _target_: helicopter.vision.D435i
@@ -63,25 +63,25 @@ Tracker:
     beta: 2.0
     kappa: -14.0
     q_std_devs:
-      orientation: 1.0
+      orientation: 0.01
       position: 1e-3
-      angular_velocity: 5.0
-      velocity: 5e-2
-      commands: 1e-6
-      battery: 1e-02
-      trim: 1e-2
+      angular_velocity: 1e-1
+      velocity: 5e-3
+      commands: 1e-7
+      battery: 1e-4
+      trim: 1e-3
     s_std_devs:
-      orientation: 1.0
+      orientation: 2.0
       position: 1e-2
-      angular_velocity: 5e-1
+      angular_velocity: 1e-3
       velocity: 1e-2
-      commands: 1e-6
-      battery: 2e-1
+      commands: 1e-7
+      battery: 1e-4
       trim: 0.1
     r_std_devs:
-      dp_x: 1e-2
-      dp_y: 1e-2
-      dp_z: 1e-2
+      dp_x: 1e-3
+      dp_y: 1e-3
+      dp_z: 1e-3
   simulation_fps: 250.
 FlightVisualizer:
   _target_: helicopter.visualize.FlightVisualizer
@@ -97,7 +97,7 @@ FlightConductor:
       min_value: 0.0
       gains:
         _target_: helicopter.controller.PIDGains
-        k_p: 1.25
+        k_p: 1.0
         k_i: 0.75
         k_d: 0.45
     pitch:
@@ -125,4 +125,4 @@ FlightConductor:
         idle_time: 7.5
       - _target_: helicopter.flightplan.HoldAltitudeFlightPlan
         altitude: 0.5
-        hover_time: 10.0
+        hover_time: 5.0

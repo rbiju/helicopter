@@ -23,4 +23,4 @@ class ManualFlightController(FlightController):
         return commands
 
     def shutdown(self):
-        self.recorder_thread.stop()
+        self.recorder_thread.end()

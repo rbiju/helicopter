@@ -13,6 +13,9 @@ class FlightController(ABC):
         self.arduino_loader = arduino_loader
         self.arduino_loader.load()
 
+    def reset(self):
+        pass
+
     @abstractmethod
     def control(self, flightplan: FlightPlan,
                 quaternion: Rotation,

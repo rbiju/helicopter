@@ -92,7 +92,7 @@ class Helicopter:
                 e_h = e_h * np.clip(dist_xy, 0., 1.0)
 
         cmd_T_norm = self.Kp_POS * e_z + self.Ki_POS * I_height + self.Kd_POS * (0.0 - w)
-        cmd_thrust_norm = np.clip(cmd_T_norm, 0.0, 1.0)
+        cmd_thrust_norm = np.sqrt(np.clip(cmd_T_norm, 0.0, 1.0))
 
         cmd_pitch_norm = self.Kp_PITCH * e_d + self.Ki_PITCH * I_dist + self.Kd_PITCH * (0.0 - u)
         cmd_pitch_norm = np.clip(cmd_pitch_norm, -1.0, 1.0)
@@ -128,8 +128,8 @@ class Helicopter:
 
         g_body = rot.inv().apply(self.params.G_WORLD) * self.params.MASS
 
-        F_thrust_main = (
-                                    self.params.THRUST_CONSTANT + thrust * self.params.MAX_THRUST * voltage_efficiency) * ge_multiplier
+        F_thrust_main = (self.params.THRUST_CONSTANT +
+                         thrust * self.params.MAX_THRUST * voltage_efficiency) * ge_multiplier
         F_thrust_tail = pitch * self.params.MAX_TAIL_THRUST * voltage_efficiency
         F_drag = -self.params.DRAG * velocity_body
 
@@ -155,7 +155,8 @@ class Helicopter:
         dsdt[self.VEL_IDX] = dvdt
 
         tau_roll = acc_coriolis[1] * self.params.MASS * self.params.CORIOLIS_CONSTANT
-        tau_actuator_pitch = self.params.MAX_TAIL_THRUST[2] * pitch * voltage_efficiency * self.params.TAIL_MOMENT_ARM
+        tau_actuator_pitch = (self.params.MAX_TAIL_THRUST[2] *
+                              pitch * voltage_efficiency * self.params.TAIL_MOMENT_ARM)
         tau_actuator_yaw = yaw * self.params.MAX_YAW_TORQUE * voltage_efficiency
         tau_actuator = np.array([tau_roll, tau_actuator_pitch, tau_actuator_yaw])
 

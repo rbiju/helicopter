@@ -34,9 +34,27 @@ class SymaRemoteControl:
                 self.most_recently_sent = self.remote_state.convert_to_float()
 
     def shutdown(self):
-        commands = self.remote_state.default
-        self.arduino.write(bytes(commands))
+        # Channel A idle commands
+        shutdown_commands = self.remote_state.default
+        self.remote_state.switch_channel()
+        # Channel B idle commands, clears channel A for manual remote if needed
+        persistent_commands = self.remote_state.default
 
+        timeout = time.time() + 1.0
+
+        commands_queue = [shutdown_commands, persistent_commands]
+        commands_counter = 0
+        while time.time() < timeout:
+            if self.arduino.in_waiting > 0:
+                read_data = self.arduino.read(self.arduino.in_waiting)
+                if READY_ACK in read_data:
+                    self.arduino.write(bytes(commands_queue[commands_counter]))
+                    commands_counter += 1
+                    if commands_counter >= len(commands_queue):
+                        break
+            time.sleep(0.001)
+
+        time.sleep(0.1)
         self.arduino.close()
 
 

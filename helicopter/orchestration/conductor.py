@@ -29,7 +29,6 @@ class FlightConductor:
         self.profiler = Profiler()
 
         self.kill_signal = kill_signal
-        self.last_time = 0.0
 
     def initialize(self, aircraft_lock: Lock):
         # TODO: load waypoints for visualization
@@ -63,7 +62,6 @@ class FlightConductor:
                 break
 
             timestamp = self.aircraft.timestamp
-            self.last_time = timestamp
             self.aircraft.flight_state = self.oracle.active_flight_state(timestamp)
             r, t = self.aircraft.quaternion, self.aircraft.position
             self.oracle.update(r, t, timestamp=timestamp)
@@ -71,7 +69,9 @@ class FlightConductor:
                 break
 
             flightplan = self.oracle.active_flight_plan
+            self.profiler.start('Control')
             sent_command = self.controller.control(flightplan, r, t, timestamp)
+            self.profiler.end('Control')
             with lock:
                 np.copyto(command_buffer, sent_command)
 
@@ -82,3 +82,5 @@ class FlightConductor:
 
     def cleanup(self):
         self.controller.shutdown()
+        print("Cleaned up FlightConductor")
+        print(self.profiler)
