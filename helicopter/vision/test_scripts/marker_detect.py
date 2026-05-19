@@ -23,7 +23,7 @@ if __name__ == '__main__':
                    autoexpose=False,
                    exposure_time=3200,
                    autoexpose_rgb=False,
-                   exposure_time_rgb=1500)
+                   exposure_time_rgb=800)
 
     detector = AprilTagMarkerDetector()
     detector.activate(camera.color_intrinsics, camera.color_ir_extrinsics)

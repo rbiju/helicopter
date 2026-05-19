@@ -15,6 +15,7 @@ class PIDGains(NamedTuple):
     k_p: float
     k_i: float
     k_d: float
+    feedforward: float = 0.0
 
 
 class PIDController:
@@ -72,7 +73,10 @@ class PIDController:
         return (a and b) or (not a and not b)
 
     def control(self, error: float, dt: float) -> float:
-        out = self.proportional(error) + self.integral(error, dt) + self.derivative(error, dt)
+        out = (self.proportional(error) +
+               self.integral(error, dt) +
+               self.derivative(error, dt) +
+               self.gains.feedforward)
 
         if out > self.max_value or out < self.min_value:
             out = max(min(out, self.max_value), self.min_value)

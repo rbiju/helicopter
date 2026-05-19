@@ -94,7 +94,7 @@ class TrackingPointHandler:
         keypoints = self.detector.detect(ir_frame)
         marker_coords, _, _ = self.detector.get_points_coords(depth_frame, keypoints, intrinsics, std_dev)
 
-        if len(marker_coords) <= 3:
+        if len(marker_coords) == 0:
             return None
 
         return marker_coords, keypoints
@@ -127,10 +127,11 @@ class TrackingPointHandler:
 
     def get_point_correspondence(self, q_init: Rotation,
                                  t_init: np.ndarray,
-                                 measured_points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+                                 measured_points: np.ndarray) \
+            -> tuple[np.ndarray, np.ndarray, Rotation, np.ndarray]:
         q_jax = jaxRotation.from_quat(jnp.array(q_init.as_quat(canonical=True)))
         padded, valid_input_mask = self.pad_points(measured_points)
-        min_idxs, valid_mask, _, _ = self.icp.iterate(q_jax,
+        min_idxs, valid_mask, q_final, t_final = self.icp.iterate(q_jax,
                                                 t_init.copy(),
                                                 padded,
                                                 self.matcher.reference_points,
@@ -141,4 +142,7 @@ class TrackingPointHandler:
         measure_idxs = np.arange(len(valid_mask))[valid_mask]
         reference_idxs = min_idxs[valid_mask]
 
-        return measure_idxs, reference_idxs
+        return (measure_idxs,
+                reference_idxs,
+                Rotation.from_quat(np.asarray(q_final.as_quat(canonical=True))),
+                np.asarray(t_final))

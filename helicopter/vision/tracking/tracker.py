@@ -306,6 +306,9 @@ class Tracker:
         self.is_running = True
         self.vision_thread.start()
 
+        last_vision_rotation = self.aircraft.quaternion
+        last_vision_position = self.aircraft.position
+
         while self.is_running:
             if self.kill_signal.is_set():
                 print('Tracker detected kill signal. Shutting down.')
@@ -382,12 +385,13 @@ class Tracker:
                 measured_points, keypoints = measured_out
                 table_measured_points = self.camera_to_table_space(measured_points)
 
-                q = self.aircraft.quaternion
-                t = self.aircraft.position
                 nominal_state = jnp.array(self.aircraft.state_vector, dtype=jnp.float32)
 
                 self.profiler.start('Match_Points')
-                measure_idx, ref_idx = self.point_handler.get_point_correspondence(q, t, table_measured_points)
+                measure_idx, ref_idx, q_new, t_new = (
+                    self.point_handler.get_point_correspondence(last_vision_rotation,
+                                                                last_vision_position,
+                                                                table_measured_points))
                 self.profiler.end('Match_Points')
 
                 z_points = table_measured_points[measure_idx]
